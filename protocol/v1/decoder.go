@@ -1,0 +1,82 @@
+package protocol
+
+import (
+	"errors"
+	"fmt"
+	"io"
+
+	"github.com/russolsen/transit"
+)
+
+// NewMessageDecoder returns a new Transit decoder
+// that can deserialize StatusMessage structs.
+// More about Transit: https://github.com/cognitect/transit-format
+func NewMessageDecoder(r io.Reader) *transit.Decoder {
+	decoder := transit.NewDecoder(r)
+	decoder.AddHandler(statusMessageTag, statusMessageHandler)
+	return decoder
+}
+
+const statusMessageTag = "c4"
+
+func statusMessageHandler(d transit.Decoder, value interface{}) (interface{}, error) {
+	taggedValue, ok := value.(transit.TaggedValue)
+	if !ok {
+		return nil, errors.New("not a tagged value")
+	}
+	values, ok := taggedValue.Value.([]interface{})
+	if !ok {
+		return nil, errors.New("tagged value does not contain values")
+	}
+
+	sm := StatusMessage{}
+	for idx, v := range values {
+		var ok bool
+
+		switch idx {
+		case 0:
+			sm.Text, ok = v.(string)
+		case 1:
+			sm.ContentT, ok = v.(string)
+		case 2:
+			var messageT transit.Keyword
+			messageT, ok = v.(transit.Keyword)
+			if ok {
+				sm.MessageT = string(messageT)
+			}
+		case 3:
+			sm.Clock, ok = v.(int64)
+		case 4:
+			sm.Timestamp, ok = v.(int64)
+		case 5:
+			var content map[interface{}]interface{}
+			content, ok = v.(map[interface{}]interface{})
+			if !ok {
+				break
+			}
+
+			for key, contentVal := range content {
+				var keyKeyword transit.Keyword
+				keyKeyword, ok = key.(transit.Keyword)
+				if !ok {
+					break
+				}
+
+				switch keyKeyword {
+				case transit.Keyword("text"):
+					sm.Content.Text, ok = contentVal.(string)
+				case transit.Keyword("chat-id"):
+					sm.Content.ChatID, ok = contentVal.(string)
+				}
+			}
+		default:
+			// skip any other values
+			ok = true
+		}
+
+		if !ok {
+			return nil, fmt.Errorf("invalid value for index: %d", idx)
+		}
+	}
+	return sm, nil
+}
