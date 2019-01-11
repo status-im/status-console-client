@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
@@ -12,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/fatih/color"
 	"github.com/jroimartin/gocui"
-	whisper "github.com/status-im/whisper/whisperv6"
 
 	"github.com/status-im/status-term-client/protocol/v1"
 )
@@ -27,43 +27,12 @@ var (
 	ErrUnsupportedContactType = errors.New("unsupported contact type")
 )
 
-// ReceivedMessage contains a raw Whisper message and decoded payload.
-type ReceivedMessage struct {
-	Decoded  protocol.StatusMessage
-	Received *whisper.ReceivedMessage
-}
-
-// RequestMessagesParams is a list of params sent while requesting historic messages.
-type RequestMessagesParams struct {
-	Limit int
-	From  int64
-	To    int64
-}
-
-// MessagesSubscription is a subscription that retrieves messages.
-type MessagesSubscription interface {
-	Messages() ([]*ReceivedMessage, error)
-	Unsubscribe() error
-}
-
-// PublicChat provides an interface to interact with public chats.
-type PublicChat interface {
-	SubscribePublicChat(name string) (MessagesSubscription, error)
-	SendPublicMessage(chatName string, data []byte, identity Identity) (string, error)
-	RequestPublicMessages(chatName string, params RequestMessagesParams) error
-}
-
-// Chat provides an interface to interact with any chat.
-type Chat interface {
-	PublicChat
-}
-
 // ChatViewController manages chat view.
 type ChatViewController struct {
 	*ViewController
 
-	identity Identity
-	node     Chat
+	identity *ecdsa.PrivateKey
+	chat     protocol.Chat
 
 	currentContact Contact
 	lastClockValue int64
@@ -74,11 +43,11 @@ type ChatViewController struct {
 }
 
 // NewChatViewController returns a new chat view controller.
-func NewChatViewController(vc *ViewController, id Identity, node Chat) (*ChatViewController, error) {
+func NewChatViewController(vc *ViewController, id Identity, chat protocol.Chat) (*ChatViewController, error) {
 	return &ChatViewController{
 		ViewController: vc,
 		identity:       id,
-		node:           node,
+		chat:           chat,
 		sentMessages:   make(map[string]struct{}),
 	}, nil
 }
@@ -91,13 +60,17 @@ func (c *ChatViewController) Select(contact Contact) error {
 	c.currentContact = contact
 
 	var (
-		sub MessagesSubscription
+		sub *protocol.Subscription
 		err error
 	)
 
+	messages := make(chan *protocol.ReceivedMessage)
+
 	switch contact.Type {
 	case ContactPublicChat:
-		sub, err = c.node.SubscribePublicChat(contact.Name)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+		sub, err = c.chat.SubscribePublicChat(ctx, contact.Name, messages)
 	default:
 		err = ErrUnsupportedContactType
 	}
@@ -122,71 +95,72 @@ func (c *ChatViewController) Select(contact Contact) error {
 	c.cancel = make(chan struct{})
 	c.done = make(chan struct{})
 
-	go c.readMessagesLoop(sub, c.cancel, c.done)
+	go c.readMessagesLoop(sub, messages, c.cancel, c.done)
 
 	// Request some previous messages from the current chat
 	// to provide some context for the user.
 	// TODO: handle pagination
 	// TODO: RequestPublicMessages should return only after receiving a response.
-	params := RequestMessagesParams{
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	defer cancel()
+	params := protocol.RequestMessagesParams{
 		Limit: 100,
 	}
-	if err := c.node.RequestPublicMessages(c.currentContact.Name, params); err != nil {
+	if err := c.chat.RequestPublicMessages(ctx, c.currentContact.Name, params); err != nil {
 		return fmt.Errorf("failed to request messages: %v", err)
 	}
 	return nil
 }
 
 // TODO: change done channel to err channel. Err channel should be handled by a goroutine.
-func (c *ChatViewController) readMessagesLoop(sub MessagesSubscription, cancel <-chan struct{}, done chan struct{}) {
+func (c *ChatViewController) readMessagesLoop(
+	sub *protocol.Subscription,
+	messages <-chan *protocol.ReceivedMessage,
+	cancel <-chan struct{},
+	done chan struct{},
+) {
 	// TODO: check calls order. `close(done)` should be the last one.
-	defer func() { _ = sub.Unsubscribe() }()
+	defer sub.Unsubscribe()
 	defer close(done)
-
-	t := time.NewTimer(ReadMessagesTimeout)
-	defer t.Stop()
 
 	for {
 		select {
-		case <-t.C:
+		case m := <-messages:
+			c.updateLastClockValue(m)
+
 			c.g.Update(func(*gocui.Gui) error {
-				messages, err := sub.Messages()
-				if err != nil {
-					return fmt.Errorf("failed to get messages: %v", err)
-				}
-				log.Printf("received %d messages", len(messages))
-
-				c.updateLastClockValue(messages)
-
-				return c.printMessages(messages)
+				return c.printMessage(m)
 			})
-
-			t.Reset(ReadMessagesTimeout)
+		case <-sub.Done():
+			if err := sub.Err(); err != nil {
+				log.Fatalf("protocol subscription errored: %v", err)
+			}
 		case <-cancel:
 			return
 		}
 	}
 }
 
-func (c *ChatViewController) printMessages(messages []*ReceivedMessage) error {
+func (c *ChatViewController) printMessage(message *protocol.ReceivedMessage) error {
 	myPubKey := c.identity.PublicKey
+	pubKey, err := crypto.UnmarshalPubkey(message.Received.Sig)
+	if err != nil {
+		return err
+	}
 
-	for _, message := range messages {
-		pubKey := message.Received.SigToPubKey()
-		line := formatMessageLine(
-			pubKey,
-			time.Unix(message.Decoded.Timestamp/1000, 0),
-			message.Decoded.Text,
-		)
+	line := formatMessageLine(
+		pubKey,
+		time.Unix(message.Decoded.Timestamp/1000, 0),
+		message.Decoded.Text,
+	)
 
-		println := fmt.Fprintln
-		if pubKey.X.Cmp(myPubKey.X) == 0 && pubKey.Y.Cmp(myPubKey.Y) == 0 {
-			println = color.New(color.FgGreen).Fprintln
-		}
+	println := fmt.Fprintln
+	if pubKey.X.Cmp(myPubKey.X) == 0 && pubKey.Y.Cmp(myPubKey.Y) == 0 {
+		println = color.New(color.FgGreen).Fprintln
+	}
 
-		if _, err := println(c.ViewController, line); err != nil {
-			return err
-		}
+	if _, err := println(c.ViewController, line); err != nil {
+		return err
 	}
 
 	return nil
@@ -205,14 +179,7 @@ func formatMessageLine(id *ecdsa.PublicKey, t time.Time, text string) string {
 	)
 }
 
-func (c *ChatViewController) updateLastClockValue(messages []*ReceivedMessage) {
-	size := len(messages)
-	if size == 0 {
-		return
-	}
-
-	m := messages[size-1]
-
+func (c *ChatViewController) updateLastClockValue(m *protocol.ReceivedMessage) {
 	if m.Decoded.Clock > c.lastClockValue {
 		c.lastClockValue = m.Decoded.Clock
 	}
@@ -244,7 +211,9 @@ func (c *ChatViewController) SendMessage(content []byte) (string, error) {
 
 	switch c.currentContact.Type {
 	case ContactPublicChat:
-		return c.node.SendPublicMessage(c.currentContact.Name, data, c.identity)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+		return c.chat.SendPublicMessage(ctx, c.currentContact.Name, data, c.identity)
 	default:
 		return "", ErrUnsupportedContactType
 	}

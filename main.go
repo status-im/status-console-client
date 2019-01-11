@@ -14,7 +14,9 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
+	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
+	"github.com/status-im/status-term-client/protocol/v1"
 )
 
 func init() {
@@ -65,15 +67,21 @@ func main() {
 	defer g.Close()
 
 	// start Status node
-	node := NewNode()
-	if err := node.Start(*dataDir, *fleet, *configFile); err != nil {
+	statusNode := node.New()
+	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
+	if err := statusNode.Start(nodeConfig); err != nil {
 		exitErr(err)
 	}
+	shhService, err := statusNode.WhisperService()
+	if err != nil {
+		exitErr(err)
+	}
+	chatAdapter := protocol.NewWhisperServiceAdapter(statusNode, shhService)
 
 	// prepare views
 	vm := NewViewManager(nil, g)
 
-	chat, err := NewChatViewController(&ViewController{vm, g, ViewChat}, privateKey, node)
+	chat, err := NewChatViewController(&ViewController{vm, g, ViewChat}, privateKey, chatAdapter)
 	if err != nil {
 		exitErr(err)
 	}
