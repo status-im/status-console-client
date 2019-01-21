@@ -129,7 +129,11 @@ func (c *ChatViewController) readMessagesLoop(
 			c.updateLastClockValue(m)
 
 			c.g.Update(func(*gocui.Gui) error {
-				return c.printMessage(m)
+				err := c.printMessage(m)
+				if err != nil {
+					err = fmt.Errorf("failed to print a message because of %v", err)
+				}
+				return err
 			})
 		case <-sub.Done():
 			if err := sub.Err(); err != nil {
@@ -143,10 +147,7 @@ func (c *ChatViewController) readMessagesLoop(
 
 func (c *ChatViewController) printMessage(message *protocol.ReceivedMessage) error {
 	myPubKey := c.identity.PublicKey
-	pubKey, err := crypto.UnmarshalPubkey(message.Received.Sig)
-	if err != nil {
-		return err
-	}
+	pubKey := message.SigPubKey
 
 	line := formatMessageLine(
 		pubKey,

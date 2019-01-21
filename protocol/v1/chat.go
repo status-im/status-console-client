@@ -3,8 +3,6 @@ package protocol
 import (
 	"context"
 	"crypto/ecdsa"
-
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // Chat provides an interface to interact with any chat.
@@ -30,6 +28,7 @@ type PublicChat interface {
 		identity *ecdsa.PrivateKey,
 	) (string, error)
 
+	// TODO: RequestMessagesParams is Whisper specific.
 	RequestPublicMessages(
 		ctx context.Context,
 		chatName string,
@@ -41,11 +40,6 @@ type PublicChat interface {
 // and some additional fields that we learnt
 // about the message.
 type ReceivedMessage struct {
-	Decoded StatusMessage
-	Src     []byte
-}
-
-// SrcPubKey returns a public key of the source of the message.
-func (r ReceivedMessage) SrcPubKey() (*ecdsa.PublicKey, error) {
-	return crypto.UnmarshalPubkey(r.Src)
+	Decoded   StatusMessage
+	SigPubKey *ecdsa.PublicKey
 }

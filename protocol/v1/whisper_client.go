@@ -58,13 +58,16 @@ func (a *WhisperClientAdapter) SubscribePublicChat(ctx context.Context, name str
 		Topics:   []whisper.TopicType{topic},
 		AllowP2P: true, // messages from mail server are direct p2p messages
 	}
-	subMessages, err := a.shhClient.SubscribeMessages(ctx, criteria, messages)
+	shhSub, err := a.shhClient.SubscribeMessages(ctx, criteria, messages)
 	if err != nil {
 		return nil, err
 	}
 
 	sub := NewSubscription()
+
 	go func() {
+		defer shhSub.Unsubscribe()
+
 		for {
 			select {
 			case raw := <-messages:
@@ -73,11 +76,18 @@ func (a *WhisperClientAdapter) SubscribePublicChat(ctx context.Context, name str
 					log.Printf("failed to decode message: %v", err)
 					break
 				}
-				in <- &ReceivedMessage{
-					Decoded: m,
-					Src:     raw.Sig,
+
+				sigPubKey, err := crypto.UnmarshalPubkey(raw.Sig)
+				if err != nil {
+					log.Printf("failed to get a signature: %v", err)
+					break
 				}
-			case err := <-subMessages.Err():
+
+				in <- &ReceivedMessage{
+					Decoded:   m,
+					SigPubKey: sigPubKey,
+				}
+			case err := <-shhSub.Err():
 				sub.cancel(err)
 				return
 			case <-sub.Done():

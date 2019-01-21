@@ -18,7 +18,7 @@ import (
 )
 
 // WhisperServiceAdapter is an adapter for Whisper service
-// the implements Chat interface. It requires a Whisper service .
+// the implements Chat interface.
 type WhisperServiceAdapter struct {
 	node *node.StatusNode
 	shh  *whisper.Whisper
@@ -203,19 +203,21 @@ func (s whisperSubscription) Messages() ([]*ReceivedMessage, error) {
 	}
 
 	items := f.Retrieve()
-	result := make([]*ReceivedMessage, len(items))
+	result := make([]*ReceivedMessage, 0, len(items))
 
-	for i, item := range items {
+	for _, item := range items {
+		log.Printf("retrieve a message: %#v", item)
+
 		decoded, err := DecodeMessage(item.Payload)
 		if err != nil {
 			log.Printf("failed to decode message: %v", err)
 			continue
 		}
 
-		result[i] = &ReceivedMessage{
-			Decoded: decoded,
-			Src:     item.Signature,
-		}
+		result = append(result, &ReceivedMessage{
+			Decoded:   decoded,
+			SigPubKey: item.SigToPubKey(),
+		})
 	}
 
 	sort.Slice(result, func(i, j int) bool {
