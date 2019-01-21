@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"log"
-	"math/rand"
 	"sort"
 	"time"
 
@@ -230,9 +229,4 @@ func (s whisperSubscription) Messages() ([]*ReceivedMessage, error) {
 // Unsubscribe removes the subscription.
 func (s whisperSubscription) Unsubscribe() error {
 	return s.shh.Unsubscribe(s.filterID)
-}
-
-func randomItem(items []string) string {
-	l := len(items)
-	return items[rand.Intn(l)]
 }

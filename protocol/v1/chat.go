@@ -43,3 +43,11 @@ type ReceivedMessage struct {
 	Decoded   StatusMessage
 	SigPubKey *ecdsa.PublicKey
 }
+
+// RequestMessagesParams is a list of params required
+// to get historic messages.
+type RequestMessagesParams struct {
+	Limit int
+	From  int64
+	To    int64
+}

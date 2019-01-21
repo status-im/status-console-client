@@ -17,8 +17,9 @@ import (
 // which implements Chat interface. It requires an RPC client
 // which can use various transports like HTTP, IPC or in-proc.
 type WhisperClientAdapter struct {
-	rpcClient *rpc.Client
-	shhClient *shhclient.Client
+	rpcClient        *rpc.Client
+	shhClient        *shhclient.Client
+	mailServerEnodes []string
 
 	mu              sync.RWMutex
 	passSymKeyCache map[string]string
@@ -28,11 +29,12 @@ type WhisperClientAdapter struct {
 var _ Chat = (*WhisperClientAdapter)(nil)
 
 // NewWhisperClientAdapter returns a new WhisperClientAdapter.
-func NewWhisperClientAdapter(c *rpc.Client) *WhisperClientAdapter {
+func NewWhisperClientAdapter(c *rpc.Client, mailServers []string) *WhisperClientAdapter {
 	return &WhisperClientAdapter{
-		rpcClient:       c,
-		shhClient:       shhclient.NewClient(c),
-		passSymKeyCache: make(map[string]string),
+		rpcClient:        c,
+		shhClient:        shhclient.NewClient(c),
+		mailServerEnodes: mailServers,
+		passSymKeyCache:  make(map[string]string),
 	}
 }
 
@@ -129,23 +131,15 @@ func (a *WhisperClientAdapter) SendPublicMessage(ctx context.Context, name strin
 	})
 }
 
-// RequestMessagesParams is a list of params sent while requesting historic messages.
-type RequestMessagesParams struct {
-	MailServerEnode string
-	Limit           int
-	From            int64
-	To              int64
-}
-
 // RequestPublicMessages sends a request to MailServer for historic messages.
 func (a *WhisperClientAdapter) RequestPublicMessages(ctx context.Context, name string, params RequestMessagesParams) error {
 	if err := a.rpcClient.CallContext(ctx, nil, "admin_addPeer"); err != nil {
 		return err
 	}
 
+	enode := randomItem(a.mailServerEnodes)
 	// TODO: check if a peer was added using admin_peers
-
-	if err := a.shhClient.MarkTrustedPeer(ctx, params.MailServerEnode); err != nil {
+	if err := a.shhClient.MarkTrustedPeer(ctx, enode); err != nil {
 		return err
 	}
 
@@ -160,7 +154,7 @@ func (a *WhisperClientAdapter) RequestPublicMessages(ctx context.Context, name s
 	}
 
 	req := shhext.MessagesRequest{
-		MailServerPeer: params.MailServerEnode,
+		MailServerPeer: enode,
 		SymKeyID:       mailServerSymKeyID,
 		From:           uint32(params.From),  // TODO: change to int in status-go
 		To:             uint32(params.To),    // TODO: change to int in status-go
