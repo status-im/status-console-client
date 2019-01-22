@@ -21,6 +21,8 @@ import (
 	"github.com/status-im/status-term-client/protocol/v1"
 )
 
+var g *gocui.Gui
+
 func init() {
 	log.SetOutput(os.Stderr)
 }
@@ -101,7 +103,9 @@ func main() {
 		chatAdapter = protocol.NewWhisperServiceAdapter(statusNode, shhService)
 	}
 
-	g, err := gocui.NewGui(gocui.Output256)
+	var err error
+
+	g, err = gocui.NewGui(gocui.Output256)
 	if err != nil {
 		exitErr(err)
 	}
@@ -248,6 +252,10 @@ func main() {
 }
 
 func exitErr(err error) {
+	if g != nil {
+		g.Close()
+	}
+
 	fmt.Println(err)
 	os.Exit(1)
 }
