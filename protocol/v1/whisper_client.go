@@ -3,8 +3,10 @@ package protocol
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -133,14 +135,32 @@ func (a *WhisperClientAdapter) SendPublicMessage(ctx context.Context, name strin
 
 // RequestPublicMessages sends a request to MailServer for historic messages.
 func (a *WhisperClientAdapter) RequestPublicMessages(ctx context.Context, name string, params RequestMessagesParams) error {
-	if err := a.rpcClient.CallContext(ctx, nil, "admin_addPeer"); err != nil {
+	enode := randomItem(a.mailServerEnodes)
+
+	log.Printf("using %s as a mail server", enode)
+
+	if err := a.rpcClient.CallContext(ctx, nil, "admin_addPeer", enode); err != nil {
 		return err
 	}
 
-	enode := randomItem(a.mailServerEnodes)
-	// TODO: check if a peer was added using admin_peers
-	if err := a.shhClient.MarkTrustedPeer(ctx, enode); err != nil {
-		return err
+	// Adding peer is asynchronous operation so we need to retry a few times.
+	retries := 0
+	for {
+		<-time.After(time.Second)
+
+		err := a.shhClient.MarkTrustedPeer(ctx, enode)
+		if ctx.Err() == context.Canceled {
+			log.Printf("requesting public messages canceled")
+			return err
+		}
+		if err == nil {
+			break
+		}
+		if retries < 3 {
+			retries++
+		} else {
+			return fmt.Errorf("failed to mark peer as trusted: %v", err)
+		}
 	}
 
 	mailServerSymKeyID, err := a.getOrAddSymKey(ctx, MailServerPassword)

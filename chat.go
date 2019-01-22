@@ -71,6 +71,9 @@ func (c *ChatViewController) Select(contact Contact) error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
 		sub, err = c.chat.SubscribePublicChat(ctx, contact.Name, messages)
+		if err != nil {
+			err = fmt.Errorf("failed to subscribe to public chat: %v", err)
+		}
 	default:
 		err = ErrUnsupportedContactType
 	}

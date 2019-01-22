@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/rpc"
+
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
@@ -30,11 +32,15 @@ func main() {
 		// flags acting like commands
 		createKeyPair = fs.Bool("create-key-pair", false, "creates and prints a key pair instead of running")
 
-		// runtime flags
+		// flags for in-proc node
 		dataDir    = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
 		fleet      = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
 		configFile = fs.String("node-config", "", "a JSON file with node config")
-		keyHex     = fs.String("keyhex", "", "pass a private key in hex")
+
+		// flags for external node
+		providerURI = fs.String("provider", "", "an URI pointing at a provider")
+
+		keyHex = fs.String("keyhex", "", "pass a private key in hex")
 	)
 
 	ff.Parse(fs, os.Args[1:])
@@ -60,23 +66,46 @@ func main() {
 		exitErr(errors.New("private key is required"))
 	}
 
+	// initialize chat
+	var chatAdapter protocol.Chat
+
+	if *providerURI != "" {
+		rpc, err := rpc.Dial(*providerURI)
+		if err != nil {
+			exitErr(err)
+		}
+
+		// TODO: provide Mail Servers in a different way.
+		nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
+		if err != nil {
+			exitErr(err)
+		}
+
+		chatAdapter = protocol.NewWhisperClientAdapter(rpc, nodeConfig.ClusterConfig.TrustedMailServers)
+	} else {
+		nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
+		if err != nil {
+			exitErr(err)
+		}
+
+		statusNode := node.New()
+		if err := statusNode.Start(nodeConfig); err != nil {
+			exitErr(err)
+		}
+
+		shhService, err := statusNode.WhisperService()
+		if err != nil {
+			exitErr(err)
+		}
+
+		chatAdapter = protocol.NewWhisperServiceAdapter(statusNode, shhService)
+	}
+
 	g, err := gocui.NewGui(gocui.Output256)
 	if err != nil {
 		exitErr(err)
 	}
 	defer g.Close()
-
-	// start Status node
-	statusNode := node.New()
-	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
-	if err := statusNode.Start(nodeConfig); err != nil {
-		exitErr(err)
-	}
-	shhService, err := statusNode.WhisperService()
-	if err != nil {
-		exitErr(err)
-	}
-	chatAdapter := protocol.NewWhisperServiceAdapter(statusNode, shhService)
 
 	// prepare views
 	vm := NewViewManager(nil, g)
