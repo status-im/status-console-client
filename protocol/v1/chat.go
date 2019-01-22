@@ -8,6 +8,7 @@ import (
 // Chat provides an interface to interact with any chat.
 type Chat interface {
 	PublicChat
+	PrivateChat
 }
 
 // PublicChat provides an interface to interact with public chats.
@@ -34,6 +35,17 @@ type PublicChat interface {
 		chatName string,
 		params RequestMessagesParams,
 	) error
+}
+
+// PrivateChat provides an interface to interact with private chats.
+type PrivateChat interface {
+	SubscribePrivateChat(
+		ctx context.Context,
+		identity *ecdsa.PrivateKey,
+		in chan<- *ReceivedMessage,
+	) (*Subscription, error)
+
+	RequestPrivateMessages(ctx context.Context, params RequestMessagesParams) error
 }
 
 // ReceivedMessage contains a decoded message payload

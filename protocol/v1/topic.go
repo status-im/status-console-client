@@ -14,3 +14,8 @@ func PublicChatTopic(name string) (whisper.TopicType, error) {
 
 	return whisper.BytesToTopic(hash.Sum(nil)), nil
 }
+
+// PrivateChatTopic returns a Whisper topic for a private chat.
+func PrivateChatTopic() (whisper.TopicType, error) {
+	return PublicChatTopic("contact-discovery")
+}

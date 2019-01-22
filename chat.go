@@ -71,13 +71,15 @@ func (c *ChatViewController) Select(contact Contact) error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
 		sub, err = c.chat.SubscribePublicChat(ctx, contact.Name, messages)
-		if err != nil {
-			err = fmt.Errorf("failed to subscribe to public chat: %v", err)
-		}
+	case ContactPrivateChat:
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+		sub, err = c.chat.SubscribePrivateChat(ctx, c.identity, messages)
 	default:
 		err = ErrUnsupportedContactType
 	}
 	if err != nil {
+		err = fmt.Errorf("failed to subscribe to chat: %v", err)
 		return err
 	}
 
@@ -107,11 +109,22 @@ func (c *ChatViewController) Select(contact Contact) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 	params := protocol.RequestMessagesParams{
-		Limit: 100,
+		From:  time.Now().Add(-time.Hour).Unix(),
+		To:    time.Now().Unix(),
+		Limit: 1000,
 	}
-	if err := c.chat.RequestPublicMessages(ctx, c.currentContact.Name, params); err != nil {
-		return fmt.Errorf("failed to request messages: %v", err)
+
+	switch contact.Type {
+	case ContactPublicChat:
+		if err := c.chat.RequestPublicMessages(ctx, c.currentContact.Name, params); err != nil {
+			return fmt.Errorf("failed to request public messages: %v", err)
+		}
+	case ContactPrivateChat:
+		if err := c.chat.RequestPrivateMessages(ctx, params); err != nil {
+			return fmt.Errorf("failed to request private messages: %v", err)
+		}
 	}
+
 	return nil
 }
 

@@ -96,6 +96,59 @@ func (a *WhisperServiceAdapter) SubscribePublicChat(ctx context.Context, name st
 	return sub, nil
 }
 
+// SubscribePrivateChat subscribes to a private channel. Currently,
+// all private chats use a single channel (topic) in order to
+// preserve some security features.
+func (a *WhisperServiceAdapter) SubscribePrivateChat(ctx context.Context, identity *ecdsa.PrivateKey, in chan<- *ReceivedMessage) (*Subscription, error) {
+	topic, err := PrivateChatTopic()
+	if err != nil {
+		return nil, err
+	}
+
+	filterID, err := a.shh.Subscribe(&whisper.Filter{
+		KeyAsym:  identity,
+		Topics:   [][]byte{topic[:]},
+		PoW:      0,
+		AllowP2P: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	subMessages := newWhisperSubscription(a.shh, filterID)
+	sub := NewSubscription()
+
+	go func() {
+		defer subMessages.Unsubscribe()
+
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+
+		for {
+			select {
+			case <-t.C:
+				messages, err := subMessages.Messages()
+				if err != nil {
+					sub.cancel(err)
+					return
+				}
+
+				sort.Slice(messages, func(i, j int) bool {
+					return messages[i].Decoded.Clock < messages[j].Decoded.Clock
+				})
+
+				for _, m := range messages {
+					in <- m
+				}
+			case <-sub.Done():
+				return
+			}
+		}
+	}()
+
+	return sub, nil
+}
+
 // SendPublicMessage sends a new message using the Whisper service.
 func (a *WhisperServiceAdapter) SendPublicMessage(
 	ctx context.Context, name string, data []byte, identity *ecdsa.PrivateKey,
@@ -143,42 +196,67 @@ func (a *WhisperServiceAdapter) RequestPublicMessages(
 		return err
 	}
 
+	// TODO: remove from here. MailServerEnode must be provided in the params.
+	enode, err := a.addMailServer()
+	if err != nil {
+		return err
+	}
+
+	return a.requestMessages(ctx, enode, []whisper.TopicType{topic}, params)
+}
+
+// RequestPrivateMessages requests messages from mail servers.
+func (a *WhisperServiceAdapter) RequestPrivateMessages(ctx context.Context, params RequestMessagesParams) error {
+	// TODO: add cache
+	topic, err := PrivateChatTopic()
+	if err != nil {
+		return err
+	}
+
+	// TODO: remove from here. MailServerEnode must be provided in the params.
+	enode, err := a.addMailServer()
+	if err != nil {
+		return err
+	}
+
+	return a.requestMessages(ctx, enode, []whisper.TopicType{topic}, params)
+}
+
+func (a *WhisperServiceAdapter) addMailServer() (string, error) {
+	config := a.node.Config()
+	enode := randomItem(config.ClusterConfig.TrustedMailServers)
+	errCh := helpers.WaitForPeerAsync(
+		a.node.GethNode().Server(),
+		enode,
+		p2p.PeerEventTypeAdd,
+		time.Second*5,
+	)
+	if err := a.node.AddPeer(enode); err != nil {
+		return "", err
+	}
+	return enode, <-errCh
+}
+
+func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode string, topics []whisper.TopicType, params RequestMessagesParams) error {
+	mailServerSymKeyID, err := a.shh.AddSymKeyFromPassword(MailServerPassword)
+	if err != nil {
+		return err
+	}
+
 	shhextService, err := a.node.ShhExtService()
 	if err != nil {
 		return err
 	}
 	shhextAPI := shhext.NewPublicAPI(shhextService)
 
-	// TODO: remove from here. MailServerEnode must be provided in the params.
-	config := a.node.Config()
-	mailServerEnode := randomItem(config.ClusterConfig.TrustedMailServers)
-	errCh := helpers.WaitForPeerAsync(
-		a.node.GethNode().Server(),
-		mailServerEnode,
-		p2p.PeerEventTypeAdd,
-		time.Second*5,
-	)
-	if err := a.node.AddPeer(mailServerEnode); err != nil {
-		return err
-	}
-	if err := <-errCh; err != nil {
-		return err
-	}
-
-	mailServerSymKeyID, err := a.shh.AddSymKeyFromPassword(MailServerPassword)
-	if err != nil {
-		return err
-	}
-
 	_, err = shhextAPI.RequestMessages(ctx, shhext.MessagesRequest{
-		MailServerPeer: mailServerEnode,
+		MailServerPeer: enode,
 		From:           uint32(params.From),  // TODO: change to int in status-go
 		To:             uint32(params.To),    // TODO: change to int in status-go
 		Limit:          uint32(params.Limit), // TODO: change to int in status-go
-		Topics:         []whisper.TopicType{topic},
+		Topics:         topics,
 		SymKeyID:       mailServerSymKeyID,
 	})
-
 	// TODO: wait for the request to finish before returning
 	return err
 }
@@ -205,7 +283,7 @@ func (s whisperSubscription) Messages() ([]*ReceivedMessage, error) {
 	result := make([]*ReceivedMessage, 0, len(items))
 
 	for _, item := range items {
-		log.Printf("retrieve a message: %#v", item)
+		log.Printf("retrieve a message with ID %s: %s", item.EnvelopeHash.String(), item.Payload)
 
 		decoded, err := DecodeMessage(item.Payload)
 		if err != nil {

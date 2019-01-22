@@ -18,6 +18,7 @@ import (
 	"github.com/peterbourgon/ff"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
+	"github.com/status-im/status-go/signal"
 	"github.com/status-im/status-term-client/protocol/v1"
 )
 
@@ -64,6 +65,8 @@ func main() {
 			exitErr(err)
 		}
 		privateKey = k
+
+		log.Printf("contact address: %#x", crypto.FromECDSAPub(&privateKey.PublicKey))
 	} else {
 		exitErr(errors.New("private key is required"))
 	}
@@ -85,6 +88,16 @@ func main() {
 
 		chatAdapter = protocol.NewWhisperClientAdapter(rpc, nodeConfig.ClusterConfig.TrustedMailServers)
 	} else {
+		// collect mail server request signals
+		mailSignalsForwarder := newSignalForwarder()
+		defer close(mailSignalsForwarder.in)
+		go mailSignalsForwarder.Start()
+
+		// setup signals handler
+		signal.SetDefaultNodeNotificationHandler(
+			filterMailTypesHandler(printHandler, mailSignalsForwarder.in),
+		)
+
 		nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
 		if err != nil {
 			exitErr(err)
@@ -119,12 +132,18 @@ func main() {
 		exitErr(err)
 	}
 
+	adambContact, err := NewContactWithPublicKey("adamb", "0x0493ac727e70ea62c4428caddf4da301ca67b699577988d6a782898acfd813addf79b2a2ca2c411499f2e0a12b7de4d00574cbddb442bec85789aea36b10f46895")
+	if err != nil {
+		exitErr(err)
+	}
+
 	contacts := NewContactsViewController(
 		&ViewController{vm, g, ViewContacts},
 		[]Contact{
-			{"status", ContactPublicChat},
-			{"status-core", ContactPublicChat},
-			{"testing-adamb", ContactPublicChat},
+			{Name: "status", Type: ContactPublicChat},
+			{Name: "status-core", Type: ContactPublicChat},
+			{Name: "testing-adamb", Type: ContactPublicChat},
+			adambContact,
 		},
 	)
 
