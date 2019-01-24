@@ -71,13 +71,15 @@ func (c *ChatViewController) Select(contact Contact) error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
 		sub, err = c.chat.SubscribePublicChat(ctx, contact.Name, messages)
-		if err != nil {
-			err = fmt.Errorf("failed to subscribe to public chat: %v", err)
-		}
+	case ContactPrivateChat:
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+		sub, err = c.chat.SubscribePrivateChat(ctx, c.identity, messages)
 	default:
 		err = ErrUnsupportedContactType
 	}
 	if err != nil {
+		err = fmt.Errorf("failed to subscribe to chat: %v", err)
 		return err
 	}
 
@@ -107,11 +109,22 @@ func (c *ChatViewController) Select(contact Contact) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 	params := protocol.RequestMessagesParams{
-		Limit: 100,
+		From:  time.Now().Add(-12 * time.Hour).Unix(),
+		To:    time.Now().Unix(),
+		Limit: 1000,
 	}
-	if err := c.chat.RequestPublicMessages(ctx, c.currentContact.Name, params); err != nil {
-		return fmt.Errorf("failed to request messages: %v", err)
+
+	switch contact.Type {
+	case ContactPublicChat:
+		if err := c.chat.RequestPublicMessages(ctx, c.currentContact.Name, params); err != nil {
+			return fmt.Errorf("failed to request public messages: %v", err)
+		}
+	case ContactPrivateChat:
+		if err := c.chat.RequestPrivateMessages(ctx, params); err != nil {
+			return fmt.Errorf("failed to request private messages: %v", err)
+		}
 	}
+
 	return nil
 }
 
@@ -192,15 +205,27 @@ func (c *ChatViewController) updateLastClockValue(m *protocol.ReceivedMessage) {
 // SendMessage sends a message to the selected chat (contact).
 // It returns a message hash and error, if the operation fails.
 func (c *ChatViewController) SendMessage(content []byte) (string, error) {
-	text := string(content)
+	text := strings.TrimSpace(string(content))
 	ts := time.Now().Unix() * 1000
 	clock := protocol.CalcMessageClock(c.lastClockValue, ts)
+
+	var messageType string
+
+	switch c.currentContact.Type {
+	case ContactPublicChat:
+		messageType = protocol.MessageTypePublicGroupUserMessage
+	case ContactPrivateChat:
+		messageType = protocol.MessageTypePrivateUserMessage
+	default:
+		return "", ErrUnsupportedContactType
+	}
+
 	// TODO: protocol package should expose a function to create
 	// a standard StatusMessage.
 	sm := protocol.StatusMessage{
 		Text:      text,
 		ContentT:  protocol.ContentTypeTextPlain,
-		MessageT:  protocol.MessageTypePublicGroupUserMessage,
+		MessageT:  messageType,
 		Clock:     clock,
 		Timestamp: ts,
 		Content:   protocol.StatusMessageContent{ChatID: c.currentContact.Name, Text: text},
@@ -213,11 +238,25 @@ func (c *ChatViewController) SendMessage(content []byte) (string, error) {
 
 	c.lastClockValue = clock
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
 	switch c.currentContact.Type {
 	case ContactPublicChat:
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-		defer cancel()
 		return c.chat.SendPublicMessage(ctx, c.currentContact.Name, data, c.identity)
+	case ContactPrivateChat:
+		// TODO: this fragment should not be here
+		c.g.Update(func(*gocui.Gui) error {
+			err := c.printMessage(&protocol.ReceivedMessage{
+				Decoded:   sm,
+				SigPubKey: &c.identity.PublicKey,
+			})
+			if err != nil {
+				err = fmt.Errorf("failed to print a message because of %v", err)
+			}
+			return err
+		})
+		return c.chat.SendPrivateMessage(ctx, c.currentContact.PubKey(), data, c.identity)
 	default:
 		return "", ErrUnsupportedContactType
 	}

@@ -8,8 +8,12 @@ import (
 const (
 	// ContentTypeTextPlain means that the message contains plain text.
 	ContentTypeTextPlain = "text/plain"
-	// MessageTypePublicGroupUserMessage means that the message was sent to a public chat.
+)
+
+// Message types.
+const (
 	MessageTypePublicGroupUserMessage = "public-group-user-message"
+	MessageTypePrivateUserMessage     = "user-message"
 )
 
 var (
