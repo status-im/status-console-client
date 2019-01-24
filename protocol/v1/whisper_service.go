@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/services/shhext"
@@ -160,28 +161,54 @@ func (a *WhisperServiceAdapter) SendPublicMessage(
 	}
 
 	// TODO: add cache
-	symKeyID, err := a.shh.AddSymKeyFromPassword(name)
-	if err != nil {
-		return "", err
-	}
-
-	// TODO: add cache
 	topic, err := PublicChatTopic(name)
 	if err != nil {
 		return "", err
 	}
 
+	// TODO: add cache
+	symKeyID, err := a.shh.AddSymKeyFromPassword(name)
+	if err != nil {
+		return "", err
+	}
+
+	whisperNewMessage := createWhisperNewMessage(topic, data, keyID)
+	whisperNewMessage.SymKeyID = symKeyID
+
 	// Only public Whisper API implements logic to send messages.
 	shhAPI := whisper.NewPublicWhisperAPI(a.shh)
-	hash, err := shhAPI.Post(ctx, whisper.NewMessage{
-		SymKeyID:  symKeyID,
-		TTL:       60,
-		Topic:     topic,
-		Payload:   data,
-		PowTarget: 2.0,
-		PowTime:   5,
-		Sig:       keyID,
-	})
+	hash, err := shhAPI.Post(ctx, whisperNewMessage)
+
+	return hash.String(), err
+}
+
+// SendPrivateMessage sends a new message to a private chat.
+// Identity is required to sign a message as only signed messages
+// are accepted and displayed.
+func (a *WhisperServiceAdapter) SendPrivateMessage(
+	ctx context.Context,
+	recipient *ecdsa.PublicKey,
+	data []byte,
+	identity *ecdsa.PrivateKey,
+) (string, error) {
+	// TODO: add cache
+	keyID, err := a.shh.AddKeyPair(identity)
+	if err != nil {
+		return "", err
+	}
+
+	// TODO: add cache
+	topic, err := PrivateChatTopic()
+	if err != nil {
+		return "", err
+	}
+
+	whisperNewMessage := createWhisperNewMessage(topic, data, keyID)
+	whisperNewMessage.PublicKey = crypto.FromECDSAPub(recipient)
+
+	// Only public Whisper API implements logic to send messages.
+	shhAPI := whisper.NewPublicWhisperAPI(a.shh)
+	hash, err := shhAPI.Post(ctx, whisperNewMessage)
 
 	return hash.String(), err
 }

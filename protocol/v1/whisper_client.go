@@ -159,6 +159,36 @@ func (a *WhisperClientAdapter) SendPublicMessage(ctx context.Context, name strin
 	})
 }
 
+// SendPrivateMessage sends a new message to a private chat.
+// Identity is required to sign a message as only signed messages
+// are accepted and displayed.
+func (a *WhisperClientAdapter) SendPrivateMessage(
+	ctx context.Context,
+	recipient *ecdsa.PublicKey,
+	data []byte,
+	identity *ecdsa.PrivateKey,
+) (string, error) {
+	identityID, err := a.shhClient.AddPrivateKey(ctx, crypto.FromECDSA(identity))
+	if err != nil {
+		return "", err
+	}
+
+	topic, err := PrivateChatTopic()
+	if err != nil {
+		return "", err
+	}
+
+	return a.shhClient.Post(ctx, whisper.NewMessage{
+		PublicKey: crypto.FromECDSAPub(recipient),
+		TTL:       60,
+		Topic:     topic,
+		Payload:   data,
+		PowTarget: 2.0,
+		PowTime:   5,
+		Sig:       identityID,
+	})
+}
+
 // RequestPublicMessages sends a request to MailServer for historic messages.
 func (a *WhisperClientAdapter) RequestPublicMessages(ctx context.Context, name string, params RequestMessagesParams) error {
 	enode, err := a.addMailServer(ctx)

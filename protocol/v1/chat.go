@@ -45,6 +45,13 @@ type PrivateChat interface {
 		in chan<- *ReceivedMessage,
 	) (*Subscription, error)
 
+	SendPrivateMessage(
+		ctx context.Context,
+		recipient *ecdsa.PublicKey,
+		data []byte,
+		identity *ecdsa.PrivateKey,
+	) (string, error)
+
 	RequestPrivateMessages(ctx context.Context, params RequestMessagesParams) error
 }
 
