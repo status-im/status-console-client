@@ -54,10 +54,10 @@ func (s *signalForwarder) Start() {
 
 		s.Lock()
 		out, found := s.out[sig.RequestID]
+		s.Unlock()
 		if found {
 			out <- sig
 		}
-		s.Unlock()
 	}
 }
 
