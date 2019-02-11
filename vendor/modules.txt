@@ -27,24 +27,17 @@ github.com/deckarep/golang-set
 # github.com/edsrzf/mmap-go v1.0.0
 github.com/edsrzf/mmap-go
 # github.com/ethereum/go-ethereum v1.8.20 => github.com/status-im/go-ethereum v1.8.20
+github.com/ethereum/go-ethereum/common
+github.com/ethereum/go-ethereum/crypto
+github.com/ethereum/go-ethereum/rpc
 github.com/ethereum/go-ethereum/crypto/sha3
 github.com/ethereum/go-ethereum/p2p
-github.com/ethereum/go-ethereum/common
-github.com/ethereum/go-ethereum/common/bitutil
-github.com/ethereum/go-ethereum/common/mclock
-github.com/ethereum/go-ethereum/crypto
-github.com/ethereum/go-ethereum/crypto/ecies
+github.com/ethereum/go-ethereum/common/hexutil
+github.com/ethereum/go-ethereum/common/math
 github.com/ethereum/go-ethereum/crypto/secp256k1
-github.com/ethereum/go-ethereum/event
-github.com/ethereum/go-ethereum/log
-github.com/ethereum/go-ethereum/metrics
-github.com/ethereum/go-ethereum/p2p/discover
-github.com/ethereum/go-ethereum/p2p/discv5
-github.com/ethereum/go-ethereum/p2p/enode
-github.com/ethereum/go-ethereum/p2p/enr
-github.com/ethereum/go-ethereum/p2p/nat
-github.com/ethereum/go-ethereum/p2p/netutil
 github.com/ethereum/go-ethereum/rlp
+github.com/ethereum/go-ethereum/log
+github.com/ethereum/go-ethereum/p2p/netutil
 github.com/ethereum/go-ethereum/accounts
 github.com/ethereum/go-ethereum/accounts/keystore
 github.com/ethereum/go-ethereum/core
@@ -52,10 +45,17 @@ github.com/ethereum/go-ethereum/eth
 github.com/ethereum/go-ethereum/eth/downloader
 github.com/ethereum/go-ethereum/les
 github.com/ethereum/go-ethereum/node
+github.com/ethereum/go-ethereum/p2p/discv5
+github.com/ethereum/go-ethereum/p2p/enode
+github.com/ethereum/go-ethereum/p2p/enr
+github.com/ethereum/go-ethereum/p2p/nat
 github.com/ethereum/go-ethereum/params
-github.com/ethereum/go-ethereum/common/hexutil
-github.com/ethereum/go-ethereum/rpc
-github.com/ethereum/go-ethereum/common/math
+github.com/ethereum/go-ethereum/common/bitutil
+github.com/ethereum/go-ethereum/common/mclock
+github.com/ethereum/go-ethereum/crypto/ecies
+github.com/ethereum/go-ethereum/event
+github.com/ethereum/go-ethereum/metrics
+github.com/ethereum/go-ethereum/p2p/discover
 github.com/ethereum/go-ethereum
 github.com/ethereum/go-ethereum/core/types
 github.com/ethereum/go-ethereum/common/prque
@@ -268,6 +268,10 @@ github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
 # github.com/pborman/uuid v1.2.0
 github.com/pborman/uuid
+# github.com/peterbourgon/ff v1.0.3
+github.com/peterbourgon/ff
+# github.com/pkg/errors v0.8.0
+github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
 # github.com/prometheus/prometheus v1.7.1-0.20170814170113-3101606756c5
@@ -297,6 +301,7 @@ github.com/status-im/rendezvous/protocol
 github.com/status-im/status-go/logutils
 github.com/status-im/status-go/node
 github.com/status-im/status-go/params
+github.com/status-im/status-go/signal
 github.com/status-im/status-go/services/shhext
 github.com/status-im/status-go/t/helpers
 github.com/status-im/status-go/db
@@ -313,7 +318,6 @@ github.com/status-im/status-go/services
 github.com/status-im/status-go/services/shhext/chat
 github.com/status-im/status-go/services/shhext/dedup
 github.com/status-im/status-go/services/shhext/mailservers
-github.com/status-im/status-go/signal
 github.com/status-im/status-go/extkeys
 github.com/status-im/status-go/contracts
 github.com/status-im/status-go/mailserver/registry
@@ -322,6 +326,7 @@ github.com/status-im/status-go/account
 github.com/status-im/status-go/services/shhext/chat/crypto
 github.com/status-im/status-go/services/shhext/chat/migrations
 # github.com/status-im/whisper v1.4.5
+github.com/status-im/whisper/shhclient
 github.com/status-im/whisper/whisperv6
 # github.com/stretchr/testify v1.2.2
 github.com/stretchr/testify/require
@@ -382,10 +387,10 @@ golang.org/x/sys/windows
 golang.org/x/sys/cpu
 # golang.org/x/text v0.3.0
 golang.org/x/text/unicode/norm
+golang.org/x/text/transform
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
 golang.org/x/text/encoding/htmlindex
-golang.org/x/text/transform
 golang.org/x/text/encoding/internal/identifier
 golang.org/x/text/encoding/internal
 golang.org/x/text/encoding/japanese
