@@ -1,0 +1,16 @@
+notifications:
+  email: false
+language: go
+go:
+- 1.10.x
+- 1.11.x
+sudo: false
+jobs:
+  include:
+  - stage: Lint
+    before_script: make install-dev
+    script:
+      - make lint
+  - stage: Test
+    script:
+      - make test-race
