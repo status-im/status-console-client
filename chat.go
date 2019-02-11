@@ -14,12 +14,8 @@ import (
 	"github.com/fatih/color"
 	"github.com/jroimartin/gocui"
 
-	"github.com/status-im/status-term-client/protocol/v1"
+	"github.com/status-im/status-console-client/protocol/v1"
 )
-
-// ReadMessagesTimeout is a timeout for checking
-// if there are any new messages available.
-const ReadMessagesTimeout = time.Second
 
 var (
 	// ErrUnsupportedContactType is returned when a given contact type

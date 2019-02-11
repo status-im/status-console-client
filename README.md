@@ -31,7 +31,7 @@ $ ./bin/status-term-client -h
 
 The main package contains the console user interface.
 
-* `github.com/status-im/status-term-client/protocol/v1` contains the current messaging protocol payload encoders and decoders as well as some utilities like creating a Whisper topic for a public chat.
+* `github.com/status-im/status-console-client/protocol/v1` contains the current messaging protocol payload encoders and decoders as well as some utilities like creating a Whisper topic for a public chat.
 
 # License
 

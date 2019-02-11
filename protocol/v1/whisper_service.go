@@ -67,7 +67,7 @@ func (a *WhisperServiceAdapter) SubscribePublicChat(ctx context.Context, name st
 	sub := NewSubscription()
 
 	go func() {
-		defer subMessages.Unsubscribe()
+		defer subMessages.Unsubscribe() // nolint: errcheck
 
 		t := time.NewTicker(time.Second)
 		defer t.Stop()
@@ -120,7 +120,7 @@ func (a *WhisperServiceAdapter) SubscribePrivateChat(ctx context.Context, identi
 	sub := NewSubscription()
 
 	go func() {
-		defer subMessages.Unsubscribe()
+		defer subMessages.Unsubscribe() // nolint: errcheck
 
 		t := time.NewTicker(time.Second)
 		defer t.Stop()

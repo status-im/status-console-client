@@ -1,16 +1,23 @@
 notifications:
   email: false
+
 language: go
-go:
-- 1.10.x
-- 1.11.x
-sudo: false
-jobs:
+
+install: true
+
+env:
+- GO111MODULE=on
+
+before_script:
+- make install-dev
+
+matrix:
   include:
-  - stage: Lint
-    before_script: make install-dev
+  - go: "1.10.x"
     script:
-      - make lint
-  - stage: Test
+    - make lint-v110
+    - make test-v110
+  - go: "1.11.x"
     script:
-      - make test-race
+    - make lint
+    - make test

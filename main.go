@@ -19,7 +19,7 @@ import (
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/signal"
-	"github.com/status-im/status-term-client/protocol/v1"
+	"github.com/status-im/status-console-client/protocol/v1"
 )
 
 var g *gocui.Gui
@@ -46,7 +46,9 @@ func main() {
 		keyHex = fs.String("keyhex", "", "pass a private key in hex")
 	)
 
-	ff.Parse(fs, os.Args[1:])
+	if err := ff.Parse(fs, os.Args[1:]); err != nil {
+		exitErr(err)
+	}
 
 	if *createKeyPair {
 		key, err := crypto.GenerateKey()
