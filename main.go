@@ -16,10 +16,10 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
+	"github.com/status-im/status-console-client/protocol/v1"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/signal"
-	"github.com/status-im/status-console-client/protocol/v1"
 )
 
 var g *gocui.Gui
@@ -149,6 +149,32 @@ func main() {
 		},
 	)
 
+	inputMultiplexer := NewInputMultiplexer()
+	inputMultiplexer.AddHandler(DefaultMultiplexerPrefix, func(b []byte) error {
+		log.Printf("default multiplexer handler")
+		_, err := chat.SendMessage(b)
+		return err
+	})
+	inputMultiplexer.AddHandler("/contact", func(b []byte) error {
+		log.Printf("handle /contact command: %s", b)
+
+		contact, err := ContactCmdHandler(b)
+		if err != nil {
+			return err
+		}
+
+		log.Printf("adding contact: %+v", contact)
+
+		contacts.Add(contact)
+		contacts.Refresh()
+
+		return nil
+	})
+	inputMultiplexer.AddHandler("/request", func(b []byte) error {
+		log.Printf("handle /request command: %s", b)
+		return chat.RequestMessages()
+	})
+
 	views := []*View{
 		&View{
 			Name:       ViewContacts,
@@ -232,7 +258,7 @@ func main() {
 				Binding{
 					Key:     gocui.KeyEnter,
 					Mod:     gocui.ModNone,
-					Handler: EnterInputHandler(chat),
+					Handler: inputMultiplexer.BindingHandler,
 				},
 				Binding{
 					Key:     gocui.KeyEnter,

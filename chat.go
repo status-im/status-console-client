@@ -98,6 +98,10 @@ func (c *ChatViewController) Select(contact Contact) error {
 
 	go c.readMessagesLoop(sub, messages, c.cancel, c.done)
 
+	return c.RequestMessages()
+}
+
+func (c *ChatViewController) RequestMessages() error {
 	// Request some previous messages from the current chat
 	// to provide some context for the user.
 	// TODO: handle pagination
@@ -110,7 +114,7 @@ func (c *ChatViewController) Select(contact Contact) error {
 		Limit: 1000,
 	}
 
-	switch contact.Type {
+	switch c.currentContact.Type {
 	case ContactPublicChat:
 		if err := c.chat.RequestPublicMessages(ctx, c.currentContact.Name, params); err != nil {
 			return fmt.Errorf("failed to request public messages: %v", err)
@@ -119,6 +123,8 @@ func (c *ChatViewController) Select(contact Contact) error {
 		if err := c.chat.RequestPrivateMessages(ctx, params); err != nil {
 			return fmt.Errorf("failed to request private messages: %v", err)
 		}
+	default:
+		return errors.New("invalid contact type")
 	}
 
 	return nil

@@ -90,3 +90,7 @@ func (c *ContactsViewController) Refresh() {
 		return nil
 	})
 }
+
+func (c *ContactsViewController) Add(contact Contact) {
+	c.items = append(c.items, contact)
+}
