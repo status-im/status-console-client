@@ -155,25 +155,8 @@ func main() {
 		_, err := chat.SendMessage(b)
 		return err
 	})
-	inputMultiplexer.AddHandler("/contact", func(b []byte) error {
-		log.Printf("handle /contact command: %s", b)
-
-		contact, err := ContactCmdHandler(b)
-		if err != nil {
-			return err
-		}
-
-		log.Printf("adding contact: %+v", contact)
-
-		contacts.Add(contact)
-		contacts.Refresh()
-
-		return nil
-	})
-	inputMultiplexer.AddHandler("/request", func(b []byte) error {
-		log.Printf("handle /request command: %s", b)
-		return chat.RequestMessages()
-	})
+	inputMultiplexer.AddHandler("/contact", ContactCmdFactory(contacts))
+	inputMultiplexer.AddHandler("/request", RequestCmdFactory(chat))
 
 	views := []*View{
 		&View{

@@ -11,13 +11,15 @@ import (
 
 const DefaultMultiplexerPrefix = "default"
 
+type CmdHandler func([]byte) error
+
 type InputMultiplexer struct {
-	handlers map[string]func([]byte) error // map string prefix to handler
+	handlers map[string]CmdHandler // map string prefix to handler
 }
 
 func NewInputMultiplexer() *InputMultiplexer {
 	return &InputMultiplexer{
-		handlers: make(map[string]func([]byte) error),
+		handlers: make(map[string]CmdHandler),
 	}
 }
 
@@ -47,7 +49,7 @@ func (m *InputMultiplexer) BindingHandler(g *gocui.Gui, v *gocui.View) error {
 	return nil
 }
 
-func (m *InputMultiplexer) AddHandler(prefix string, h func([]byte) error) {
+func (m *InputMultiplexer) AddHandler(prefix string, h CmdHandler) {
 	m.handlers[prefix] = h
 }
 
@@ -87,6 +89,25 @@ func ContactCmdHandler(b []byte) (c Contact, err error) {
 	return
 }
 
-func RequestCmdHandler(b []byte) error {
-	return nil
+func ContactCmdFactory(c *ContactsViewController) CmdHandler {
+	return func(b []byte) error {
+		log.Printf("handle /contact command: %s", b)
+
+		contact, err := ContactCmdHandler(b)
+		if err != nil {
+			return err
+		}
+
+		c.Add(contact)
+		c.Refresh()
+
+		return nil
+	}
+}
+
+func RequestCmdFactory(chat *ChatViewController) CmdHandler {
+	return func(b []byte) error {
+		log.Printf("handle /request command: %s", b)
+		return chat.RequestMessages()
+	}
 }

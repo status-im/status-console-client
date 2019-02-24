@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"io"
 
 	"github.com/jroimartin/gocui"
@@ -79,27 +78,6 @@ func EnterHandler(w io.Writer) GocuiHandler {
 			return err
 		}
 
-		return nil
-	}
-}
-
-// EnterInputHandler handles Enter in Input view.
-// It sends a message directly to the ChatViewController.
-// TODO: figure out a better interface to avoid concrete types.
-func EnterInputHandler(chat *ChatViewController) GocuiHandler {
-	return func(g *gocui.Gui, v *gocui.View) error {
-		if v == nil {
-			return nil
-		}
-
-		var buf bytes.Buffer
-		if err := EnterHandler(&buf)(g, v); err != nil {
-			return err
-		}
-
-		if _, err := chat.SendMessage(buf.Bytes()); err != nil {
-			return err
-		}
 		return nil
 	}
 }
