@@ -319,6 +319,8 @@ github.com/status-im/status-go v0.16.4 h1:8pED8nOgQgHFhN+nIGDTvyK/aXA6VPQ6ZVYnEs
 github.com/status-im/status-go v0.16.4/go.mod h1:3ky7GKNvGXC46HmjcVnDe+3cCkzP+JTzPRz4d50AQ4w=
 github.com/status-im/whisper v1.4.5 h1:+B64WCnvIwlbYhuIQ7kEaJspPgcEwMDtk953U2JqxR8=
 github.com/status-im/whisper v1.4.5/go.mod h1:WS6z39YJQ8WJa9s+DmTuEM/s2nVF6Iz3B1SZYw5cYf0=
+github.com/status-im/whisper v1.4.8 h1:YA7FS9F7SFYn/SvrQta0gAu206/HXX8JpwCmZImxn6E=
+github.com/status-im/whisper v1.4.8/go.mod h1:WS6z39YJQ8WJa9s+DmTuEM/s2nVF6Iz3B1SZYw5cYf0=
 github.com/stretchr/objx v0.1.1 h1:2vfRuCMp5sSVIDSqO8oNnWJq7mPa6KVP3iPIwFBuy8A=
 github.com/stretchr/objx v0.1.1/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.2.2 h1:bSDNvY7ZPG5RlJ8otE/7V6gMiyenm9RtJ7IUVIAoJ1w=

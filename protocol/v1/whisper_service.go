@@ -299,7 +299,8 @@ func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode strin
 		Topics:         topics,
 		SymKeyID:       mailServerSymKeyID,
 	})
-	// TODO: wait for the request to finish before returning
+	// TODO: wait for the request to finish before returning.
+	// Use a different method or relay on signals.
 	return err
 }
 

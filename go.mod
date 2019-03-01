@@ -104,7 +104,7 @@ require (
 	github.com/status-im/migrate v0.0.0-20181227113212-3bde36291b5c // indirect
 	github.com/status-im/rendezvous v1.0.0 // indirect
 	github.com/status-im/status-go v0.16.4-4-gaf1f6eb5.0.20181220100635-5e1f4631b16c
-	github.com/status-im/whisper v1.4.5
+	github.com/status-im/whisper v1.4.8
 	github.com/stretchr/objx v0.1.1 // indirect
 	github.com/stretchr/testify v1.2.2
 	github.com/syndtr/goleveldb v0.0.0-20181128100959-b001fa50d6b2

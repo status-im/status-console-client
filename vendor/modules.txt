@@ -29,12 +29,12 @@ github.com/edsrzf/mmap-go
 # github.com/ethereum/go-ethereum v1.8.20 => github.com/status-im/go-ethereum v1.8.20
 github.com/ethereum/go-ethereum/common
 github.com/ethereum/go-ethereum/crypto
+github.com/ethereum/go-ethereum/crypto/secp256k1
 github.com/ethereum/go-ethereum/rpc
 github.com/ethereum/go-ethereum/crypto/sha3
 github.com/ethereum/go-ethereum/p2p
 github.com/ethereum/go-ethereum/common/hexutil
 github.com/ethereum/go-ethereum/common/math
-github.com/ethereum/go-ethereum/crypto/secp256k1
 github.com/ethereum/go-ethereum/rlp
 github.com/ethereum/go-ethereum/log
 github.com/ethereum/go-ethereum/p2p/netutil
@@ -325,7 +325,7 @@ github.com/status-im/status-go/peers/verifier
 github.com/status-im/status-go/account
 github.com/status-im/status-go/services/shhext/chat/crypto
 github.com/status-im/status-go/services/shhext/chat/migrations
-# github.com/status-im/whisper v1.4.5
+# github.com/status-im/whisper v1.4.8
 github.com/status-im/whisper/shhclient
 github.com/status-im/whisper/whisperv6
 # github.com/stretchr/testify v1.2.2
@@ -333,16 +333,16 @@ github.com/stretchr/testify/require
 github.com/stretchr/testify/assert
 # github.com/syndtr/goleveldb v0.0.0-20181128100959-b001fa50d6b2
 github.com/syndtr/goleveldb/leveldb
-github.com/syndtr/goleveldb/leveldb/errors
-github.com/syndtr/goleveldb/leveldb/iterator
-github.com/syndtr/goleveldb/leveldb/opt
-github.com/syndtr/goleveldb/leveldb/storage
 github.com/syndtr/goleveldb/leveldb/util
 github.com/syndtr/goleveldb/leveldb/cache
 github.com/syndtr/goleveldb/leveldb/comparer
+github.com/syndtr/goleveldb/leveldb/errors
 github.com/syndtr/goleveldb/leveldb/filter
+github.com/syndtr/goleveldb/leveldb/iterator
 github.com/syndtr/goleveldb/leveldb/journal
 github.com/syndtr/goleveldb/leveldb/memdb
+github.com/syndtr/goleveldb/leveldb/opt
+github.com/syndtr/goleveldb/leveldb/storage
 github.com/syndtr/goleveldb/leveldb/table
 # github.com/whyrusleeping/go-logging v0.0.0-20170515211332-0457bb6b88fc
 github.com/whyrusleeping/go-logging
