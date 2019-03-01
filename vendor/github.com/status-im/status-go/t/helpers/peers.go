@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethereum/go-ethereum/p2p"
@@ -16,27 +17,27 @@ var (
 )
 
 // waitForPeer waits for a peer to be added
-func waitForPeer(p *p2p.Server, u string, e p2p.PeerEventType, t time.Duration, subscribed chan struct{}) error {
-	if p == nil {
+func waitForPeer(server *p2p.Server, peerURL string, typ p2p.PeerEventType, t time.Duration, subscribed chan struct{}) error {
+	if server == nil {
 		return ErrNoRunningNode
 	}
-	if u == "" {
+	if peerURL == "" {
 		return ErrEmptyPeerURL
 	}
-	parsedPeer, err := enode.ParseV4(u)
+	parsedPeer, err := enode.ParseV4(peerURL)
 	if err != nil {
 		return err
 	}
 
 	ch := make(chan *p2p.PeerEvent)
-	subscription := p.SubscribeEvents(ch)
+	subscription := server.SubscribeEvents(ch)
 	defer subscription.Unsubscribe()
 	close(subscribed)
 
 	for {
 		select {
 		case ev := <-ch:
-			if ev.Type == e && ev.Peer == parsedPeer.ID() {
+			if ev.Type == typ && ev.Peer == parsedPeer.ID() {
 				return nil
 			}
 		case err := <-subscription.Err():
@@ -44,7 +45,7 @@ func waitForPeer(p *p2p.Server, u string, e p2p.PeerEventType, t time.Duration, 
 				return err
 			}
 		case <-time.After(t):
-			return errors.New("wait for peer: timeout")
+			return fmt.Errorf("wait for peer %s: timeout", u)
 		}
 	}
 }

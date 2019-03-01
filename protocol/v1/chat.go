@@ -27,7 +27,7 @@ type PublicChat interface {
 		chatName string,
 		data []byte,
 		identity *ecdsa.PrivateKey,
-	) (string, error)
+	) ([]byte, error)
 
 	// TODO: RequestMessagesParams is Whisper specific.
 	RequestPublicMessages(
@@ -50,7 +50,7 @@ type PrivateChat interface {
 		recipient *ecdsa.PublicKey,
 		data []byte,
 		identity *ecdsa.PrivateKey,
-	) (string, error)
+	) ([]byte, error)
 
 	RequestPrivateMessages(ctx context.Context, params RequestMessagesParams) error
 }
@@ -60,8 +60,59 @@ type PrivateChat interface {
 // about the message.
 type ReceivedMessage struct {
 	Decoded   StatusMessage
+	Hash      []byte
 	SigPubKey *ecdsa.PublicKey
 }
+
+// type receivedMessageGob struct {
+// 	Decoded   StatusMessage
+// 	Hash      []byte
+// 	SigPubKey []byte
+// }
+
+// func (m *ReceivedMessage) GobEncode() ([]byte, error) {
+// 	val := receivedMessageGob{
+// 		Decoded: m.Decoded,
+// 		Hash:    m.Hash,
+// 	}
+
+// 	if m.SigPubKey != nil {
+// 		val.SigPubKey = crypto.FromECDSAPub(m.SigPubKey)
+// 	}
+
+// 	fmt.Printf("GobEncode: %+v", val)
+
+// 	var buf bytes.Buffer
+
+// 	enc := gob.NewEncoder(&buf)
+// 	if err := enc.Encode(&val); err != nil {
+// 		return nil, err
+// 	}
+
+// 	return buf.Bytes(), nil
+// }
+
+// func (m *ReceivedMessage) GobDecode(data []byte) error {
+// 	var val receivedMessageGob
+
+// 	buf := bytes.NewBuffer(data)
+// 	enc := gob.NewDecoder(buf)
+// 	if err := enc.Decode(&val); err != nil {
+// 		return err
+// 	}
+
+// 	var err error
+
+// 	m.Decoded = val.Decoded
+// 	m.Hash = val.Hash
+// 	if val.SigPubKey != nil {
+// 		m.SigPubKey, err = crypto.UnmarshalPubkey(val.SigPubKey)
+// 	}
+
+// 	fmt.Printf("GobDecode: %+v", val)
+
+// 	return err
+// }
 
 // RequestMessagesParams is a list of params required
 // to get historic messages.

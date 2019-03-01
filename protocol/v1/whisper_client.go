@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"sync"
@@ -132,23 +133,23 @@ func (a *WhisperClientAdapter) subscribeMessages(ctx context.Context, crit whisp
 // SendPublicMessage sends a new message to a public chat.
 // Identity is required to sign a message as only signed messages
 // are accepted and displayed.
-func (a *WhisperClientAdapter) SendPublicMessage(ctx context.Context, name string, data []byte, identity *ecdsa.PrivateKey) (string, error) {
+func (a *WhisperClientAdapter) SendPublicMessage(ctx context.Context, name string, data []byte, identity *ecdsa.PrivateKey) ([]byte, error) {
 	identityID, err := a.shhClient.AddPrivateKey(ctx, crypto.FromECDSA(identity))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	symKeyID, err := a.getOrAddSymKey(ctx, name)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	topic, err := PublicChatTopic(name)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return a.shhClient.Post(ctx, whisper.NewMessage{
+	hash, err := a.shhClient.Post(ctx, whisper.NewMessage{
 		SymKeyID:  symKeyID,
 		TTL:       60,
 		Topic:     topic,
@@ -157,6 +158,10 @@ func (a *WhisperClientAdapter) SendPublicMessage(ctx context.Context, name strin
 		PowTime:   5,
 		Sig:       identityID,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return hex.DecodeString(hash)
 }
 
 // SendPrivateMessage sends a new message to a private chat.
@@ -167,18 +172,18 @@ func (a *WhisperClientAdapter) SendPrivateMessage(
 	recipient *ecdsa.PublicKey,
 	data []byte,
 	identity *ecdsa.PrivateKey,
-) (string, error) {
+) ([]byte, error) {
 	identityID, err := a.shhClient.AddPrivateKey(ctx, crypto.FromECDSA(identity))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	topic, err := PrivateChatTopic()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return a.shhClient.Post(ctx, whisper.NewMessage{
+	hash, err := a.shhClient.Post(ctx, whisper.NewMessage{
 		PublicKey: crypto.FromECDSAPub(recipient),
 		TTL:       60,
 		Topic:     topic,
@@ -187,6 +192,10 @@ func (a *WhisperClientAdapter) SendPrivateMessage(
 		PowTime:   5,
 		Sig:       identityID,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return hex.DecodeString(hash)
 }
 
 // RequestPublicMessages sends a request to MailServer for historic messages.

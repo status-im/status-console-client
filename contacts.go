@@ -26,16 +26,15 @@ func NewContactWithPublicKey(name, pubKeyHex string) (c Contact, err error) {
 		return
 	}
 
-	c.publicKey, err = crypto.UnmarshalPubkey(pubKeyBytes)
+	c.PublicKey, err = crypto.UnmarshalPubkey(pubKeyBytes)
 	return
 }
 
 // Contact is a single contact which has a type and name.
 type Contact struct {
-	Name string
-	Type int
-
-	publicKey *ecdsa.PublicKey
+	Name      string
+	Type      int
+	PublicKey *ecdsa.PublicKey
 }
 
 // String returns a string representation.
@@ -50,21 +49,16 @@ func (c Contact) String() string {
 	}
 }
 
-// PubKey returns a public key assigned to a contact.
-// It is not nil only for private chats.
-func (c Contact) PubKey() *ecdsa.PublicKey {
-	return c.publicKey
-}
-
 // ContactsViewController manages contacts view.
 type ContactsViewController struct {
 	*ViewController
+	db    *Database
 	items []Contact
 }
 
 // NewContactsViewController returns a new contact view controller.
-func NewContactsViewController(vm *ViewController, items []Contact) *ContactsViewController {
-	return &ContactsViewController{vm, items}
+func NewContactsViewController(vm *ViewController, db *Database) *ContactsViewController {
+	return &ContactsViewController{ViewController: vm, db: db}
 }
 
 // ContactByIdx allows to retrieve a contact for a given index.
@@ -91,6 +85,31 @@ func (c *ContactsViewController) Refresh() {
 	})
 }
 
-func (c *ContactsViewController) Add(contact Contact) {
+func (c *ContactsViewController) Load() error {
+	contacts, err := c.db.Contacts()
+	if err != nil {
+		return err
+	}
+
+	c.items = contacts
+
+	return nil
+}
+
+func (c *ContactsViewController) Add(contact Contact) error {
 	c.items = append(c.items, contact)
+	return c.db.SaveContacts(c.items)
+}
+
+func (c *ContactsViewController) Remove(name string) error {
+	for idx, contact := range c.items {
+		if contact.Name != name {
+			continue
+		}
+
+		c.items = append(c.items[:idx], c.items[idx+1:]...)
+		return c.db.SaveContacts(c.items)
+	}
+
+	return fmt.Errorf("failed to find a contact %s", name)
 }

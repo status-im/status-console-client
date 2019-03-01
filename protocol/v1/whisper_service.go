@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
+	"fmt"
 	"log"
 	"sort"
 	"time"
@@ -22,6 +23,8 @@ import (
 type WhisperServiceAdapter struct {
 	node *node.StatusNode
 	shh  *whisper.Whisper
+
+	selectedMailServerEnode string
 }
 
 // WhisperServiceAdapter must implement Chat interface.
@@ -153,23 +156,23 @@ func (a *WhisperServiceAdapter) SubscribePrivateChat(ctx context.Context, identi
 // SendPublicMessage sends a new message using the Whisper service.
 func (a *WhisperServiceAdapter) SendPublicMessage(
 	ctx context.Context, name string, data []byte, identity *ecdsa.PrivateKey,
-) (string, error) {
+) ([]byte, error) {
 	// TODO: add cache
 	keyID, err := a.shh.AddKeyPair(identity)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// TODO: add cache
 	topic, err := PublicChatTopic(name)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// TODO: add cache
 	symKeyID, err := a.shh.AddSymKeyFromPassword(name)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	whisperNewMessage := createWhisperNewMessage(topic, data, keyID)
@@ -177,9 +180,7 @@ func (a *WhisperServiceAdapter) SendPublicMessage(
 
 	// Only public Whisper API implements logic to send messages.
 	shhAPI := whisper.NewPublicWhisperAPI(a.shh)
-	hash, err := shhAPI.Post(ctx, whisperNewMessage)
-
-	return hash.String(), err
+	return shhAPI.Post(ctx, whisperNewMessage)
 }
 
 // SendPrivateMessage sends a new message to a private chat.
@@ -190,17 +191,17 @@ func (a *WhisperServiceAdapter) SendPrivateMessage(
 	recipient *ecdsa.PublicKey,
 	data []byte,
 	identity *ecdsa.PrivateKey,
-) (string, error) {
+) ([]byte, error) {
 	// TODO: add cache
 	keyID, err := a.shh.AddKeyPair(identity)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// TODO: add cache
 	topic, err := PrivateChatTopic()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	whisperNewMessage := createWhisperNewMessage(topic, data, keyID)
@@ -209,8 +210,10 @@ func (a *WhisperServiceAdapter) SendPrivateMessage(
 	// Only public Whisper API implements logic to send messages.
 	shhAPI := whisper.NewPublicWhisperAPI(a.shh)
 	hash, err := shhAPI.Post(ctx, whisperNewMessage)
-
-	return hash.String(), err
+	if err != nil {
+		err = fmt.Errorf("failed to post a message: %v", err)
+	}
+	return hash, err
 }
 
 // RequestPublicMessages requests messages from mail servers.
@@ -224,7 +227,7 @@ func (a *WhisperServiceAdapter) RequestPublicMessages(
 	}
 
 	// TODO: remove from here. MailServerEnode must be provided in the params.
-	enode, err := a.addMailServer()
+	enode, err := a.selectAndAddMailServer()
 	if err != nil {
 		return err
 	}
@@ -241,7 +244,7 @@ func (a *WhisperServiceAdapter) RequestPrivateMessages(ctx context.Context, para
 	}
 
 	// TODO: remove from here. MailServerEnode must be provided in the params.
-	enode, err := a.addMailServer()
+	enode, err := a.selectAndAddMailServer()
 	if err != nil {
 		return err
 	}
@@ -249,7 +252,11 @@ func (a *WhisperServiceAdapter) RequestPrivateMessages(ctx context.Context, para
 	return a.requestMessages(ctx, enode, []whisper.TopicType{topic}, params)
 }
 
-func (a *WhisperServiceAdapter) addMailServer() (string, error) {
+func (a *WhisperServiceAdapter) selectAndAddMailServer() (string, error) {
+	if a.selectedMailServerEnode != "" {
+		return a.selectedMailServerEnode, nil
+	}
+
 	config := a.node.Config()
 	enode := randomItem(config.ClusterConfig.TrustedMailServers)
 	errCh := helpers.WaitForPeerAsync(
@@ -261,7 +268,15 @@ func (a *WhisperServiceAdapter) addMailServer() (string, error) {
 	if err := a.node.AddPeer(enode); err != nil {
 		return "", err
 	}
-	return enode, <-errCh
+
+	err := <-errCh
+	if err != nil {
+		err = fmt.Errorf("failed to add mail server %s: %v", enode, err)
+	} else {
+		a.selectedMailServerEnode = enode
+	}
+
+	return enode, err
 }
 
 func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode string, topics []whisper.TopicType, params RequestMessagesParams) error {
@@ -310,7 +325,7 @@ func (s whisperSubscription) Messages() ([]*ReceivedMessage, error) {
 	result := make([]*ReceivedMessage, 0, len(items))
 
 	for _, item := range items {
-		log.Printf("retrieve a message with ID %s: %s", item.EnvelopeHash.String(), item.Payload)
+		log.Printf("retrieve a message with ID %s", item.EnvelopeHash.String())
 
 		decoded, err := DecodeMessage(item.Payload)
 		if err != nil {
@@ -320,6 +335,7 @@ func (s whisperSubscription) Messages() ([]*ReceivedMessage, error) {
 
 		result = append(result, &ReceivedMessage{
 			Decoded:   decoded,
+			Hash:      item.EnvelopeHash.Bytes(),
 			SigPubKey: item.SigToPubKey(),
 		})
 	}

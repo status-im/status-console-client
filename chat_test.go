@@ -87,12 +87,11 @@ func TestSendMessage(t *testing.T) {
 		&PublicChatMock{},
 		&PrivateChatMock{},
 	}
-	vc, err := NewChatViewController(nil, nil, &chatMock)
+	vc, err := NewChatViewController(nil, nil, &chatMock, nil)
 	require.NoError(t, err)
 	vc.currentContact = Contact{
-		Name:      chatName,
-		Type:      ContactPublicChat,
-		publicKey: nil,
+		Name: chatName,
+		Type: ContactPublicChat,
 	}
 
 	_, err = vc.SendMessage(payload)

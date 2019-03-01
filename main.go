@@ -91,13 +91,13 @@ func main() {
 		chatAdapter = protocol.NewWhisperClientAdapter(rpc, nodeConfig.ClusterConfig.TrustedMailServers)
 	} else {
 		// collect mail server request signals
-		mailSignalsForwarder := newSignalForwarder()
-		defer close(mailSignalsForwarder.in)
-		go mailSignalsForwarder.Start()
+		signalsForwarder := newSignalForwarder()
+		defer close(signalsForwarder.in)
+		go signalsForwarder.Start()
 
 		// setup signals handler
 		signal.SetDefaultNodeNotificationHandler(
-			filterMailTypesHandler(printHandler, mailSignalsForwarder.in),
+			filterMailTypesHandler(printHandler, signalsForwarder.in),
 		)
 
 		nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
@@ -129,7 +129,18 @@ func main() {
 	// prepare views
 	vm := NewViewManager(nil, g)
 
-	chat, err := NewChatViewController(&ViewController{vm, g, ViewChat}, privateKey, chatAdapter)
+	dbPath := filepath.Join(*dataDir, "db")
+	db, err := NewDatabase(dbPath)
+	if err != nil {
+		exitErr(err)
+	}
+
+	chat, err := NewChatViewController(
+		&ViewController{vm, g, ViewChat},
+		privateKey,
+		chatAdapter,
+		db,
+	)
 	if err != nil {
 		exitErr(err)
 	}
@@ -139,15 +150,22 @@ func main() {
 		exitErr(err)
 	}
 
-	contacts := NewContactsViewController(
-		&ViewController{vm, g, ViewContacts},
-		[]Contact{
+	if contacts, err := db.Contacts(); len(contacts) == 0 || err != nil {
+		debugContacts := []Contact{
 			{Name: "status", Type: ContactPublicChat},
 			{Name: "status-core", Type: ContactPublicChat},
 			{Name: "testing-adamb", Type: ContactPublicChat},
 			adambContact,
-		},
-	)
+		}
+		if err := db.SaveContacts(debugContacts); err != nil {
+			exitErr(err)
+		}
+	}
+
+	contacts := NewContactsViewController(&ViewController{vm, g, ViewContacts}, db)
+	if err := contacts.Load(); err != nil {
+		exitErr(err)
+	}
 
 	inputMultiplexer := NewInputMultiplexer()
 	inputMultiplexer.AddHandler(DefaultMultiplexerPrefix, func(b []byte) error {
@@ -196,7 +214,7 @@ func main() {
 		&View{
 			Name:       ViewChat,
 			Cursor:     true,
-			Autoscroll: true,
+			Autoscroll: false,
 			Highlight:  true,
 			Wrap:       true,
 			SelBgColor: gocui.ColorGreen,
