@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/status-im/status-go/mailserver"
 	"github.com/status-im/status-go/services/shhext/chat"
+	"github.com/status-im/status-go/services/shhext/dedup"
 	"github.com/status-im/status-go/services/shhext/mailservers"
 	whisper "github.com/status-im/whisper/whisperv6"
 )
@@ -80,6 +81,9 @@ type MessagesRequest struct {
 	// Timeout is the time to live of the request specified in seconds.
 	// Default is 10 seconds
 	Timeout time.Duration `json:"timeout"`
+
+	// Force ensures that requests will bypass enforced delay.
+	Force bool `json:"force"`
 }
 
 func (r *MessagesRequest) setDefaults(now time.Time) {
@@ -165,7 +169,7 @@ func (api *PublicAPI) Post(ctx context.Context, req whisper.NewMessage) (hash he
 	if err == nil {
 		var envHash common.Hash
 		copy(envHash[:], hash[:]) // slice can't be used as key
-		api.service.tracker.Add(envHash)
+		api.service.envelopesMonitor.Add(envHash)
 	}
 	return hash, err
 }
@@ -175,6 +179,58 @@ func (api *PublicAPI) getPeer(rawurl string) (*enode.Node, error) {
 		return mailservers.GetFirstConnected(api.service.server, api.service.peerStore)
 	}
 	return enode.ParseV4(rawurl)
+}
+
+// RetryConfig specifies configuration for retries with timeout and max amount of retries.
+type RetryConfig struct {
+	BaseTimeout time.Duration
+	// StepTimeout defines duration increase per each retry.
+	StepTimeout time.Duration
+	MaxRetries  int
+}
+
+// RequestMessagesSync repeats MessagesRequest using configuration in retry conf.
+func (api *PublicAPI) RequestMessagesSync(conf RetryConfig, r MessagesRequest) error {
+	shh := api.service.w
+	events := make(chan whisper.EnvelopeEvent, 10)
+	sub := shh.SubscribeEnvelopeEvents(events)
+	defer sub.Unsubscribe()
+	var (
+		requestID hexutil.Bytes
+		err       error
+		retries   int
+	)
+	for retries <= conf.MaxRetries {
+		r.Timeout = conf.BaseTimeout + conf.StepTimeout*time.Duration(retries)
+		// FIXME this weird conversion is required because MessagesRequest expects seconds but defines time.Duration
+		r.Timeout = time.Duration(int(r.Timeout.Seconds()))
+		requestID, err = api.RequestMessages(context.Background(), r)
+		if err != nil {
+			return err
+		}
+		err = waitForExpiredOrCompleted(common.BytesToHash(requestID), events)
+		if err == nil {
+			return nil
+		}
+		retries++
+		api.log.Error("History request failed with %s. Making retry #%d", retries)
+	}
+	return fmt.Errorf("failed to request messages after %d retries", retries)
+}
+
+func waitForExpiredOrCompleted(requestID common.Hash, events chan whisper.EnvelopeEvent) error {
+	for {
+		ev := <-events
+		if ev.Hash != requestID {
+			continue
+		}
+		switch ev.Event {
+		case whisper.EventMailServerRequestCompleted:
+			return nil
+		case whisper.EventMailServerRequestExpired:
+			return errors.New("request expired")
+		}
+	}
 }
 
 // RequestMessages sends a request for historic messages to a MailServer.
@@ -223,11 +279,22 @@ func (api *PublicAPI) RequestMessages(_ context.Context, r MessagesRequest) (hex
 	if err != nil {
 		return nil, err
 	}
+	hash := envelope.Hash()
+
+	if !r.Force {
+		err = api.service.requestsRegistry.Register(hash, r.Topics)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	if err := shh.RequestHistoricMessagesWithTimeout(mailServerNode.ID().Bytes(), envelope, r.Timeout*time.Second); err != nil {
+		if !r.Force {
+			api.service.requestsRegistry.Unregister(hash)
+		}
 		return nil, err
 	}
-	hash := envelope.Hash()
+
 	return hash[:], nil
 }
 
@@ -307,7 +374,7 @@ func (api *PublicAPI) SyncMessages(ctx context.Context, r SyncMessagesRequest) (
 }
 
 // GetNewFilterMessages is a prototype method with deduplication
-func (api *PublicAPI) GetNewFilterMessages(filterID string) ([]*whisper.Message, error) {
+func (api *PublicAPI) GetNewFilterMessages(filterID string) ([]dedup.DeduplicateMessage, error) {
 	msgs, err := api.publicAPI.GetFilterMessages(filterID)
 	if err != nil {
 		return nil, err
@@ -317,9 +384,9 @@ func (api *PublicAPI) GetNewFilterMessages(filterID string) ([]*whisper.Message,
 
 	if api.service.pfsEnabled {
 		// Attempt to decrypt message, otherwise leave unchanged
-		for _, msg := range dedupMessages {
+		for _, dedupMessage := range dedupMessages {
 
-			if err := api.processPFSMessage(msg); err != nil {
+			if err := api.processPFSMessage(dedupMessage); err != nil {
 				return nil, err
 			}
 		}
@@ -332,6 +399,16 @@ func (api *PublicAPI) GetNewFilterMessages(filterID string) ([]*whisper.Message,
 // the client side.
 func (api *PublicAPI) ConfirmMessagesProcessed(messages []*whisper.Message) error {
 	return api.service.deduplicator.AddMessages(messages)
+}
+
+// ConfirmMessagesProcessedByID is a method to confirm that messages was consumed by
+// the client side.
+func (api *PublicAPI) ConfirmMessagesProcessedByID(messageIDs [][]byte) error {
+	if err := api.service.protocol.ConfirmMessagesProcessed(messageIDs); err != nil {
+		return err
+	}
+
+	return api.service.deduplicator.AddMessageByID(messageIDs)
 }
 
 // SendPublicMessage sends a public chat message to the underlying transport
@@ -361,7 +438,7 @@ func (api *PublicAPI) SendPublicMessage(ctx context.Context, msg chat.SendPublic
 }
 
 // SendDirectMessage sends a 1:1 chat message to the underlying transport
-func (api *PublicAPI) SendDirectMessage(ctx context.Context, msg chat.SendDirectMessageRPC) ([]hexutil.Bytes, error) {
+func (api *PublicAPI) SendDirectMessage(ctx context.Context, msg chat.SendDirectMessageRPC) (hexutil.Bytes, error) {
 	if !api.service.pfsEnabled {
 		return nil, ErrPFSNotEnabled
 	}
@@ -377,29 +454,26 @@ func (api *PublicAPI) SendDirectMessage(ctx context.Context, msg chat.SendDirect
 	}
 
 	// This is transport layer-agnostic
-	protocolMessages, err := api.service.protocol.BuildDirectMessage(privateKey, msg.Payload, publicKey)
+	var protocolMessage []byte
+
+	if msg.DH {
+		protocolMessage, err = api.service.protocol.BuildDHMessage(privateKey, &privateKey.PublicKey, msg.Payload)
+	} else {
+		protocolMessage, err = api.service.protocol.BuildDirectMessage(privateKey, publicKey, msg.Payload)
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
-	var response []hexutil.Bytes
+	// Enrich with transport layer info
+	whisperMessage := chat.DirectMessageToWhisper(msg, protocolMessage)
 
-	for key, message := range protocolMessages {
-		msg.PubKey = crypto.FromECDSAPub(key)
-		// Enrich with transport layer info
-		whisperMessage := chat.DirectMessageToWhisper(msg, message)
-
-		// And dispatch
-		hash, err := api.Post(ctx, whisperMessage)
-		if err != nil {
-			return nil, err
-		}
-		response = append(response, hash)
-
-	}
-	return response, nil
+	// And dispatch
+	return api.Post(ctx, whisperMessage)
 }
 
+// DEPRECATED: use SendDirectMessage with DH flag
 // SendPairingMessage sends a 1:1 chat message to our own devices to initiate a pairing session
 func (api *PublicAPI) SendPairingMessage(ctx context.Context, msg chat.SendDirectMessageRPC) ([]hexutil.Bytes, error) {
 	if !api.service.pfsEnabled {
@@ -416,7 +490,7 @@ func (api *PublicAPI) SendPairingMessage(ctx context.Context, msg chat.SendDirec
 		return nil, err
 	}
 
-	protocolMessage, err := api.service.protocol.BuildPairingMessage(privateKey, msg.Payload)
+	protocolMessage, err := api.service.protocol.BuildDHMessage(privateKey, &privateKey.PublicKey, msg.Payload)
 	if err != nil {
 		return nil, err
 	}
@@ -436,98 +510,46 @@ func (api *PublicAPI) SendPairingMessage(ctx context.Context, msg chat.SendDirec
 	return response, nil
 }
 
-// SendGroupMessage sends a group messag chat message to the underlying transport
-func (api *PublicAPI) SendGroupMessage(ctx context.Context, msg chat.SendGroupMessageRPC) ([]hexutil.Bytes, error) {
-	if !api.service.pfsEnabled {
-		return nil, ErrPFSNotEnabled
+func (api *PublicAPI) processPFSMessage(dedupMessage dedup.DeduplicateMessage) error {
+	msg := dedupMessage.Message
+
+	privateKeyID := api.service.w.SelectedKeyPairID()
+	if privateKeyID == "" {
+		return errors.New("no key selected")
 	}
 
-	// To be completely agnostic from whisper we should not be using whisper to store the key
-	privateKey, err := api.service.w.GetPrivateKey(msg.Sig)
+	privateKey, err := api.service.w.GetPrivateKey(privateKeyID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var keys []*ecdsa.PublicKey
-
-	for _, k := range msg.PubKeys {
-		publicKey, err := crypto.UnmarshalPubkey(k)
-		if err != nil {
-			return nil, err
-		}
-		keys = append(keys, publicKey)
-	}
-
-	// This is transport layer-agnostic
-	protocolMessages, err := api.service.protocol.BuildDirectMessage(privateKey, msg.Payload, keys...)
+	publicKey, err := crypto.UnmarshalPubkey(msg.Sig)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var response []hexutil.Bytes
+	response, err := api.service.protocol.HandleMessage(privateKey, publicKey, msg.Payload, dedupMessage.DedupID)
 
-	for key, message := range protocolMessages {
-		directMessage := chat.SendDirectMessageRPC{
-			PubKey:  crypto.FromECDSAPub(key),
-			Payload: msg.Payload,
-			Sig:     msg.Sig,
+	switch err {
+	case nil:
+		// Set the decrypted payload
+		msg.Payload = response
+	case chat.ErrDeviceNotFound:
+		// Notify that someone tried to contact us using an invalid bundle
+		if privateKey.PublicKey != *publicKey {
+			api.log.Warn("Device not found, sending signal", "err", err)
+			keyString := fmt.Sprintf("0x%x", crypto.FromECDSAPub(publicKey))
+			handler := EnvelopeSignalHandler{}
+			handler.DecryptMessageFailed(keyString)
 		}
-
-		// Enrich with transport layer info
-		whisperMessage := chat.DirectMessageToWhisper(directMessage, message)
-
-		// And dispatch
-		hash, err := api.Post(ctx, whisperMessage)
-		if err != nil {
-			return nil, err
-		}
-		response = append(response, hash)
-
-	}
-	return response, nil
-}
-
-func (api *PublicAPI) processPFSMessage(msg *whisper.Message) error {
-	var privateKey *ecdsa.PrivateKey
-	var publicKey *ecdsa.PublicKey
-
-	// Msg.Dst is empty is a public message, nothing to do
-	if msg.Dst != nil {
-		// There's probably a better way to do this
-		keyBytes, err := hexutil.Bytes(msg.Dst).MarshalText()
-		if err != nil {
-			return err
-		}
-
-		privateKey, err = api.service.w.GetPrivateKey(string(keyBytes))
-		if err != nil {
-			return err
-		}
-
-		// This needs to be pushed down in the protocol message
-		publicKey, err = crypto.UnmarshalPubkey(msg.Sig)
-		if err != nil {
-			return err
-		}
-	}
-
-	response, err := api.service.protocol.HandleMessage(privateKey, publicKey, msg.Payload)
-
-	// Notify that someone tried to contact us using an invalid bundle
-	if err == chat.ErrDeviceNotFound && privateKey.PublicKey != *publicKey {
-		api.log.Warn("Device not found, sending signal", "err", err)
-		keyString := fmt.Sprintf("0x%x", crypto.FromECDSAPub(publicKey))
-		handler := EnvelopeSignalHandler{}
-		handler.DecryptMessageFailed(keyString)
-		return nil
-	} else if err != nil {
-		// Ignore errors for now as those might be non-pfs messages
+	case chat.ErrNotProtocolMessage:
+		// Not using encryption, pass directly to the layer below
+		api.log.Debug("Not a protocol message", "err", err)
+	default:
+		// Log and pass to the client, even if failed to decrypt
 		api.log.Error("Failed handling message with error", "err", err)
-		return nil
-	}
 
-	// Add unencrypted payload
-	msg.Payload = response
+	}
 
 	return nil
 }

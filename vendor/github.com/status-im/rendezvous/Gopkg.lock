@@ -46,7 +46,7 @@
   version = "v1.1.0"
 
 [[projects]]
-  digest = "1:3e892a54552313db9f7eda71126179f4da5c9d15778681c662f0ef44471698ee"
+  digest = "1:08af77c41dc6a9ab5dd123ce76356fa4068d57287c060cdc934e1131973dd037"
   name = "github.com/ethereum/go-ethereum"
   packages = [
     "common",
@@ -57,15 +57,13 @@
     "crypto/sha3",
     "log",
     "metrics",
-    "p2p/discover",
+    "p2p/enode",
     "p2p/enr",
-    "p2p/nat",
-    "p2p/netutil",
     "rlp",
   ]
   pruneopts = "T"
-  revision = "37685930d953bcbe023f9bc65b135a8d8b8f1488"
-  version = "v1.8.12"
+  revision = "8bbe72075e4e16442c4e28d999edee12e294329e"
+  version = "v1.8.17"
 
 [[projects]]
   digest = "1:b0ca94349fa2ea088f641b603a88dd7e194876b6768132b86398020ac6724147"
@@ -650,11 +648,11 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:8d27d462cd66c6c609d1d1693f9ff5ea1e6effd080eafe17a5e3f11643501b28"
+  digest = "1:e8f4efd87b91ee8464ea426b62802c71698025fbda83be5efefd3bc663605d95"
   name = "github.com/status-im/go-multiaddr-ethv4"
   packages = ["."]
   pruneopts = "T"
-  revision = "17cb1ad76379d65e802eacc786d8f67eebd7cd6d"
+  revision = "cbcba3a7c121e29718d9011ffc9e2b78ac6d5c99"
 
 [[projects]]
   digest = "1:e95496462101745805bd4e041a5b841e108c7cf761264d53648246308de2761e"
@@ -832,6 +830,7 @@
     "github.com/ethereum/go-ethereum/crypto",
     "github.com/ethereum/go-ethereum/log",
     "github.com/ethereum/go-ethereum/metrics",
+    "github.com/ethereum/go-ethereum/p2p/enode",
     "github.com/ethereum/go-ethereum/p2p/enr",
     "github.com/ethereum/go-ethereum/rlp",
     "github.com/gyuho/goraph",
