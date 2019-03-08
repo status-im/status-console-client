@@ -91,6 +91,7 @@ require (
 	github.com/opentracing/opentracing-go v1.0.2 // indirect
 	github.com/pborman/uuid v1.2.0 // indirect
 	github.com/peterbourgon/ff v1.0.3
+	github.com/pkg/errors v0.8.0
 	github.com/prometheus/prometheus v1.7.1-0.20170814170113-3101606756c5 // indirect
 	github.com/rjeczalik/notify v0.9.2 // indirect
 	github.com/rs/cors v1.6.0 // indirect

@@ -3,56 +3,27 @@ package protocol
 import (
 	"context"
 	"crypto/ecdsa"
+	"errors"
+	"time"
 )
 
-// Chat provides an interface to interact with any chat.
 type Chat interface {
-	PublicChat
-	PrivateChat
-}
-
-// PublicChat provides an interface to interact with public chats.
-type PublicChat interface {
-	SubscribePublicChat(
+	Subscribe(
 		ctx context.Context,
-		name string,
-		in chan<- *ReceivedMessage,
+		messages chan<- *ReceivedMessage,
+		options SubscribeOptions,
 	) (*Subscription, error)
 
-	// SendPublicMessages sends a message to a public chat.
+	// Send sends a message to the network.
 	// Identity is required as the protocol requires
 	// all messages to be signed.
-	SendPublicMessage(
+	Send(
 		ctx context.Context,
-		chatName string,
 		data []byte,
-		identity *ecdsa.PrivateKey,
+		options SendOptions,
 	) ([]byte, error)
 
-	// TODO: RequestMessagesParams is Whisper specific.
-	RequestPublicMessages(
-		ctx context.Context,
-		chatName string,
-		params RequestMessagesParams,
-	) error
-}
-
-// PrivateChat provides an interface to interact with private chats.
-type PrivateChat interface {
-	SubscribePrivateChat(
-		ctx context.Context,
-		identity *ecdsa.PrivateKey,
-		in chan<- *ReceivedMessage,
-	) (*Subscription, error)
-
-	SendPrivateMessage(
-		ctx context.Context,
-		recipient *ecdsa.PublicKey,
-		data []byte,
-		identity *ecdsa.PrivateKey,
-	) ([]byte, error)
-
-	RequestPrivateMessages(ctx context.Context, params RequestMessagesParams) error
+	Request(ctx context.Context, params RequestMessagesParams) error
 }
 
 // ReceivedMessage contains a decoded message payload
@@ -116,8 +87,81 @@ type ReceivedMessage struct {
 
 // RequestMessagesParams is a list of params required
 // to get historic messages.
+// TODO: move it to Whisper.
 type RequestMessagesParams struct {
-	Limit int
-	From  int64
-	To    int64
+	ChatName  string           // for public chats
+	Recipient *ecdsa.PublicKey // for private chats
+	Limit     int
+	From      int64
+	To        int64
+}
+
+func (o RequestMessagesParams) Validate() error {
+	if o == (RequestMessagesParams{}) {
+		return errors.New("empty request messages options")
+	}
+	if o.ChatName == "" && o.Recipient == nil {
+		return errors.New("chat name or recipient is required")
+	}
+	return nil
+}
+
+func (o RequestMessagesParams) IsPublic() bool {
+	return o.ChatName != ""
+}
+
+func (o RequestMessagesParams) IsPrivate() bool {
+	return o.Recipient != nil
+}
+
+func DefaultRequestMessagesParams() RequestMessagesParams {
+	return RequestMessagesParams{
+		From:  time.Now().Add(-24 * time.Hour).Unix(),
+		To:    time.Now().Unix(),
+		Limit: 1000,
+	}
+}
+
+type SubscribeOptions struct {
+	Identity *ecdsa.PrivateKey // for private chats
+	ChatName string            // for public chats
+}
+
+func (o SubscribeOptions) Validate() error {
+	if o == (SubscribeOptions{}) {
+		return errors.New("empty subscribe options")
+	}
+	return nil
+}
+
+func (o SubscribeOptions) IsPublic() bool {
+	return o.ChatName != ""
+}
+
+func (o SubscribeOptions) IsPrivate() bool {
+	return o.Identity != nil
+}
+
+type SendOptions struct {
+	Identity  *ecdsa.PrivateKey
+	ChatName  string           // for public chats
+	Recipient *ecdsa.PublicKey // for private chats
+}
+
+func (o SendOptions) Validate() error {
+	if o.Identity == nil {
+		return errors.New("identity is required")
+	}
+	if o.ChatName == "" && o.Recipient == nil {
+		return errors.New("chat name or recipient is required")
+	}
+	return nil
+}
+
+func (o SendOptions) IsPublic() bool {
+	return o.ChatName != ""
+}
+
+func (o SendOptions) IsPrivate() bool {
+	return o.Recipient != nil
 }

@@ -11,10 +11,9 @@ func randomItem(items []string) string {
 	return items[rand.Intn(l)]
 }
 
-func createWhisperNewMessage(topic whisper.TopicType, data []byte, sigKey string) whisper.NewMessage {
+func createWhisperNewMessage(data []byte, sigKey string) whisper.NewMessage {
 	return whisper.NewMessage{
 		TTL:       60,
-		Topic:     topic,
 		Payload:   data,
 		PowTarget: 2.0,
 		PowTime:   5,
