@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"bytes"
@@ -6,13 +6,17 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"io"
-	"log"
+	"strconv"
 
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/util"
 
 	"github.com/status-im/status-console-client/protocol/v1"
+)
+
+var (
+	contactsListKey = []byte("contacts-list")
 )
 
 func init() {
@@ -36,7 +40,7 @@ func NewDatabase(path string) (*Database, error) {
 	return &Database{db: db}, nil
 }
 
-func (d *Database) Messages(c Contact, from, to int64) (result []*protocol.ReceivedMessage, err error) {
+func (d *Database) Messages(c Contact, from, to int64) (result []*protocol.Message, err error) {
 	start := d.keyFromContact(c, from, nil)
 	limit := d.keyFromContact(c, to+1, nil) // because iter is right-exclusive
 
@@ -46,7 +50,7 @@ func (d *Database) Messages(c Contact, from, to int64) (result []*protocol.Recei
 		buf := bytes.NewBuffer(value)
 		dec := gob.NewDecoder(buf)
 
-		var m protocol.ReceivedMessage
+		var m protocol.Message
 
 		err = dec.Decode(&m)
 		if err != nil {
@@ -62,16 +66,14 @@ func (d *Database) Messages(c Contact, from, to int64) (result []*protocol.Recei
 	return
 }
 
-func (d *Database) SaveMessages(c Contact, messages ...*protocol.ReceivedMessage) error {
+func (d *Database) SaveMessages(c Contact, messages ...*protocol.Message) error {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 
 	batch := new(leveldb.Batch)
 	for _, m := range messages {
-		// incoming Timestamp is in ms
+		// TODO(adam): incoming Timestamp is in ms
 		key := d.keyFromContact(c, m.Decoded.Timestamp/1000, m.Hash)
-
-		log.Printf("saving messages with key: %x", key)
 
 		if err := enc.Encode(m); err != nil {
 			return err
@@ -91,8 +93,6 @@ func (d *Database) SaveMessages(c Contact, messages ...*protocol.ReceivedMessage
 
 	return d.db.Write(batch, nil)
 }
-
-var contactsListKey = []byte("contacts-list")
 
 func (d *Database) Contacts() ([]Contact, error) {
 	value, err := d.db.Get(contactsListKey, nil)
@@ -123,20 +123,29 @@ func (d *Database) SaveContacts(contacts []Contact) error {
 	return d.db.Put([]byte(contactsListKey), buf.Bytes(), nil)
 }
 
+const (
+	contactPrefixLength  = sha1.Size
+	timeLength           = 8
+	hashLength           = 32
+	keyFromContactLength = contactPrefixLength + timeLength + hashLength
+)
+
 func (d *Database) prefixFromContact(c Contact) []byte {
 	h := sha1.New()
-	io.WriteString(h, c.String())
+	io.WriteString(h, c.Name)
+	io.WriteString(h, ":")
+	io.WriteString(h, strconv.Itoa(int(c.Type)))
 	return h.Sum(nil)
 }
 
 func (d *Database) keyFromContact(c Contact, t int64, hash []byte) []byte {
-	var key [27 + 32]byte // TODO: recalculate this
+	var key [keyFromContactLength]byte
 
 	copy(key[:], d.prefixFromContact(c))
-	binary.BigEndian.PutUint64(key[20:], uint64(t))
+	binary.BigEndian.PutUint64(key[contactPrefixLength:], uint64(t))
 
 	if hash != nil {
-		copy(key[28:], hash)
+		copy(key[contactPrefixLength+timeLength:], hash)
 	}
 
 	return key[:]

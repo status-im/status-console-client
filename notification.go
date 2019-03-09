@@ -23,3 +23,14 @@ func (n *Notifications) Debug(title, message string) error {
 	_, err := color.New(color.FgYellow).Fprintln(n.writer, str)
 	return err
 }
+
+func (n *Notifications) Error(title, message string) error {
+	str := fmt.Sprintf(
+		"%s | %s | %s",
+		title,
+		time.Now().Format(time.RFC822),
+		strings.TrimSpace(message),
+	)
+	_, err := color.New(color.FgRed).Fprintln(n.writer, str)
+	return err
+}

@@ -44,7 +44,7 @@ func NewWhisperClientAdapter(c *rpc.Client, mailServers []string) *WhisperClient
 // in channel is used to receive messages.
 func (a *WhisperClientAdapter) Subscribe(
 	ctx context.Context,
-	in chan<- *ReceivedMessage,
+	in chan<- *Message,
 	options SubscribeOptions,
 ) (*Subscription, error) {
 	criteria := whisper.Criteria{
@@ -52,19 +52,7 @@ func (a *WhisperClientAdapter) Subscribe(
 		AllowP2P: true, // messages from mail server are direct p2p messages
 	}
 
-	if options.IsPrivate() {
-		identityID, err := a.shhClient.AddPrivateKey(ctx, crypto.FromECDSA(options.Identity))
-		if err != nil {
-			return nil, err
-		}
-		criteria.PrivateKeyID = identityID
-
-		topic, err := PrivateChatTopic()
-		if err != nil {
-			return nil, err
-		}
-		criteria.Topics = append(criteria.Topics, topic)
-	} else {
+	if options.IsPublic() {
 		symKeyID, err := a.getOrAddSymKey(ctx, options.ChatName)
 		if err != nil {
 			return nil, err
@@ -72,6 +60,18 @@ func (a *WhisperClientAdapter) Subscribe(
 		criteria.SymKeyID = symKeyID
 
 		topic, err := PublicChatTopic(options.ChatName)
+		if err != nil {
+			return nil, err
+		}
+		criteria.Topics = append(criteria.Topics, topic)
+	} else {
+		identityID, err := a.shhClient.AddPrivateKey(ctx, crypto.FromECDSA(options.Identity))
+		if err != nil {
+			return nil, err
+		}
+		criteria.PrivateKeyID = identityID
+
+		topic, err := PrivateChatTopic()
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +84,7 @@ func (a *WhisperClientAdapter) Subscribe(
 func (a *WhisperClientAdapter) subscribeMessages(
 	ctx context.Context,
 	crit whisper.Criteria,
-	in chan<- *ReceivedMessage,
+	in chan<- *Message,
 ) (*Subscription, error) {
 	messages := make(chan *whisper.Message)
 	shhSub, err := a.shhClient.SubscribeMessages(ctx, crit, messages)
@@ -112,7 +112,7 @@ func (a *WhisperClientAdapter) subscribeMessages(
 					break
 				}
 
-				in <- &ReceivedMessage{
+				in <- &Message{
 					Decoded:   m,
 					SigPubKey: sigPubKey,
 				}
@@ -178,8 +178,8 @@ func (a *WhisperClientAdapter) Send(
 	return hex.DecodeString(hash)
 }
 
-// RequestMessages sends a request to MailServer for historic messages.
-func (a *WhisperClientAdapter) Request(ctx context.Context, params RequestMessagesParams) error {
+// Request sends a request to MailServer for historic messages.
+func (a *WhisperClientAdapter) Request(ctx context.Context, params RequestOptions) error {
 	enode, err := a.addMailServer(ctx)
 	if err != nil {
 		return err
@@ -217,7 +217,7 @@ func (a *WhisperClientAdapter) addMailServer(ctx context.Context) (string, error
 	return enode, nil
 }
 
-func (a *WhisperClientAdapter) requestMessages(ctx context.Context, enode string, params RequestMessagesParams) error {
+func (a *WhisperClientAdapter) requestMessages(ctx context.Context, enode string, params RequestOptions) error {
 	log.Printf("requesting messages from node %s", enode)
 
 	req, err := a.createMessagesRequest(enode, params)
@@ -230,7 +230,7 @@ func (a *WhisperClientAdapter) requestMessages(ctx context.Context, enode string
 
 func (a *WhisperClientAdapter) createMessagesRequest(
 	enode string,
-	params RequestMessagesParams,
+	params RequestOptions,
 ) (req shhext.MessagesRequest, err error) {
 	mailSymKeyID, err := a.getOrAddSymKey(context.Background(), MailServerPassword)
 	if err != nil {
@@ -245,14 +245,14 @@ func (a *WhisperClientAdapter) createMessagesRequest(
 		SymKeyID:       mailSymKeyID,
 	}
 
-	if params.IsPrivate() {
-		topic, err := PrivateChatTopic()
+	if params.IsPublic() {
+		topic, err := PublicChatTopic(params.ChatName)
 		if err != nil {
 			return req, err
 		}
 		req.Topics = append(req.Topics, topic)
 	} else {
-		topic, err := PublicChatTopic(params.ChatName)
+		topic, err := PrivateChatTopic()
 		if err != nil {
 			return req, err
 		}

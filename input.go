@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/jroimartin/gocui"
+
+	"github.com/status-im/status-console-client/protocol/client"
+	"github.com/status-im/status-console-client/protocol/v1"
 )
 
 const DefaultMultiplexerPrefix = "default"
@@ -64,11 +67,11 @@ func bytesToArgs(b []byte) []string {
 	return argsStr
 }
 
-func contactAddCmdHandler(args []string) (c Contact, err error) {
+func contactAddCmdHandler(args []string) (c client.Contact, err error) {
 	if len(args) == 1 {
-		c = Contact{Name: args[0], Type: ContactPublicChat}
+		c = client.Contact{Name: args[0], Type: client.ContactPublicChat}
 	} else if len(args) == 2 {
-		c, err = NewContactWithPublicKey(args[1], args[0])
+		c, err = client.ContactWithPublicKey(args[1], args[0])
 	} else {
 		err = errors.New("/contact: incorect arguments to add subcommand")
 	}
@@ -90,15 +93,15 @@ func ContactCmdFactory(c *ContactsViewController) CmdHandler {
 			}
 			c.Add(contact)
 			c.Refresh()
-		case "remove":
-			if len(args) == 2 {
-				if err := c.Remove(args[1]); err != nil {
-					return err
-				}
-				c.Refresh()
-				return nil
-			}
-			return errors.New("/contact: incorect arguments to remove subcommand")
+			// case "remove":
+			// 	if len(args) == 2 {
+			// 		if err := c.Remove(args[1]); err != nil {
+			// 			return err
+			// 		}
+			// 		c.Refresh()
+			// 		return nil
+			// 	}
+			// 	return errors.New("/contact: incorect arguments to remove subcommand")
 		}
 
 		return nil
@@ -111,7 +114,7 @@ func RequestCmdFactory(chat *ChatViewController) CmdHandler {
 
 		log.Printf("handle /request command: %s", b)
 
-		params := DefaultRequestMessagesParams()
+		params := protocol.DefaultRequestOptions()
 
 		switch len(args) {
 		case 3:

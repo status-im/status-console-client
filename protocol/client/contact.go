@@ -1,4 +1,4 @@
-package messenger
+package client
 
 import (
 	"crypto/ecdsa"

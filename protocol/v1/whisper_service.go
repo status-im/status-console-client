@@ -40,7 +40,7 @@ func NewWhisperServiceAdapter(node *node.StatusNode, shh *whisper.Whisper) *Whis
 // SubscribePublicChat subscribes to a public chat using the Whisper service.
 func (a *WhisperServiceAdapter) Subscribe(
 	ctx context.Context,
-	in chan<- *ReceivedMessage,
+	in chan<- *Message,
 	options SubscribeOptions,
 ) (*Subscription, error) {
 	if err := options.Validate(); err != nil {
@@ -57,11 +57,11 @@ func (a *WhisperServiceAdapter) Subscribe(
 		return nil, err
 	}
 
-	subMessages := newWhisperSubscription(a.shh, filterID)
+	subWhisper := newWhisperSubscription(a.shh, filterID)
 	sub := NewSubscription()
 
 	go func() {
-		defer subMessages.Unsubscribe() // nolint: errcheck
+		defer subWhisper.Unsubscribe() // nolint: errcheck
 
 		t := time.NewTicker(time.Second)
 		defer t.Stop()
@@ -69,7 +69,7 @@ func (a *WhisperServiceAdapter) Subscribe(
 		for {
 			select {
 			case <-t.C:
-				messages, err := subMessages.Messages()
+				messages, err := subWhisper.Messages()
 				if err != nil {
 					sub.cancel(err)
 					return
@@ -97,16 +97,7 @@ func (a *WhisperServiceAdapter) createFilter(opts SubscribeOptions) (*whisper.Fi
 		AllowP2P: true,
 	}
 
-	if opts.IsPrivate() {
-		filter.KeyAsym = opts.Identity
-
-		topic, err := PrivateChatTopic()
-		if err != nil {
-			return nil, err
-		}
-
-		filter.Topics = append(filter.Topics, topic[:])
-	} else {
+	if opts.IsPublic() {
 		symKeyID, err := a.shh.AddSymKeyFromPassword(opts.ChatName)
 		if err != nil {
 			return nil, err
@@ -122,12 +113,21 @@ func (a *WhisperServiceAdapter) createFilter(opts SubscribeOptions) (*whisper.Fi
 
 		filter.KeySym = symKey
 		filter.Topics = append(filter.Topics, topic[:])
+	} else {
+		filter.KeyAsym = opts.Identity
+
+		topic, err := PrivateChatTopic()
+		if err != nil {
+			return nil, err
+		}
+
+		filter.Topics = append(filter.Topics, topic[:])
 	}
 
 	return &filter, nil
 }
 
-// SendPublicMessage sends a new message using the Whisper service.
+// Send sends a new message using the Whisper service.
 func (a *WhisperServiceAdapter) Send(
 	ctx context.Context,
 	data []byte,
@@ -137,34 +137,9 @@ func (a *WhisperServiceAdapter) Send(
 		return nil, err
 	}
 
-	// TODO: add cache
-	keyID, err := a.shh.AddKeyPair(options.Identity)
+	newMessage, err := a.createNewMessage(data, options)
 	if err != nil {
 		return nil, err
-	}
-
-	newMessage := createWhisperNewMessage(data, keyID)
-
-	if options.IsPrivate() {
-		newMessage.PublicKey = crypto.FromECDSAPub(options.Recipient)
-
-		topic, err := PrivateChatTopic()
-		if err != nil {
-			return nil, err
-		}
-		newMessage.Topic = topic
-	} else {
-		symKeyID, err := a.shh.AddSymKeyFromPassword(options.ChatName)
-		if err != nil {
-			return nil, err
-		}
-		newMessage.SymKeyID = symKeyID
-
-		topic, err := PublicChatTopic(options.ChatName)
-		if err != nil {
-			return nil, err
-		}
-		newMessage.Topic = topic
 	}
 
 	// Only public Whisper API implements logic to send messages.
@@ -172,8 +147,42 @@ func (a *WhisperServiceAdapter) Send(
 	return shhAPI.Post(ctx, newMessage)
 }
 
-// RequestMessages requests messages from mail servers.
-func (a *WhisperServiceAdapter) Request(ctx context.Context, options RequestMessagesParams) error {
+func (a *WhisperServiceAdapter) createNewMessage(data []byte, options SendOptions) (message whisper.NewMessage, err error) {
+	// TODO: add cache
+	keyID, err := a.shh.AddKeyPair(options.Identity)
+	if err != nil {
+		return
+	}
+
+	message = createWhisperNewMessage(data, keyID)
+
+	if options.IsPublic() {
+		symKeyID, err := a.shh.AddSymKeyFromPassword(options.ChatName)
+		if err != nil {
+			return message, err
+		}
+		message.SymKeyID = symKeyID
+
+		topic, err := PublicChatTopic(options.ChatName)
+		if err != nil {
+			return message, err
+		}
+		message.Topic = topic
+	} else {
+		message.PublicKey = crypto.FromECDSAPub(options.Recipient)
+
+		topic, err := PrivateChatTopic()
+		if err != nil {
+			return message, err
+		}
+		message.Topic = topic
+	}
+
+	return
+}
+
+// Request requests messages from mail servers.
+func (a *WhisperServiceAdapter) Request(ctx context.Context, options RequestOptions) error {
 	if err := options.Validate(); err != nil {
 		return err
 	}
@@ -214,7 +223,7 @@ func (a *WhisperServiceAdapter) selectAndAddMailServer() (string, error) {
 	return enode, err
 }
 
-func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode string, params RequestMessagesParams) error {
+func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode string, params RequestOptions) error {
 	shhextService, err := a.node.ShhExtService()
 	if err != nil {
 		return err
@@ -234,7 +243,7 @@ func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode strin
 
 func (a *WhisperServiceAdapter) createMessagesRequest(
 	enode string,
-	params RequestMessagesParams,
+	params RequestOptions,
 ) (req shhext.MessagesRequest, err error) {
 	mailSymKeyID, err := a.shh.AddSymKeyFromPassword(MailServerPassword)
 	if err != nil {
@@ -249,14 +258,14 @@ func (a *WhisperServiceAdapter) createMessagesRequest(
 		SymKeyID:       mailSymKeyID,
 	}
 
-	if params.IsPrivate() {
-		topic, err := PrivateChatTopic()
+	if params.IsPublic() {
+		topic, err := PublicChatTopic(params.ChatName)
 		if err != nil {
 			return req, err
 		}
 		req.Topics = append(req.Topics, topic)
 	} else {
-		topic, err := PublicChatTopic(params.ChatName)
+		topic, err := PrivateChatTopic()
 		if err != nil {
 			return req, err
 		}
@@ -278,14 +287,14 @@ func newWhisperSubscription(shh *whisper.Whisper, filterID string) *whisperSubsc
 }
 
 // Messages retrieves a list of messages for a given filter.
-func (s whisperSubscription) Messages() ([]*ReceivedMessage, error) {
+func (s whisperSubscription) Messages() ([]*Message, error) {
 	f := s.shh.GetFilter(s.filterID)
 	if f == nil {
 		return nil, errors.New("filter does not exist")
 	}
 
 	items := f.Retrieve()
-	result := make([]*ReceivedMessage, 0, len(items))
+	result := make([]*Message, 0, len(items))
 
 	for _, item := range items {
 		log.Printf("retrieve a message with ID %s", item.EnvelopeHash.String())
@@ -296,7 +305,7 @@ func (s whisperSubscription) Messages() ([]*ReceivedMessage, error) {
 			continue
 		}
 
-		result = append(result, &ReceivedMessage{
+		result = append(result, &Message{
 			Decoded:   decoded,
 			Hash:      item.EnvelopeHash.Bytes(),
 			SigPubKey: item.SigToPubKey(),

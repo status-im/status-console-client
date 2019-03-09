@@ -10,7 +10,7 @@ import (
 type Chat interface {
 	Subscribe(
 		ctx context.Context,
-		messages chan<- *ReceivedMessage,
+		messages chan<- *Message,
 		options SubscribeOptions,
 	) (*Subscription, error)
 
@@ -23,13 +23,13 @@ type Chat interface {
 		options SendOptions,
 	) ([]byte, error)
 
-	Request(ctx context.Context, params RequestMessagesParams) error
+	Request(ctx context.Context, params RequestOptions) error
 }
 
-// ReceivedMessage contains a decoded message payload
+// Message contains a decoded message payload
 // and some additional fields that we learnt
 // about the message.
-type ReceivedMessage struct {
+type Message struct {
 	Decoded   StatusMessage
 	Hash      []byte
 	SigPubKey *ecdsa.PublicKey
@@ -85,10 +85,9 @@ type ReceivedMessage struct {
 // 	return err
 // }
 
-// RequestMessagesParams is a list of params required
-// to get historic messages.
-// TODO: move it to Whisper.
-type RequestMessagesParams struct {
+// RequestOptions is a list of params required
+// to request for historic messages.
+type RequestOptions struct {
 	ChatName  string           // for public chats
 	Recipient *ecdsa.PublicKey // for private chats
 	Limit     int
@@ -96,26 +95,23 @@ type RequestMessagesParams struct {
 	To        int64
 }
 
-func (o RequestMessagesParams) Validate() error {
-	if o == (RequestMessagesParams{}) {
+func (o RequestOptions) Validate() error {
+	if o == (RequestOptions{}) {
 		return errors.New("empty request messages options")
 	}
 	if o.ChatName == "" && o.Recipient == nil {
 		return errors.New("chat name or recipient is required")
 	}
+	if o.ChatName != "" && o.Recipient != nil {
+		return errors.New("chat name and recipient both set")
+	}
 	return nil
 }
 
-func (o RequestMessagesParams) IsPublic() bool {
-	return o.ChatName != ""
-}
+func (o RequestOptions) IsPublic() bool { return o.ChatName != "" }
 
-func (o RequestMessagesParams) IsPrivate() bool {
-	return o.Recipient != nil
-}
-
-func DefaultRequestMessagesParams() RequestMessagesParams {
-	return RequestMessagesParams{
+func DefaultRequestOptions() RequestOptions {
+	return RequestOptions{
 		From:  time.Now().Add(-24 * time.Hour).Unix(),
 		To:    time.Now().Unix(),
 		Limit: 1000,
@@ -131,16 +127,13 @@ func (o SubscribeOptions) Validate() error {
 	if o == (SubscribeOptions{}) {
 		return errors.New("empty subscribe options")
 	}
+	if o.Identity != nil && o.ChatName != "" {
+		return errors.New("identity and chat name both set")
+	}
 	return nil
 }
 
-func (o SubscribeOptions) IsPublic() bool {
-	return o.ChatName != ""
-}
-
-func (o SubscribeOptions) IsPrivate() bool {
-	return o.Identity != nil
-}
+func (o SubscribeOptions) IsPublic() bool { return o.ChatName != "" }
 
 type SendOptions struct {
 	Identity  *ecdsa.PrivateKey
@@ -155,13 +148,10 @@ func (o SendOptions) Validate() error {
 	if o.ChatName == "" && o.Recipient == nil {
 		return errors.New("chat name or recipient is required")
 	}
+	if o.ChatName != "" && o.Recipient != nil {
+		return errors.New("chat name and recipient both set")
+	}
 	return nil
 }
 
-func (o SendOptions) IsPublic() bool {
-	return o.ChatName != ""
-}
-
-func (o SendOptions) IsPrivate() bool {
-	return o.Recipient != nil
-}
+func (o SendOptions) IsPublic() bool { return o.ChatName != "" }
