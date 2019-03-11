@@ -29,8 +29,8 @@ github.com/edsrzf/mmap-go
 # github.com/ethereum/go-ethereum v1.8.20 => github.com/status-im/go-ethereum v1.8.20
 github.com/ethereum/go-ethereum/common
 github.com/ethereum/go-ethereum/crypto
-github.com/ethereum/go-ethereum/crypto/secp256k1
 github.com/ethereum/go-ethereum/rpc
+github.com/ethereum/go-ethereum/crypto/secp256k1
 github.com/ethereum/go-ethereum/crypto/sha3
 github.com/ethereum/go-ethereum/p2p
 github.com/ethereum/go-ethereum/common/hexutil
