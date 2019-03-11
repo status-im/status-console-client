@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -13,11 +14,16 @@ import (
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
+// Chat represents a single conversation either public or private.
+// It subscribes for messages and allows to send messages.
 type Chat struct {
-	proto    protocol.Chat
-	identity *ecdsa.PrivateKey
+	sync.RWMutex
 
-	contact Contact
+	proto protocol.Chat
+
+	// Identity and Contact between the conversation happens.
+	identity *ecdsa.PrivateKey
+	contact  Contact
 
 	db *Database
 
@@ -27,11 +33,12 @@ type Chat struct {
 
 	lastClock int64
 
-	ownMessages    chan *protocol.Message // my private messages
-	messages       []*protocol.Message    // ordered by Clock
-	messagesByHash map[string]*protocol.Message
+	ownMessages    chan *protocol.Message       // my private messages channel
+	messages       []*protocol.Message          // all messages ordered by Clock
+	messagesByHash map[string]*protocol.Message // quick access to messages by hash
 }
 
+// NewChat returns a new Chat instance.
 func NewChat(proto protocol.Chat, identity *ecdsa.PrivateKey, c Contact, db *Database) *Chat {
 	return &Chat{
 		proto:          proto,
@@ -44,19 +51,36 @@ func NewChat(proto protocol.Chat, identity *ecdsa.PrivateKey, c Contact, db *Dat
 	}
 }
 
+// Events returns a channel with Chat events.
 func (c *Chat) Events() <-chan interface{} {
+	c.RLock()
+	defer c.RUnlock()
 	return c.events
 }
 
+// Err returns a cached error.
 func (c *Chat) Err() error {
+	c.RLock()
+	defer c.RUnlock()
 	return c.err
 }
 
+// Messages return a list of currently cached messages.
 func (c *Chat) Messages() []*protocol.Message {
+	c.RLock()
+	defer c.RUnlock()
 	return c.messages
 }
 
+// Subscribe reads messages from the network.
 func (c *Chat) Subscribe() error {
+	c.Lock()
+	defer c.Unlock()
+
+	if c.sub != nil {
+		return errors.New("already subscribed")
+	}
+
 	opts := protocol.SubscribeOptions{}
 	if c.contact.Type == ContactPublicChat {
 		opts.ChatName = c.contact.Name
@@ -64,26 +88,29 @@ func (c *Chat) Subscribe() error {
 		opts.Identity = c.identity
 	}
 
+	var err error
+
 	messages := make(chan *protocol.Message)
 
-	sub, err := c.proto.Subscribe(context.Background(), messages, opts)
+	c.sub, err = c.proto.Subscribe(context.Background(), messages, opts)
 	if err != nil {
 		return errors.Wrap(err, "failed to subscribe")
 	}
 
 	go func() {
-		// Send at least one event.
+		// Send at least one event to kick off the logic.
 		// TODO: change type of the event.
 		c.events <- baseEvent{contact: c.contact, typ: EventTypeMessage}
 	}()
 
 	cancel := make(chan struct{}) // can be closed by any loop
 
-	go c.readLoop(messages, sub, cancel)
+	go c.readLoop(messages, c.sub, cancel)
 	go c.readOwnMessagesLoop(c.ownMessages, cancel)
 
 	params := protocol.DefaultRequestOptions()
 
+	// Get already cached messages from the database.
 	cachedMessages, err := c.db.Messages(
 		c.contact,
 		params.From,
@@ -104,7 +131,7 @@ func (c *Chat) Subscribe() error {
 	} else {
 		params.Recipient = c.contact.PublicKey
 	}
-
+	// Request historic messages from the network.
 	if err := c.proto.Request(context.Background(), params); err != nil {
 		return errors.Wrap(err, "failed to request for messages")
 	}
@@ -112,17 +139,23 @@ func (c *Chat) Subscribe() error {
 	return nil
 }
 
+// Unsubscribe cancels the current subscription.
 func (c *Chat) Unsubscribe() {
+	c.RLock()
+	defer c.RUnlock()
+
 	if c.sub == nil {
 		return
 	}
 	c.sub.Unsubscribe()
 }
 
+// Request sends a request for historic messages.
 func (c *Chat) Request(params protocol.RequestOptions) error {
 	return c.proto.Request(context.Background(), params)
 }
 
+// Send sends a message into the network.
 func (c *Chat) Send(data []byte) error {
 	var messageType string
 

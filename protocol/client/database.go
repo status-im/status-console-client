@@ -23,10 +23,14 @@ func init() {
 	gob.Register(&secp256k1.BitCurve{})
 }
 
+// Database is a wrapped around leveldb to provide storage
+// for messenger data.
 type Database struct {
 	db *leveldb.DB
 }
 
+// NewDatabase returns a new database creating files
+// in a given path directory.
 func NewDatabase(path string) (*Database, error) {
 	if path == "" {
 		return &Database{}, nil
@@ -40,6 +44,8 @@ func NewDatabase(path string) (*Database, error) {
 	return &Database{db: db}, nil
 }
 
+// Messages returns all messages for a given contact
+// and between from and to timestamps.
 func (d *Database) Messages(c Contact, from, to int64) (result []*protocol.Message, err error) {
 	start := d.keyFromContact(c, from, nil)
 	limit := d.keyFromContact(c, to+1, nil) // because iter is right-exclusive
@@ -66,6 +72,7 @@ func (d *Database) Messages(c Contact, from, to int64) (result []*protocol.Messa
 	return
 }
 
+// SaveMessages stores messages on a disk.
 func (d *Database) SaveMessages(c Contact, messages ...*protocol.Message) error {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
@@ -94,6 +101,7 @@ func (d *Database) SaveMessages(c Contact, messages ...*protocol.Message) error 
 	return d.db.Write(batch, nil)
 }
 
+// Contacts retrieves all saved contacts.
 func (d *Database) Contacts() ([]Contact, error) {
 	value, err := d.db.Get(contactsListKey, nil)
 	if err != nil {
@@ -112,6 +120,7 @@ func (d *Database) Contacts() ([]Contact, error) {
 	return contacts, nil
 }
 
+// SaveContacts saves all contacts on a disk.
 func (d *Database) SaveContacts(contacts []Contact) error {
 	var buf bytes.Buffer
 

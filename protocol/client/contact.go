@@ -37,6 +37,7 @@ func ContactWithPublicKey(name, pubKeyHex string) (c Contact, err error) {
 	return
 }
 
+// ContainsContact check if a slice contains a given contact.
 func ContainsContact(cs []Contact, c Contact) bool {
 	for _, item := range cs {
 		if item == c {

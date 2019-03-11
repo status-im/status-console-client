@@ -24,7 +24,7 @@ func (e baseEvent) Contact() Contact { return e.contact }
 func (e baseEvent) Type() int        { return e.typ }
 
 type eventError struct {
-	baseEvent
+	Event
 	err error
 }
 

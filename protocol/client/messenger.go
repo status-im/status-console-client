@@ -5,10 +5,10 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
-
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
+// Messenger coordinates chats.
 type Messenger struct {
 	proto    protocol.Chat
 	identity *ecdsa.PrivateKey
@@ -20,6 +20,7 @@ type Messenger struct {
 	events chan interface{}
 }
 
+// NewMessanger returns a new Messanger.
 func NewMessenger(proto protocol.Chat, identity *ecdsa.PrivateKey, db *Database) *Messenger {
 	return &Messenger{
 		proto:    proto,
@@ -30,10 +31,12 @@ func NewMessenger(proto protocol.Chat, identity *ecdsa.PrivateKey, db *Database)
 	}
 }
 
+// Events returns a channel with chat events.
 func (m *Messenger) Events() <-chan interface{} {
 	return m.events
 }
 
+// Join creates a new chat and creates a subscription.
 func (m *Messenger) Join(contact Contact) error {
 	chat := NewChat(m.proto, m.identity, contact, m.db)
 
@@ -59,6 +62,7 @@ func (m *Messenger) Join(contact Contact) error {
 	return nil
 }
 
+// Leave unsubscribes from the chat.
 func (m *Messenger) Leave(contact Contact) error {
 	chat, ok := m.chats[contact]
 	if !ok {
@@ -71,6 +75,7 @@ func (m *Messenger) Leave(contact Contact) error {
 	return nil
 }
 
+// Messages returns a list of messages for a given contact.
 func (m *Messenger) Messages(contact Contact) ([]*protocol.Message, error) {
 	chat, ok := m.chats[contact]
 	if !ok {
