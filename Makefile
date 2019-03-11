@@ -44,5 +44,5 @@ install-dev:
 	# install linter
 	curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(shell go env GOPATH)/bin v1.12.5
 	# a tool to vendor non-go files
-	go get -u github.com/goware/modvendor
+	go get github.com/goware/modvendor
 .PHONY: install-dev

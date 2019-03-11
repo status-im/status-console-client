@@ -21,3 +21,7 @@ matrix:
     script:
     - make lint
     - make test
+  - go: "1.12.x"
+    script:
+    - make lint
+    - make test
