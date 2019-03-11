@@ -17,12 +17,20 @@ func NewSubscription() *Subscription {
 
 func (s *Subscription) cancel(err error) {
 	s.Lock()
+	close(s.done)
+	s.done = nil
 	s.err = err
 	s.Unlock()
 }
 
 func (s *Subscription) Unsubscribe() {
+	s.Lock()
+	defer s.Unlock()
+	if s.done == nil {
+		return
+	}
 	close(s.done)
+	s.done = nil
 }
 
 func (s *Subscription) Err() error {

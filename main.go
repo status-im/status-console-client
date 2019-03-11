@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/ecdsa"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -11,11 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/rpc"
-
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
+	"github.com/pkg/errors"
+	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/v1"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
@@ -47,7 +47,7 @@ func main() {
 	)
 
 	if err := ff.Parse(fs, os.Args[1:]); err != nil {
-		exitErr(err)
+		exitErr(errors.Wrap(err, "failed to parse flags"))
 	}
 
 	if *createKeyPair {
@@ -79,40 +79,40 @@ func main() {
 	if *providerURI != "" {
 		rpc, err := rpc.Dial(*providerURI)
 		if err != nil {
-			exitErr(err)
+			exitErr(errors.Wrap(err, "failed to dial"))
 		}
 
 		// TODO: provide Mail Servers in a different way.
 		nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
 		if err != nil {
-			exitErr(err)
+			exitErr(errors.Wrap(err, "failed to generate node config"))
 		}
 
 		chatAdapter = protocol.NewWhisperClientAdapter(rpc, nodeConfig.ClusterConfig.TrustedMailServers)
 	} else {
 		// collect mail server request signals
-		mailSignalsForwarder := newSignalForwarder()
-		defer close(mailSignalsForwarder.in)
-		go mailSignalsForwarder.Start()
+		signalsForwarder := newSignalForwarder()
+		defer close(signalsForwarder.in)
+		go signalsForwarder.Start()
 
 		// setup signals handler
 		signal.SetDefaultNodeNotificationHandler(
-			filterMailTypesHandler(printHandler, mailSignalsForwarder.in),
+			filterMailTypesHandler(printHandler, signalsForwarder.in),
 		)
 
 		nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
 		if err != nil {
-			exitErr(err)
+			exitErr(errors.Wrap(err, "failed to generate node config"))
 		}
 
 		statusNode := node.New()
 		if err := statusNode.Start(nodeConfig); err != nil {
-			exitErr(err)
+			exitErr(errors.Wrap(err, "failed to start node"))
 		}
 
 		shhService, err := statusNode.WhisperService()
 		if err != nil {
-			exitErr(err)
+			exitErr(errors.Wrap(err, "failed to get Whisper service"))
 		}
 
 		chatAdapter = protocol.NewWhisperServiceAdapter(statusNode, shhService)
@@ -129,31 +129,50 @@ func main() {
 	// prepare views
 	vm := NewViewManager(nil, g)
 
-	chat, err := NewChatViewController(&ViewController{vm, g, ViewChat}, privateKey, chatAdapter)
+	dbPath := filepath.Join(*dataDir, "db")
+	db, err := client.NewDatabase(dbPath)
 	if err != nil {
 		exitErr(err)
 	}
+	// TODO: close the database properly
 
-	adambContact, err := NewContactWithPublicKey("adamb", "0x0493ac727e70ea62c4428caddf4da301ca67b699577988d6a782898acfd813addf79b2a2ca2c411499f2e0a12b7de4d00574cbddb442bec85789aea36b10f46895")
-	if err != nil {
-		exitErr(err)
-	}
+	messenger := client.NewMessenger(chatAdapter, privateKey, db)
 
-	contacts := NewContactsViewController(
-		&ViewController{vm, g, ViewContacts},
-		[]Contact{
-			{Name: "status", Type: ContactPublicChat},
-			{Name: "status-core", Type: ContactPublicChat},
-			{Name: "testing-adamb", Type: ContactPublicChat},
-			adambContact,
-		},
+	chat, err := NewChatViewController(
+		&ViewController{vm, g, ViewChat},
+		privateKey,
+		messenger,
 	)
+	if err != nil {
+		exitErr(err)
+	}
+
+	adambContact, err := client.ContactWithPublicKey("adamb", "0x0493ac727e70ea62c4428caddf4da301ca67b699577988d6a782898acfd813addf79b2a2ca2c411499f2e0a12b7de4d00574cbddb442bec85789aea36b10f46895")
+	if err != nil {
+		exitErr(err)
+	}
+
+	if contacts, err := db.Contacts(); len(contacts) == 0 || err != nil {
+		debugContacts := []client.Contact{
+			{Name: "status", Type: client.ContactPublicChat},
+			{Name: "status-core", Type: client.ContactPublicChat},
+			{Name: "testing-adamb", Type: client.ContactPublicChat},
+			adambContact,
+		}
+		if err := db.SaveContacts(debugContacts); err != nil {
+			exitErr(err)
+		}
+	}
+
+	contacts := NewContactsViewController(&ViewController{vm, g, ViewContacts}, messenger)
+	if err := contacts.Load(); err != nil {
+		exitErr(err)
+	}
 
 	inputMultiplexer := NewInputMultiplexer()
 	inputMultiplexer.AddHandler(DefaultMultiplexerPrefix, func(b []byte) error {
 		log.Printf("default multiplexer handler")
-		_, err := chat.SendMessage(b)
-		return err
+		return chat.Send(b)
 	})
 	inputMultiplexer.AddHandler("/contact", ContactCmdFactory(contacts))
 	inputMultiplexer.AddHandler("/request", RequestCmdFactory(chat))
@@ -196,7 +215,7 @@ func main() {
 		&View{
 			Name:       ViewChat,
 			Cursor:     true,
-			Autoscroll: true,
+			Autoscroll: false,
 			Highlight:  true,
 			Wrap:       true,
 			SelBgColor: gocui.ColorGreen,

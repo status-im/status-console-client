@@ -12,20 +12,12 @@ run: build
 .PHONY: run
 
 test:
-	go test -mod=vendor ./...
+	go test ./...
 .PHONY: test
 
-test-v110:
-	go test ./...
-.PHONY: test-v110
-
 test-race:
-	go test -race -mod=vendor ./...
-.PHONY: test-race
-
-test-race-v110:
 	go test -race ./...
-.PHONY: test-race-v110
+.PHONY: test-race
 
 lint:
 	golangci-lint run -v
@@ -40,9 +32,12 @@ vendor:
 	modvendor -copy="**/*.c **/*.h" -v
 .PHONY: vendor
 
-install-dev:
+install-linter:
 	# install linter
 	curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(shell go env GOPATH)/bin v1.12.5
+.PHONY: install-linter
+
+install-dev:
 	# a tool to vendor non-go files
-	go get -u github.com/goware/modvendor
+	go get github.com/goware/modvendor
 .PHONY: install-dev

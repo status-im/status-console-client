@@ -4,9 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"log"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jroimartin/gocui"
+
+	"github.com/status-im/status-console-client/protocol/client"
+	"github.com/status-im/status-console-client/protocol/v1"
 )
 
 const DefaultMultiplexerPrefix = "default"
@@ -62,28 +67,13 @@ func bytesToArgs(b []byte) []string {
 	return argsStr
 }
 
-// ContactCmdHandler handles /contact command.
-//
-// Usage:
-//   * /contact add public-chat-name
-//   * /contact add 0xabc name
-func ContactCmdHandler(b []byte) (c Contact, err error) {
-	args := bytesToArgs(b)[1:] // remove first item, i.e. "/contact"
-
-	log.Printf("ContactCmdHandler arguments: %s", args)
-
-	switch args[0] {
-	case "add":
-		if len(args[1:]) == 1 {
-			c = Contact{Name: args[1], Type: ContactPublicChat}
-		} else if len(args[1:]) == 2 {
-			c, err = NewContactWithPublicKey(args[2], args[1])
-		} else {
-			err = errors.New("/contact cmd: incorect arguments to add subcommand")
-		}
-		return
-	default:
-		err = errors.New("/contact cmd: invalid subcommand")
+func contactAddCmdHandler(args []string) (c client.Contact, err error) {
+	if len(args) == 1 {
+		c = client.Contact{Name: args[0], Type: client.ContactPublicChat}
+	} else if len(args) == 2 {
+		c, err = client.ContactWithPublicKey(args[1], args[0])
+	} else {
+		err = errors.New("/contact: incorect arguments to add subcommand")
 	}
 
 	return
@@ -91,15 +81,30 @@ func ContactCmdHandler(b []byte) (c Contact, err error) {
 
 func ContactCmdFactory(c *ContactsViewController) CmdHandler {
 	return func(b []byte) error {
+		args := bytesToArgs(b)[1:] // remove first item, i.e. "/contact"
+
 		log.Printf("handle /contact command: %s", b)
 
-		contact, err := ContactCmdHandler(b)
-		if err != nil {
-			return err
+		switch args[0] {
+		case "add":
+			contact, err := contactAddCmdHandler(args[1:])
+			if err != nil {
+				return err
+			}
+			if err := c.Add(contact); err != nil {
+				return err
+			}
+			c.Refresh()
+			// case "remove":
+			// 	if len(args) == 2 {
+			// 		if err := c.Remove(args[1]); err != nil {
+			// 			return err
+			// 		}
+			// 		c.Refresh()
+			// 		return nil
+			// 	}
+			// 	return errors.New("/contact: incorect arguments to remove subcommand")
 		}
-
-		c.Add(contact)
-		c.Refresh()
 
 		return nil
 	}
@@ -107,7 +112,38 @@ func ContactCmdFactory(c *ContactsViewController) CmdHandler {
 
 func RequestCmdFactory(chat *ChatViewController) CmdHandler {
 	return func(b []byte) error {
+		args := bytesToArgs(b)[1:] // remove first item, i.e. "/request"
+
 		log.Printf("handle /request command: %s", b)
-		return chat.RequestMessages()
+
+		params := protocol.DefaultRequestOptions()
+
+		switch len(args) {
+		case 3:
+			limit, err := strconv.Atoi(args[2])
+			if err != nil {
+				log.Printf("failed to parse Limit param: %v", err)
+			} else {
+				params.Limit = limit
+			}
+			fallthrough
+		case 2:
+			from, err := time.ParseDuration(args[1])
+			if err != nil {
+				log.Printf("failed to parse From param: %v", err)
+			} else {
+				params.From = time.Now().Add(-from).Unix()
+			}
+			fallthrough
+		case 1:
+			to, err := time.ParseDuration(args[0])
+			if err != nil {
+				log.Printf("failed to parse To param: %v", err)
+			} else {
+				params.To = time.Now().Add(-to).Unix()
+			}
+		}
+
+		return chat.RequestMessages(params)
 	}
 }

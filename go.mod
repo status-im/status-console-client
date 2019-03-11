@@ -55,13 +55,13 @@ require (
 	github.com/libp2p/go-libp2p-loggables v1.1.24 // indirect
 	github.com/libp2p/go-libp2p-metrics v2.1.7+incompatible // indirect
 	github.com/libp2p/go-libp2p-nat v0.8.8 // indirect
-	github.com/libp2p/go-libp2p-net v3.0.15+incompatible // indirect
+	github.com/libp2p/go-libp2p-net v3.0.2+incompatible // indirect
 	github.com/libp2p/go-libp2p-peer v2.4.0+incompatible // indirect
 	github.com/libp2p/go-libp2p-peerstore v1.5.0 // indirect
 	github.com/libp2p/go-libp2p-protocol v1.0.0 // indirect
 	github.com/libp2p/go-libp2p-routing v2.7.1+incompatible // indirect
 	github.com/libp2p/go-libp2p-secio v2.0.17+incompatible // indirect
-	github.com/libp2p/go-libp2p-swarm v3.0.22+incompatible // indirect
+	github.com/libp2p/go-libp2p-swarm v3.0.4-0.20180626025813-1c07b91cd52a+incompatible // indirect
 	github.com/libp2p/go-libp2p-transport v3.0.15+incompatible // indirect
 	github.com/libp2p/go-libp2p-transport-upgrader v0.1.16 // indirect
 	github.com/libp2p/go-maddr-filter v1.1.10 // indirect
@@ -91,6 +91,7 @@ require (
 	github.com/opentracing/opentracing-go v1.0.2 // indirect
 	github.com/pborman/uuid v1.2.0 // indirect
 	github.com/peterbourgon/ff v1.0.3
+	github.com/pkg/errors v0.8.0
 	github.com/prometheus/prometheus v1.7.1-0.20170814170113-3101606756c5 // indirect
 	github.com/rjeczalik/notify v0.9.2 // indirect
 	github.com/rs/cors v1.6.0 // indirect
@@ -99,12 +100,12 @@ require (
 	github.com/russolsen/transit v0.0.0-20180705123435-0794b4c4505a
 	github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24 // indirect
 	github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72 // indirect
-	github.com/status-im/doubleratchet v0.0.0-20181102064121-4dcb6cba284a // indirect
+	github.com/status-im/doubleratchet v2.0.0+incompatible // indirect
 	github.com/status-im/go-multiaddr-ethv4 v0.0.0-20181028111254-cbcba3a7c121 // indirect
 	github.com/status-im/migrate v0.0.0-20181227113212-3bde36291b5c // indirect
-	github.com/status-im/rendezvous v1.0.0 // indirect
-	github.com/status-im/status-go v0.16.4-4-gaf1f6eb5.0.20181220100635-5e1f4631b16c
-	github.com/status-im/whisper v1.4.5
+	github.com/status-im/rendezvous v1.1.0 // indirect
+	github.com/status-im/status-go v0.23.0-beta.7
+	github.com/status-im/whisper v1.4.8
 	github.com/stretchr/objx v0.1.1 // indirect
 	github.com/stretchr/testify v1.2.2
 	github.com/syndtr/goleveldb v0.0.0-20181128100959-b001fa50d6b2

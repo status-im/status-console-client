@@ -5,8 +5,8 @@ import (
 	"crypto/ecdsa"
 	"testing"
 
+	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/v1"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,89 +16,58 @@ type message struct {
 	data []byte
 }
 
-type PublicChatMock struct {
-	messages []message
-}
-
-func (m *PublicChatMock) SubscribePublicChat(
-	ctx context.Context,
-	name string,
-	in chan<- *protocol.ReceivedMessage,
-) (*protocol.Subscription, error) {
-	return protocol.NewSubscription(), nil
-}
-
-func (m *PublicChatMock) SendPublicMessage(
-	ctx context.Context,
-	chatName string,
-	data []byte,
-	identity *ecdsa.PrivateKey,
-) (string, error) {
-	m.messages = append(m.messages, message{chatName, nil, data})
-	return "", nil
-}
-
-func (m *PublicChatMock) RequestPublicMessages(
-	ctx context.Context,
-	chatName string,
-	params protocol.RequestMessagesParams,
-) error {
-	return nil
-}
-
-type PrivateChatMock struct {
-	messages []message
-}
-
-func (m *PrivateChatMock) SubscribePrivateChat(
-	ctx context.Context,
-	identity *ecdsa.PrivateKey,
-	in chan<- *protocol.ReceivedMessage,
-) (*protocol.Subscription, error) {
-	return protocol.NewSubscription(), nil
-}
-
-func (m *PrivateChatMock) SendPrivateMessage(
-	ctx context.Context,
-	recipient *ecdsa.PublicKey,
-	data []byte,
-	identity *ecdsa.PrivateKey,
-) (string, error) {
-	m.messages = append(m.messages, message{"", recipient, data})
-	return "", nil
-}
-
-func (m *PrivateChatMock) RequestPrivateMessages(
-	ctx context.Context,
-	params protocol.RequestMessagesParams,
-) error {
-	return nil
-}
-
 type ChatMock struct {
-	*PublicChatMock
-	*PrivateChatMock
+	messages []message
+}
+
+func (m *ChatMock) Subscribe(
+	ctx context.Context,
+	messages chan<- *protocol.Message,
+	options protocol.SubscribeOptions,
+) (*protocol.Subscription, error) {
+	return protocol.NewSubscription(), nil
+}
+
+func (m *ChatMock) Send(
+	ctx context.Context,
+	data []byte,
+	options protocol.SendOptions,
+) ([]byte, error) {
+	message := message{
+		chat: options.ChatName,
+		dest: options.Recipient,
+		data: data,
+	}
+	m.messages = append(m.messages, message)
+	return []byte{}, nil
+}
+
+func (m *ChatMock) Request(ctx context.Context, params protocol.RequestOptions) error {
+	return nil
 }
 
 func TestSendMessage(t *testing.T) {
 	chatName := "test-chat"
 	payload := []byte("test message")
-	chatMock := ChatMock{
-		&PublicChatMock{},
-		&PrivateChatMock{},
-	}
-	vc, err := NewChatViewController(nil, nil, &chatMock)
-	require.NoError(t, err)
-	vc.currentContact = Contact{
-		Name:      chatName,
-		Type:      ContactPublicChat,
-		publicKey: nil,
-	}
+	chatMock := ChatMock{}
 
-	_, err = vc.SendMessage(payload)
+	db, err := client.NewDatabase("")
 	require.NoError(t, err)
 
-	message := chatMock.PublicChatMock.messages[0]
+	messenger := client.NewMessenger(&chatMock, nil, db)
+
+	vc, err := NewChatViewController(nil, nil, messenger)
+	require.NoError(t, err)
+
+	err = vc.Select(client.Contact{Name: chatName, Type: client.ContactPublicChat})
+	require.NoError(t, err)
+	// close reading loops
+	close(vc.cancel)
+
+	err = vc.Send(payload)
+	require.NoError(t, err)
+
+	message := chatMock.messages[0]
 	require.Equal(t, chatName, message.chat)
 	statusMessage, err := protocol.DecodeMessage(message.data)
 	require.NoError(t, err)

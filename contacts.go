@@ -1,78 +1,42 @@
 package main
 
 import (
-	"crypto/ecdsa"
-	"encoding/hex"
 	"fmt"
-	"strings"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/jroimartin/gocui"
+	"github.com/status-im/status-console-client/protocol/client"
 )
-
-// Types of contacts.
-const (
-	ContactPublicChat int = iota + 1
-	ContactPrivateChat
-)
-
-// NewContactWithPublicKey creates a new private contact.
-func NewContactWithPublicKey(name, pubKeyHex string) (c Contact, err error) {
-	c.Name = name
-	c.Type = ContactPrivateChat
-
-	pubKeyBytes, err := hex.DecodeString(strings.TrimPrefix(pubKeyHex, "0x"))
-	if err != nil {
-		return
-	}
-
-	c.publicKey, err = crypto.UnmarshalPubkey(pubKeyBytes)
-	return
-}
-
-// Contact is a single contact which has a type and name.
-type Contact struct {
-	Name string
-	Type int
-
-	publicKey *ecdsa.PublicKey
-}
 
 // String returns a string representation.
-func (c Contact) String() string {
+func ContactString(c client.Contact) string {
 	switch c.Type {
-	case ContactPublicChat:
+	case client.ContactPublicChat:
 		return fmt.Sprintf("#%s", c.Name)
-	case ContactPrivateChat:
+	case client.ContactPrivateChat:
 		return fmt.Sprintf("@%s", c.Name)
 	default:
 		return c.Name
 	}
 }
 
-// PubKey returns a public key assigned to a contact.
-// It is not nil only for private chats.
-func (c Contact) PubKey() *ecdsa.PublicKey {
-	return c.publicKey
-}
-
 // ContactsViewController manages contacts view.
 type ContactsViewController struct {
 	*ViewController
-	items []Contact
+	messenger *client.Messenger
+	contacts  []client.Contact
 }
 
 // NewContactsViewController returns a new contact view controller.
-func NewContactsViewController(vm *ViewController, items []Contact) *ContactsViewController {
-	return &ContactsViewController{vm, items}
+func NewContactsViewController(vm *ViewController, m *client.Messenger) *ContactsViewController {
+	return &ContactsViewController{ViewController: vm, messenger: m}
 }
 
 // ContactByIdx allows to retrieve a contact for a given index.
-func (c *ContactsViewController) ContactByIdx(idx int) (Contact, bool) {
-	if idx > -1 && idx < len(c.items) {
-		return c.items[idx], true
+func (c *ContactsViewController) ContactByIdx(idx int) (client.Contact, bool) {
+	if idx > -1 && idx < len(c.contacts) {
+		return c.contacts[idx], true
 	}
-	return Contact{}, false
+	return client.Contact{}, false
 }
 
 // Refresh repaints the current list of contacts.
@@ -82,8 +46,8 @@ func (c *ContactsViewController) Refresh() {
 			return err
 		}
 
-		for _, item := range c.items {
-			if _, err := fmt.Fprintln(c.ViewController, item); err != nil {
+		for _, contact := range c.contacts {
+			if _, err := fmt.Fprintln(c.ViewController, ContactString(contact)); err != nil {
 				return err
 			}
 		}
@@ -91,6 +55,22 @@ func (c *ContactsViewController) Refresh() {
 	})
 }
 
-func (c *ContactsViewController) Add(contact Contact) {
-	c.items = append(c.items, contact)
+func (c *ContactsViewController) Load() error {
+	contacts, err := c.messenger.Contacts()
+	if err != nil {
+		return err
+	}
+
+	c.contacts = contacts
+
+	return nil
+}
+
+func (c *ContactsViewController) Add(contact client.Contact) error {
+	c.contacts = append(c.contacts, contact)
+	return c.messenger.AddContact(contact)
+}
+
+func (c *ContactsViewController) Remove(contact client.Contact) error {
+	return c.messenger.RemoveContact(contact)
 }

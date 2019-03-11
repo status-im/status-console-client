@@ -3,6 +3,9 @@ package status
 import (
 	"context"
 	"errors"
+	"fmt"
+
+	"github.com/status-im/status-go/account"
 )
 
 // PublicAPI represents a set of APIs from the `web3.status` namespace.
@@ -37,7 +40,7 @@ func (api *PublicAPI) Login(context context.Context, req LoginRequest) (res Logi
 		return
 	}
 
-	if err = api.s.am.SelectAccount(req.Addr, req.Password); err != nil {
+	if err = api.s.am.SelectAccount(req.Addr, req.Addr, req.Password); err != nil {
 		return
 	}
 
@@ -51,16 +54,45 @@ type SignupRequest struct {
 
 // SignupResponse : json response returned by status_signup.
 type SignupResponse struct {
-	Address  string `json:"address"`
-	Pubkey   string `json:"pubkey"`
-	Mnemonic string `json:"mnemonic"`
+	Address       string `json:"address"`
+	Pubkey        string `json:"pubkey"`
+	WalletAddress string `json:"walletAddress"`
+	WalletPubkey  string `json:"walletPubKey"`
+	ChatAddress   string `json:"chatAddress"`
+	ChatPubkey    string `json:"chatPubkey"`
+	Mnemonic      string `json:"mnemonic"`
 }
 
 // Signup is an implementation of `status_signup` or `web3.status.signup` API
 func (api *PublicAPI) Signup(context context.Context, req SignupRequest) (res SignupResponse, err error) {
-	if res.Address, res.Pubkey, res.Mnemonic, err = api.s.am.CreateAccount(req.Password); err != nil {
+	accountInfo, mnemonic, err := api.s.am.CreateAccount(req.Password)
+	if err != nil {
 		err = errors.New("could not create the specified account : " + err.Error())
 		return
+	}
+
+	res.Address = accountInfo.WalletAddress
+	res.Pubkey = accountInfo.WalletPubKey
+	res.WalletAddress = accountInfo.WalletAddress
+	res.WalletPubkey = accountInfo.WalletPubKey
+	res.ChatAddress = accountInfo.ChatAddress
+	res.ChatPubkey = accountInfo.ChatPubKey
+	res.Mnemonic = mnemonic
+
+	return
+}
+
+// CreateAddressResponse : json response returned by status_createaccount
+type CreateAddressResponse struct {
+	Address string `json:"address"`
+	Pubkey  string `json:"pubkey"`
+	Privkey string `json:"privkey"`
+}
+
+// CreateAddress is an implementation of `status_createaccount` or `web3.status.createaccount` API
+func (api *PublicAPI) CreateAddress(context context.Context) (res CreateAddressResponse, err error) {
+	if res.Address, res.Pubkey, res.Privkey, err = account.CreateAddress(); err != nil {
+		err = fmt.Errorf("could not create an address:  %v", err)
 	}
 
 	return

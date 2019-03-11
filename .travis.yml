@@ -9,15 +9,21 @@ env:
 - GO111MODULE=on
 
 before_script:
-- make install-dev
+- make install-linter
 
 matrix:
   include:
   - go: "1.10.x"
     script:
     - make lint-v110
-    - make test-v110
+    - make test
   - go: "1.11.x"
+    env: GOFLAGS=-mod=vendor
+    script:
+    - make lint
+    - make test
+  - go: "1.12.x"
+    env: GOFLAGS=-mod=vendor
     script:
     - make lint
     - make test

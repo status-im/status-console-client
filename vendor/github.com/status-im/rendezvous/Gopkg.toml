@@ -48,7 +48,7 @@
 
 [[constraint]]
   name = "github.com/ethereum/go-ethereum"
-  version = "1.8.11"
+  version = ">=1.8.11"
 
 [[constraint]]
   name = "github.com/spf13/pflag"

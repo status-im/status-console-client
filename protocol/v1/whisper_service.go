@@ -2,8 +2,8 @@ package protocol
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"errors"
+	"fmt"
 	"log"
 	"sort"
 	"time"
@@ -22,6 +22,8 @@ import (
 type WhisperServiceAdapter struct {
 	node *node.StatusNode
 	shh  *whisper.Whisper
+
+	selectedMailServerEnode string
 }
 
 // WhisperServiceAdapter must implement Chat interface.
@@ -36,220 +38,169 @@ func NewWhisperServiceAdapter(node *node.StatusNode, shh *whisper.Whisper) *Whis
 }
 
 // SubscribePublicChat subscribes to a public chat using the Whisper service.
-func (a *WhisperServiceAdapter) SubscribePublicChat(ctx context.Context, name string, in chan<- *ReceivedMessage) (*Subscription, error) {
-	// TODO: add cache
-	symKeyID, err := a.shh.AddSymKeyFromPassword(name)
-	if err != nil {
-		return nil, err
-	}
-	symKey, err := a.shh.GetSymKey(symKeyID)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO: add cache
-	topic, err := PublicChatTopic(name)
-	if err != nil {
-		return nil, err
-	}
-
-	filterID, err := a.shh.Subscribe(&whisper.Filter{
-		KeySym:   symKey,
-		Topics:   [][]byte{topic[:]},
-		PoW:      0,
-		AllowP2P: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	subMessages := newWhisperSubscription(a.shh, filterID)
-	sub := NewSubscription()
-
-	go func() {
-		defer subMessages.Unsubscribe() // nolint: errcheck
-
-		t := time.NewTicker(time.Second)
-		defer t.Stop()
-
-		for {
-			select {
-			case <-t.C:
-				messages, err := subMessages.Messages()
-				if err != nil {
-					sub.cancel(err)
-					return
-				}
-
-				sort.Slice(messages, func(i, j int) bool {
-					return messages[i].Decoded.Clock < messages[j].Decoded.Clock
-				})
-
-				for _, m := range messages {
-					in <- m
-				}
-			case <-sub.Done():
-				return
-			}
-		}
-	}()
-
-	return sub, nil
-}
-
-// SubscribePrivateChat subscribes to a private channel. Currently,
-// all private chats use a single channel (topic) in order to
-// preserve some security features.
-func (a *WhisperServiceAdapter) SubscribePrivateChat(ctx context.Context, identity *ecdsa.PrivateKey, in chan<- *ReceivedMessage) (*Subscription, error) {
-	topic, err := PrivateChatTopic()
-	if err != nil {
-		return nil, err
-	}
-
-	filterID, err := a.shh.Subscribe(&whisper.Filter{
-		KeyAsym:  identity,
-		Topics:   [][]byte{topic[:]},
-		PoW:      0,
-		AllowP2P: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	subMessages := newWhisperSubscription(a.shh, filterID)
-	sub := NewSubscription()
-
-	go func() {
-		defer subMessages.Unsubscribe() // nolint: errcheck
-
-		t := time.NewTicker(time.Second)
-		defer t.Stop()
-
-		for {
-			select {
-			case <-t.C:
-				messages, err := subMessages.Messages()
-				if err != nil {
-					sub.cancel(err)
-					return
-				}
-
-				sort.Slice(messages, func(i, j int) bool {
-					return messages[i].Decoded.Clock < messages[j].Decoded.Clock
-				})
-
-				for _, m := range messages {
-					in <- m
-				}
-			case <-sub.Done():
-				return
-			}
-		}
-	}()
-
-	return sub, nil
-}
-
-// SendPublicMessage sends a new message using the Whisper service.
-func (a *WhisperServiceAdapter) SendPublicMessage(
-	ctx context.Context, name string, data []byte, identity *ecdsa.PrivateKey,
-) (string, error) {
-	// TODO: add cache
-	keyID, err := a.shh.AddKeyPair(identity)
-	if err != nil {
-		return "", err
-	}
-
-	// TODO: add cache
-	topic, err := PublicChatTopic(name)
-	if err != nil {
-		return "", err
-	}
-
-	// TODO: add cache
-	symKeyID, err := a.shh.AddSymKeyFromPassword(name)
-	if err != nil {
-		return "", err
-	}
-
-	whisperNewMessage := createWhisperNewMessage(topic, data, keyID)
-	whisperNewMessage.SymKeyID = symKeyID
-
-	// Only public Whisper API implements logic to send messages.
-	shhAPI := whisper.NewPublicWhisperAPI(a.shh)
-	hash, err := shhAPI.Post(ctx, whisperNewMessage)
-
-	return hash.String(), err
-}
-
-// SendPrivateMessage sends a new message to a private chat.
-// Identity is required to sign a message as only signed messages
-// are accepted and displayed.
-func (a *WhisperServiceAdapter) SendPrivateMessage(
+func (a *WhisperServiceAdapter) Subscribe(
 	ctx context.Context,
-	recipient *ecdsa.PublicKey,
+	in chan<- *Message,
+	options SubscribeOptions,
+) (*Subscription, error) {
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
+
+	filter, err := a.createFilter(options)
+	if err != nil {
+		return nil, err
+	}
+
+	filterID, err := a.shh.Subscribe(filter)
+	if err != nil {
+		return nil, err
+	}
+
+	subWhisper := newWhisperSubscription(a.shh, filterID)
+	sub := NewSubscription()
+
+	go func() {
+		defer subWhisper.Unsubscribe() // nolint: errcheck
+
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+
+		for {
+			select {
+			case <-t.C:
+				messages, err := subWhisper.Messages()
+				if err != nil {
+					sub.cancel(err)
+					return
+				}
+
+				sort.Slice(messages, func(i, j int) bool {
+					return messages[i].Decoded.Clock < messages[j].Decoded.Clock
+				})
+
+				for _, m := range messages {
+					in <- m
+				}
+			case <-sub.Done():
+				return
+			}
+		}
+	}()
+
+	return sub, nil
+}
+
+func (a *WhisperServiceAdapter) createFilter(opts SubscribeOptions) (*whisper.Filter, error) {
+	filter := whisper.Filter{
+		PoW:      0,
+		AllowP2P: true,
+	}
+
+	if opts.IsPublic() {
+		symKeyID, err := a.shh.AddSymKeyFromPassword(opts.ChatName)
+		if err != nil {
+			return nil, err
+		}
+		symKey, err := a.shh.GetSymKey(symKeyID)
+		if err != nil {
+			return nil, err
+		}
+		topic, err := PublicChatTopic(opts.ChatName)
+		if err != nil {
+			return nil, err
+		}
+
+		filter.KeySym = symKey
+		filter.Topics = append(filter.Topics, topic[:])
+	} else {
+		filter.KeyAsym = opts.Identity
+
+		topic, err := PrivateChatTopic()
+		if err != nil {
+			return nil, err
+		}
+
+		filter.Topics = append(filter.Topics, topic[:])
+	}
+
+	return &filter, nil
+}
+
+// Send sends a new message using the Whisper service.
+func (a *WhisperServiceAdapter) Send(
+	ctx context.Context,
 	data []byte,
-	identity *ecdsa.PrivateKey,
-) (string, error) {
-	// TODO: add cache
-	keyID, err := a.shh.AddKeyPair(identity)
-	if err != nil {
-		return "", err
+	options SendOptions,
+) ([]byte, error) {
+	if err := options.Validate(); err != nil {
+		return nil, err
 	}
 
-	// TODO: add cache
-	topic, err := PrivateChatTopic()
+	newMessage, err := a.createNewMessage(data, options)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-
-	whisperNewMessage := createWhisperNewMessage(topic, data, keyID)
-	whisperNewMessage.PublicKey = crypto.FromECDSAPub(recipient)
 
 	// Only public Whisper API implements logic to send messages.
 	shhAPI := whisper.NewPublicWhisperAPI(a.shh)
-	hash, err := shhAPI.Post(ctx, whisperNewMessage)
-
-	return hash.String(), err
+	return shhAPI.Post(ctx, newMessage)
 }
 
-// RequestPublicMessages requests messages from mail servers.
-func (a *WhisperServiceAdapter) RequestPublicMessages(
-	ctx context.Context, name string, params RequestMessagesParams,
-) error {
+func (a *WhisperServiceAdapter) createNewMessage(data []byte, options SendOptions) (message whisper.NewMessage, err error) {
 	// TODO: add cache
-	topic, err := PublicChatTopic(name)
+	keyID, err := a.shh.AddKeyPair(options.Identity)
 	if err != nil {
+		return
+	}
+
+	message = createWhisperNewMessage(data, keyID)
+
+	if options.IsPublic() {
+		symKeyID, err := a.shh.AddSymKeyFromPassword(options.ChatName)
+		if err != nil {
+			return message, err
+		}
+		message.SymKeyID = symKeyID
+
+		topic, err := PublicChatTopic(options.ChatName)
+		if err != nil {
+			return message, err
+		}
+		message.Topic = topic
+	} else {
+		message.PublicKey = crypto.FromECDSAPub(options.Recipient)
+
+		topic, err := PrivateChatTopic()
+		if err != nil {
+			return message, err
+		}
+		message.Topic = topic
+	}
+
+	return
+}
+
+// Request requests messages from mail servers.
+func (a *WhisperServiceAdapter) Request(ctx context.Context, options RequestOptions) error {
+	if err := options.Validate(); err != nil {
 		return err
 	}
 
 	// TODO: remove from here. MailServerEnode must be provided in the params.
-	enode, err := a.addMailServer()
+	enode, err := a.selectAndAddMailServer()
 	if err != nil {
 		return err
 	}
 
-	return a.requestMessages(ctx, enode, []whisper.TopicType{topic}, params)
+	return a.requestMessages(ctx, enode, options)
 }
 
-// RequestPrivateMessages requests messages from mail servers.
-func (a *WhisperServiceAdapter) RequestPrivateMessages(ctx context.Context, params RequestMessagesParams) error {
-	// TODO: add cache
-	topic, err := PrivateChatTopic()
-	if err != nil {
-		return err
+func (a *WhisperServiceAdapter) selectAndAddMailServer() (string, error) {
+	if a.selectedMailServerEnode != "" {
+		return a.selectedMailServerEnode, nil
 	}
 
-	// TODO: remove from here. MailServerEnode must be provided in the params.
-	enode, err := a.addMailServer()
-	if err != nil {
-		return err
-	}
-
-	return a.requestMessages(ctx, enode, []whisper.TopicType{topic}, params)
-}
-
-func (a *WhisperServiceAdapter) addMailServer() (string, error) {
 	config := a.node.Config()
 	enode := randomItem(config.ClusterConfig.TrustedMailServers)
 	errCh := helpers.WaitForPeerAsync(
@@ -261,31 +212,67 @@ func (a *WhisperServiceAdapter) addMailServer() (string, error) {
 	if err := a.node.AddPeer(enode); err != nil {
 		return "", err
 	}
-	return enode, <-errCh
-}
 
-func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode string, topics []whisper.TopicType, params RequestMessagesParams) error {
-	mailServerSymKeyID, err := a.shh.AddSymKeyFromPassword(MailServerPassword)
+	err := <-errCh
 	if err != nil {
-		return err
+		err = fmt.Errorf("failed to add mail server %s: %v", enode, err)
+	} else {
+		a.selectedMailServerEnode = enode
 	}
 
+	return enode, err
+}
+
+func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode string, params RequestOptions) error {
 	shhextService, err := a.node.ShhExtService()
 	if err != nil {
 		return err
 	}
 	shhextAPI := shhext.NewPublicAPI(shhextService)
 
-	_, err = shhextAPI.RequestMessages(ctx, shhext.MessagesRequest{
+	req, err := a.createMessagesRequest(enode, params)
+	if err != nil {
+		return err
+	}
+
+	_, err = shhextAPI.RequestMessages(ctx, req)
+	// TODO: wait for the request to finish before returning.
+	// Use a different method or relay on signals.
+	return err
+}
+
+func (a *WhisperServiceAdapter) createMessagesRequest(
+	enode string,
+	params RequestOptions,
+) (req shhext.MessagesRequest, err error) {
+	mailSymKeyID, err := a.shh.AddSymKeyFromPassword(MailServerPassword)
+	if err != nil {
+		return req, err
+	}
+
+	req = shhext.MessagesRequest{
 		MailServerPeer: enode,
 		From:           uint32(params.From),  // TODO: change to int in status-go
 		To:             uint32(params.To),    // TODO: change to int in status-go
 		Limit:          uint32(params.Limit), // TODO: change to int in status-go
-		Topics:         topics,
-		SymKeyID:       mailServerSymKeyID,
-	})
-	// TODO: wait for the request to finish before returning
-	return err
+		SymKeyID:       mailSymKeyID,
+	}
+
+	if params.IsPublic() {
+		topic, err := PublicChatTopic(params.ChatName)
+		if err != nil {
+			return req, err
+		}
+		req.Topics = append(req.Topics, topic)
+	} else {
+		topic, err := PrivateChatTopic()
+		if err != nil {
+			return req, err
+		}
+		req.Topics = append(req.Topics, topic)
+	}
+
+	return
 }
 
 // whisperSubscription encapsulates a Whisper filter.
@@ -300,17 +287,17 @@ func newWhisperSubscription(shh *whisper.Whisper, filterID string) *whisperSubsc
 }
 
 // Messages retrieves a list of messages for a given filter.
-func (s whisperSubscription) Messages() ([]*ReceivedMessage, error) {
+func (s whisperSubscription) Messages() ([]*Message, error) {
 	f := s.shh.GetFilter(s.filterID)
 	if f == nil {
 		return nil, errors.New("filter does not exist")
 	}
 
 	items := f.Retrieve()
-	result := make([]*ReceivedMessage, 0, len(items))
+	result := make([]*Message, 0, len(items))
 
 	for _, item := range items {
-		log.Printf("retrieve a message with ID %s: %s", item.EnvelopeHash.String(), item.Payload)
+		log.Printf("retrieve a message with ID %s", item.EnvelopeHash.String())
 
 		decoded, err := DecodeMessage(item.Payload)
 		if err != nil {
@@ -318,8 +305,9 @@ func (s whisperSubscription) Messages() ([]*ReceivedMessage, error) {
 			continue
 		}
 
-		result = append(result, &ReceivedMessage{
+		result = append(result, &Message{
 			Decoded:   decoded,
+			Hash:      item.EnvelopeHash.Bytes(),
 			SigPubKey: item.SigToPubKey(),
 		})
 	}

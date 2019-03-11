@@ -34,7 +34,7 @@ func (dj *dialJob) cancelled() bool {
 }
 
 func (dj *dialJob) dialTimeout() time.Duration {
-	timeout := transport.DialTimeout
+	timeout := DialTimeout
 	if lowTimeoutFilters.AddrBlocked(dj.addr) {
 		timeout = DialTimeoutLocal
 	}

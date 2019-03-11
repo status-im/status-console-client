@@ -37,6 +37,11 @@ var ErrSwarmClosed = errors.New("swarm closed")
 // transport is misbehaving.
 var ErrAddrFiltered = errors.New("address filtered")
 
+// DialTimeout is the maximum duration a Dial is allowed to take.
+// This includes the time between dialing the raw network connection,
+// protocol selection as well the handshake, if applicable.
+var DialTimeout = 60 * time.Second
+
 // Swarm is a connection muxer, allowing connections to other peers to
 // be opened and closed, while still using the same Chan for all
 // communication. The Chan sends/receives Messages, which note the
@@ -165,7 +170,7 @@ func (s *Swarm) Process() goprocess.Process {
 	return s.proc
 }
 
-func (s *Swarm) addConn(tc transport.Conn, dir inet.Direction) (*Conn, error) {
+func (s *Swarm) addConn(tc transport.Conn) (*Conn, error) {
 	// The underlying transport (or the dialer) *should* filter it's own
 	// connections but we should double check anyways.
 	raddr := tc.RemoteMultiaddr()
@@ -194,11 +199,9 @@ func (s *Swarm) addConn(tc transport.Conn, dir inet.Direction) (*Conn, error) {
 	}
 
 	// Wrap and register the connection.
-	stat := inet.Stat{Direction: dir}
 	c := &Conn{
 		conn:  tc,
 		swarm: s,
-		stat:  stat,
 	}
 	c.streams.m = make(map[*Stream]struct{})
 	s.conns.m[p] = append(s.conns.m[p], c)
