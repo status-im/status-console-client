@@ -134,6 +134,7 @@ func main() {
 	if err != nil {
 		exitErr(err)
 	}
+	// TODO: close the database properly
 
 	messenger := client.NewMessenger(chatAdapter, privateKey, db)
 

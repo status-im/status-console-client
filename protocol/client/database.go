@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/storage"
 	"github.com/syndtr/goleveldb/leveldb/util"
 
 	"github.com/status-im/status-console-client/protocol/v1"
@@ -33,7 +34,13 @@ type Database struct {
 // in a given path directory.
 func NewDatabase(path string) (*Database, error) {
 	if path == "" {
-		return &Database{}, nil
+		// If path is not give, use in-memory storage.
+		storage := storage.NewMemStorage()
+		db, err := leveldb.Open(storage, nil)
+		if err != nil {
+			return nil, err
+		}
+		return &Database{db: db}, nil
 	}
 
 	db, err := leveldb.OpenFile(path, nil)
