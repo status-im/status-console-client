@@ -23,9 +23,9 @@ type baseEvent struct {
 func (e baseEvent) Contact() Contact { return e.contact }
 func (e baseEvent) Type() int        { return e.typ }
 
-type eventError struct {
-	Event
-	err error
-}
+// type eventError struct {
+// 	Event
+// 	err error
+// }
 
-func (e eventError) Error() error { return e.err }
+// func (e eventError) Error() error { return e.err }

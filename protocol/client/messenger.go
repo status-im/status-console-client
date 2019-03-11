@@ -46,8 +46,8 @@ func (m *Messenger) Join(contact Contact) error {
 
 	m.chats[contact] = chat
 
+	m.wg.Add(1)
 	go func() {
-		m.wg.Add(1)
 		defer m.wg.Done()
 
 		for ev := range chat.Events() {

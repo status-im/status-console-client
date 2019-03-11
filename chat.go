@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/ecdsa"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -15,12 +14,6 @@ import (
 
 	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/v1"
-)
-
-var (
-	// ErrUnsupportedContactType is returned when a given contact type
-	// is not supported yet.
-	ErrUnsupportedContactType = errors.New("unsupported contact type")
 )
 
 // ChatViewController manages chat view.
@@ -59,11 +52,11 @@ func (c *ChatViewController) readEventsLoop() {
 
 			switch ev := event.(type) {
 			case client.EventError:
-				c.notifications.Error("error", ev.Error().Error())
+				c.notifications.Error("error", ev.Error().Error()) // nolint: errcheck
 			case client.Event:
 				messages, err := c.messenger.Messages(c.contact)
 				if err != nil {
-					c.notifications.Error("getting messages", err.Error())
+					c.notifications.Error("getting messages", err.Error()) // nolint: errcheck
 					break
 				}
 				c.printMessages(messages)
@@ -90,7 +83,10 @@ func (c *ChatViewController) Select(contact client.Contact) error {
 }
 
 func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) error {
-	c.notifications.Debug("REQUEST", fmt.Sprintf("get historic messages: %+v", params))
+	c.notifications.Debug( // nolint: errcheck
+		"REQUEST",
+		fmt.Sprintf("get historic messages: %+v", params),
+	)
 	return c.messenger.Request(c.contact, params)
 }
 

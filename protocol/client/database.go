@@ -148,9 +148,9 @@ const (
 
 func (d *Database) prefixFromContact(c Contact) []byte {
 	h := sha1.New()
-	io.WriteString(h, c.Name)
-	io.WriteString(h, ":")
-	io.WriteString(h, strconv.Itoa(int(c.Type)))
+	_, _ = io.WriteString(h, c.Name)
+	_, _ = io.WriteString(h, ":")
+	_, _ = io.WriteString(h, strconv.Itoa(int(c.Type)))
 	return h.Sum(nil)
 }
 
