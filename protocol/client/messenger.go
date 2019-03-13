@@ -17,7 +17,8 @@ type Messenger struct {
 	identity *ecdsa.PrivateKey
 	db       *Database
 
-	chats map[Contact]*Chat
+	chats        map[Contact]*Chat
+	chatsCancels map[Contact]chan struct{} // cancel handling chat events
 
 	events chan interface{}
 }
@@ -25,11 +26,12 @@ type Messenger struct {
 // NewMessanger returns a new Messanger.
 func NewMessenger(proto protocol.Chat, identity *ecdsa.PrivateKey, db *Database) *Messenger {
 	return &Messenger{
-		proto:    proto,
-		identity: identity,
-		db:       db,
-		chats:    make(map[Contact]*Chat),
-		events:   make(chan interface{}),
+		proto:        proto,
+		identity:     identity,
+		db:           db,
+		chats:        make(map[Contact]*Chat),
+		chatsCancels: make(map[Contact]chan struct{}),
+		events:       make(chan interface{}),
 	}
 }
 
@@ -57,17 +59,25 @@ func (m *Messenger) Join(contact Contact) error {
 	}
 
 	chat = NewChat(m.proto, m.identity, contact, m.db)
+	cancel := make(chan struct{})
 
 	m.Lock()
 	m.chats[contact] = chat
+	m.chatsCancels[contact] = cancel
 	m.Unlock()
 
-	go func(events <-chan interface{}) {
+	go func(events <-chan interface{}, cancel chan struct{}) {
 		log.Printf("[Messenger::Join] waiting for events")
 
-		for ev := range events {
-			log.Printf("[Messenger::Join] received an event: %+v", ev)
-			m.events <- ev
+	LOOP:
+		for {
+			select {
+			case ev := <-events:
+				log.Printf("[Messenger::Join] received an event: %+v", ev)
+				m.events <- ev
+			case <-cancel:
+				break LOOP
+			}
 		}
 
 		if err := chat.Err(); err != nil {
@@ -76,7 +86,7 @@ func (m *Messenger) Join(contact Contact) error {
 				err:       err,
 			}
 		}
-	}(chat.Events())
+	}(chat.Events(), cancel)
 
 	return chat.Subscribe()
 }
@@ -85,12 +95,15 @@ func (m *Messenger) Join(contact Contact) error {
 func (m *Messenger) Leave(contact Contact) error {
 	m.RLock()
 	chat, ok := m.chats[contact]
+	cancel := m.chatsCancels[contact]
 	m.RUnlock()
 	if !ok {
 		return errors.New("chat for the contact not found")
 	}
 
-	chat.Unsubscribe()
+	chat.leave()
+
+	close(cancel)
 
 	m.Lock()
 	delete(m.chats, contact)
