@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	if err := logutils.OverrideRootLog(true, "DEBUG", "", false); err != nil {
+	if err := logutils.OverrideRootLog(true, "INFO", "", false); err != nil {
 		stdlog.Fatalf("failed to override root log: %v\n", err)
 	}
 }

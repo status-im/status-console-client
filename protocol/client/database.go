@@ -80,7 +80,7 @@ func (d *Database) Messages(c Contact, from, to int64) (result []*protocol.Messa
 }
 
 // SaveMessages stores messages on a disk.
-func (d *Database) SaveMessages(c Contact, messages ...*protocol.Message) error {
+func (d *Database) SaveMessages(c Contact, messages []*protocol.Message) error {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 

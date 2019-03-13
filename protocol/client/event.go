@@ -1,7 +1,10 @@
 package client
 
+import "github.com/status-im/status-console-client/protocol/v1"
+
 const (
-	EventTypeMessage int = iota + 1
+	EventTypeInit int = iota + 1
+	EventTypeMessage
 	EventTypeError
 )
 
@@ -15,6 +18,11 @@ type EventError interface {
 	Error() error
 }
 
+type EventMessage interface {
+	Event
+	Message() *protocol.Message
+}
+
 type baseEvent struct {
 	contact Contact
 	typ     int
@@ -22,6 +30,20 @@ type baseEvent struct {
 
 func (e baseEvent) Contact() Contact { return e.contact }
 func (e baseEvent) Type() int        { return e.typ }
+
+type errorEvent struct {
+	baseEvent
+	err error
+}
+
+func (e errorEvent) Error() error { return e.err }
+
+type messageEvent struct {
+	baseEvent
+	message *protocol.Message
+}
+
+func (e messageEvent) Message() *protocol.Message { return e.message }
 
 // type eventError struct {
 // 	Event
