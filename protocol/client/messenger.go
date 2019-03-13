@@ -42,9 +42,8 @@ func (m *Messenger) Events() <-chan interface{} {
 
 func (m *Messenger) Chat(c Contact) *Chat {
 	m.RLock()
-	chat, _ := m.chats[c]
-	m.RUnlock()
-	return chat
+	defer m.RUnlock()
+	return m.chats[c]
 }
 
 // Join creates a new chat and creates a subscription.
