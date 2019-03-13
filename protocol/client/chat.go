@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
+	"log"
 	"sort"
 	"strings"
 	"sync"
@@ -33,7 +34,8 @@ type Chat struct {
 
 	lastClock int64
 
-	ownMessages    chan *protocol.Message       // my private messages channel
+	ownMessages chan *protocol.Message // my private messages channel
+	// TODO: make it a ring buffer
 	messages       []*protocol.Message          // all messages ordered by Clock
 	messagesByHash map[string]*protocol.Message // quick access to messages by hash
 }
@@ -73,12 +75,15 @@ func (c *Chat) Messages() []*protocol.Message {
 }
 
 // Subscribe reads messages from the network.
-func (c *Chat) Subscribe() error {
-	c.Lock()
-	defer c.Unlock()
+// TODO: change method name to Join().
+func (c *Chat) Subscribe() (err error) {
+	c.RLock()
+	sub := c.sub
+	c.RUnlock()
 
-	if c.sub != nil {
-		return errors.New("already subscribed")
+	if sub != nil {
+		err = errors.New("already subscribed")
+		return
 	}
 
 	opts := protocol.SubscribeOptions{}
@@ -88,26 +93,29 @@ func (c *Chat) Subscribe() error {
 		opts.Identity = c.identity
 	}
 
-	var err error
-
 	messages := make(chan *protocol.Message)
 
-	c.sub, err = c.proto.Subscribe(context.Background(), messages, opts)
+	sub, err = c.proto.Subscribe(context.Background(), messages, opts)
 	if err != nil {
-		return errors.Wrap(err, "failed to subscribe")
+		err = errors.Wrap(err, "failed to subscribe")
+		return
 	}
 
-	go func() {
-		// Send at least one event to kick off the logic.
-		// TODO: change type of the event.
-		c.events <- baseEvent{contact: c.contact, typ: EventTypeMessage}
-	}()
+	c.Lock()
+	c.sub = sub
+	c.Unlock()
 
 	cancel := make(chan struct{}) // can be closed by any loop
 
-	go c.readLoop(messages, c.sub, cancel)
+	go c.readLoop(messages, sub, cancel)
 	go c.readOwnMessagesLoop(c.ownMessages, cancel)
 
+	// Load should have it's own lock.
+	return c.Load()
+}
+
+// Load loads messages from the database cache and the network.
+func (c *Chat) Load() error {
 	params := protocol.DefaultRequestOptions()
 
 	// Get already cached messages from the database.
@@ -120,10 +128,14 @@ func (c *Chat) Subscribe() error {
 		return errors.Wrap(err, "db failed to get messages")
 	}
 
+	c.Lock()
+	c.handleMessages(cachedMessages...)
+	c.Unlock()
+
 	go func() {
-		for _, m := range cachedMessages {
-			messages <- m
-		}
+		log.Printf("[Chat::Subscribe] sending EventTypeInit")
+		c.events <- baseEvent{contact: c.contact, typ: EventTypeInit}
+		log.Printf("[Chat::Subscribe] sent EventTypeInit")
 	}()
 
 	if c.contact.Type == ContactPublicChat {
@@ -132,7 +144,7 @@ func (c *Chat) Subscribe() error {
 		params.Recipient = c.contact.PublicKey
 	}
 	// Request historic messages from the network.
-	if err := c.proto.Request(context.Background(), params); err != nil {
+	if err := c.request(params); err != nil {
 		return errors.Wrap(err, "failed to request for messages")
 	}
 
@@ -143,15 +155,17 @@ func (c *Chat) Subscribe() error {
 func (c *Chat) Unsubscribe() {
 	c.RLock()
 	defer c.RUnlock()
-
-	if c.sub == nil {
-		return
+	if c.sub != nil {
+		c.sub.Unsubscribe()
 	}
-	c.sub.Unsubscribe()
 }
 
 // Request sends a request for historic messages.
 func (c *Chat) Request(params protocol.RequestOptions) error {
+	return c.request(params)
+}
+
+func (c *Chat) request(params protocol.RequestOptions) error {
 	return c.proto.Request(context.Background(), params)
 }
 
@@ -187,12 +201,16 @@ func (c *Chat) Send(data []byte) error {
 		return errors.Wrap(err, "failed to encode message")
 	}
 
+	c.Lock()
 	c.updateLastClock(clock)
+	c.Unlock()
 
 	hash, err := c.proto.Send(context.Background(), encodedMessage, opts)
 
 	// Own messages need to be pushed manually to the pipeline.
 	if c.contact.Type == ContactPrivateChat {
+		log.Printf("[Chat::Send] sent a private message")
+
 		c.ownMessages <- &protocol.Message{
 			Decoded:   message,
 			SigPubKey: &c.identity.PublicKey,
@@ -209,11 +227,28 @@ func (c *Chat) readLoop(messages <-chan *protocol.Message, sub *protocol.Subscri
 	for {
 		select {
 		case m := <-messages:
-			if err := c.handleMessage(m); err != nil {
+			if c.HasMessage(m) {
+				break
+			}
+
+			c.Lock()
+			c.handleMessages(m)
+			c.Unlock()
+
+			if err := c.saveMessages(m); err != nil {
+				c.Lock()
 				c.err = err
+				c.Unlock()
 				return
 			}
-			c.events <- baseEvent{contact: c.contact, typ: EventTypeMessage}
+
+			c.events <- messageEvent{
+				baseEvent: baseEvent{
+					contact: c.contact,
+					typ:     EventTypeMessage,
+				},
+				message: m,
+			}
 		case <-sub.Done():
 			c.err = sub.Err()
 			return
@@ -229,43 +264,74 @@ func (c *Chat) readOwnMessagesLoop(messages <-chan *protocol.Message, cancel cha
 	for {
 		select {
 		case m := <-messages:
-			if err := c.handleMessage(m); err != nil {
+			if c.HasMessage(m) {
+				break
+			}
+
+			c.Lock()
+			c.handleMessages(m)
+			c.Unlock()
+
+			if err := c.saveMessages(m); err != nil {
+				c.Lock()
 				c.err = err
+				c.Unlock()
 				return
 			}
-			c.events <- baseEvent{contact: c.contact, typ: EventTypeMessage}
+
+			c.events <- messageEvent{
+				baseEvent: baseEvent{
+					contact: c.contact,
+					typ:     EventTypeMessage,
+				},
+				message: m,
+			}
 		case <-cancel:
 			return
 		}
 	}
 }
 
-func (c *Chat) handleMessage(message *protocol.Message) error {
-	lessFn := func(i, j int) bool {
-		return c.messages[i].Decoded.Clock < c.messages[j].Decoded.Clock
+func (c *Chat) handleMessages(messages ...*protocol.Message) {
+	for _, message := range messages {
+		c.updateLastClock(message.Decoded.Clock)
+
+		hash := messageHashStr(message)
+
+		c.messagesByHash[hash] = message
+		c.messages = append(c.messages, message)
+
+		sort.Slice(c.messages, c.lessFn)
 	}
-	hash := hex.EncodeToString(message.Hash)
+}
 
-	// the message already exists
-	if _, ok := c.messagesByHash[hash]; ok {
-		return nil
-	}
+func (c *Chat) saveMessages(messages ...*protocol.Message) error {
+	return c.db.SaveMessages(c.contact, messages)
+}
 
-	c.updateLastClock(message.Decoded.Clock)
-
-	c.messagesByHash[hash] = message
-	c.messages = append(c.messages, message)
-
-	isSorted := sort.SliceIsSorted(c.messages, lessFn)
-	if !isSorted {
-		sort.Slice(c.messages, lessFn)
-	}
-
-	return c.db.SaveMessages(c.contact, message)
+func (c *Chat) lessFn(i, j int) bool {
+	return c.messages[i].Decoded.Clock < c.messages[j].Decoded.Clock
 }
 
 func (c *Chat) updateLastClock(clock int64) {
 	if clock > c.lastClock {
 		c.lastClock = clock
 	}
+}
+
+func (c *Chat) hasMessage(m *protocol.Message) bool {
+	hash := messageHashStr(m)
+	_, ok := c.messagesByHash[hash]
+	return ok
+}
+
+// HasMessage returns true if a given message is already cached.
+func (c *Chat) HasMessage(m *protocol.Message) bool {
+	c.Lock()
+	defer c.Unlock()
+	return c.hasMessage(m)
+}
+
+func messageHashStr(m *protocol.Message) string {
+	return hex.EncodeToString(m.Hash)
 }

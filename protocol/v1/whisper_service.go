@@ -235,10 +235,11 @@ func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode strin
 		return err
 	}
 
-	_, err = shhextAPI.RequestMessages(ctx, req)
-	// TODO: wait for the request to finish before returning.
-	// Use a different method or relay on signals.
-	return err
+	return shhextAPI.RequestMessagesSync(shhext.RetryConfig{
+		BaseTimeout: time.Second * 10,
+		StepTimeout: time.Second,
+		MaxRetries:  3,
+	}, req)
 }
 
 func (a *WhisperServiceAdapter) createMessagesRequest(
@@ -297,8 +298,6 @@ func (s whisperSubscription) Messages() ([]*Message, error) {
 	result := make([]*Message, 0, len(items))
 
 	for _, item := range items {
-		log.Printf("retrieve a message with ID %s", item.EnvelopeHash.String())
-
 		decoded, err := DecodeMessage(item.Payload)
 		if err != nil {
 			log.Printf("failed to decode message: %v", err)

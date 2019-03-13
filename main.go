@@ -207,7 +207,17 @@ func main() {
 						if !ok {
 							return errors.New("contact could not be found")
 						}
-						return chat.Select(contact)
+
+						// We need to call Select asynchronously,
+						// otherwise the main thread is blocked
+						// and nothing is rendered.
+						go func() {
+							if err := chat.Select(contact); err != nil {
+								log.Printf("[GetLineHandler] error selecting a chat: %v", err)
+							}
+						}()
+
+						return nil
 					}),
 				},
 			},

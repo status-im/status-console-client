@@ -46,20 +46,33 @@ func (c *ChatViewController) readEventsLoop() {
 	defer close(c.done)
 
 	for {
+		log.Printf("[ChatViewController::readEventsLoops] waiting for events")
+
 		select {
 		case event := <-c.messenger.Events():
-			log.Printf("received an event: %+v", event)
+			log.Printf("[ChatViewController::readEventsLoops] received an event: %+v", event)
 
 			switch ev := event.(type) {
 			case client.EventError:
 				c.notifications.Error("error", ev.Error().Error()) // nolint: errcheck
+			case client.EventMessage:
+				c.printMessages(false, ev.Message())
 			case client.Event:
-				messages, err := c.messenger.Messages(c.contact)
-				if err != nil {
-					c.notifications.Error("getting messages", err.Error()) // nolint: errcheck
+				if ev.Type() != client.EventTypeInit {
 					break
 				}
-				c.printMessages(messages)
+
+				chat := c.messenger.Chat(c.contact)
+				if chat == nil {
+					c.notifications.Error("getting chat", "chat does not exist") // nolint: errcheck
+					break
+				}
+
+				messages := chat.Messages()
+
+				log.Printf("[ChatViewController::readEventsLoops] retrieved %d messages", len(messages))
+
+				c.printMessages(true, messages...)
 			}
 		case <-c.cancel:
 			return
@@ -70,7 +83,7 @@ func (c *ChatViewController) readEventsLoop() {
 // Select informs the chat view controller about a selected contact.
 // The chat view controller setup subscribers and request recent messages.
 func (c *ChatViewController) Select(contact client.Contact) error {
-	log.Printf("selected contact %s", contact.Name)
+	log.Printf("[ChatViewController::Select] contact %s", contact.Name)
 
 	if c.cancel == nil {
 		c.cancel = make(chan struct{})
@@ -87,21 +100,32 @@ func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) err
 		"REQUEST",
 		fmt.Sprintf("get historic messages: %+v", params),
 	)
-	return c.messenger.Request(c.contact, params)
+
+	chat := c.messenger.Chat(c.contact)
+	if chat == nil {
+		return fmt.Errorf("chat not found")
+	}
+	return chat.Request(params)
 }
 
 func (c *ChatViewController) Send(data []byte) error {
-	return c.messenger.Send(c.contact, data)
+	chat := c.messenger.Chat(c.contact)
+	if chat == nil {
+		return fmt.Errorf("chat not found")
+	}
+	return chat.Send(data)
 }
 
-func (c *ChatViewController) printMessages(messages []*protocol.Message) {
+func (c *ChatViewController) printMessages(clear bool, messages ...*protocol.Message) {
 	c.g.Update(func(*gocui.Gui) error {
-		if err := c.Clear(); err != nil {
-			return err
+		if clear {
+			if err := c.Clear(); err != nil {
+				return err
+			}
 		}
 
 		for _, message := range messages {
-			if err := c.printMessage(message); err != nil {
+			if err := c.writeMessage(message); err != nil {
 				return err
 			}
 		}
@@ -109,7 +133,7 @@ func (c *ChatViewController) printMessages(messages []*protocol.Message) {
 	})
 }
 
-func (c *ChatViewController) printMessage(message *protocol.Message) error {
+func (c *ChatViewController) writeMessage(message *protocol.Message) error {
 	myPubKey := c.identity.PublicKey
 	pubKey := message.SigPubKey
 
