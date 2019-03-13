@@ -82,8 +82,8 @@ func (c *Chat) Messages() []*protocol.Message {
 
 // HasMessage returns true if a given message is already cached.
 func (c *Chat) HasMessage(m *protocol.Message) bool {
-	c.Lock()
-	defer c.Unlock()
+	c.RLock()
+	defer c.RUnlock()
 	return c.hasMessage(m)
 }
 
