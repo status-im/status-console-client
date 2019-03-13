@@ -53,7 +53,7 @@ func (m *ChatMock) Request(ctx context.Context, params protocol.RequestOptions) 
 	return nil
 }
 
-func TestSubscribeUnsubscribe(t *testing.T) {
+func TestSubscribe(t *testing.T) {
 	proto := ChatMock{}
 	contact := Contact{}
 
@@ -68,12 +68,6 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 	// Subscribe to already subscribed chat.
 	err = chat.Subscribe()
 	require.EqualError(t, err, "already subscribed")
-
-	// Unsubscribe...
-	chat.Unsubscribe()
-	// ...and subscribe again.
-	err = chat.Subscribe()
-	require.NoError(t, err)
 }
 
 func TestSendPrivateMessage(t *testing.T) {

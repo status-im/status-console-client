@@ -31,7 +31,7 @@ type Chat struct {
 	events chan interface{}
 	err    error
 
-	cancel chan struct{}
+	cancel chan struct{} // can be closed by any goroutine and closes all others
 
 	lastClock int64
 
@@ -57,6 +57,16 @@ func NewChat(proto protocol.Chat, identity *ecdsa.PrivateKey, contact Contact, d
 	go c.readOwnMessagesLoop(c.ownMessages, c.cancel)
 
 	return &c
+}
+
+func (c *Chat) leave() {
+	c.Lock()
+	if c.sub != nil {
+		c.sub.Unsubscribe()
+	} else {
+		close(c.cancel)
+	}
+	c.Unlock()
 }
 
 // Events returns a channel with Chat events.
@@ -101,8 +111,7 @@ func (c *Chat) Subscribe() (err error) {
 	c.RUnlock()
 
 	if sub != nil {
-		err = errors.New("already subscribed")
-		return
+		return errors.New("already subscribed")
 	}
 
 	opts := protocol.SubscribeOptions{}
@@ -116,8 +125,7 @@ func (c *Chat) Subscribe() (err error) {
 
 	sub, err = c.proto.Subscribe(context.Background(), messages, opts)
 	if err != nil {
-		err = errors.Wrap(err, "failed to subscribe")
-		return
+		return errors.Wrap(err, "failed to subscribe")
 	}
 
 	c.Lock()
@@ -167,16 +175,6 @@ func (c *Chat) Load() error {
 	return nil
 }
 
-// Unsubscribe cancels the current subscription.
-func (c *Chat) Unsubscribe() {
-	c.Lock()
-	if c.sub != nil {
-		c.sub.Unsubscribe()
-		c.sub = nil
-	}
-	c.Unlock()
-}
-
 // Request sends a request for historic messages.
 func (c *Chat) Request(params protocol.RequestOptions) error {
 	return c.request(params)
@@ -188,6 +186,20 @@ func (c *Chat) request(params protocol.RequestOptions) error {
 
 // Send sends a message into the network.
 func (c *Chat) Send(data []byte) error {
+	// If cancel is closed then it will return an error.
+	// Otherwise, the execution will continue.
+	// This is needed to prevent sending messages
+	// if the chat is already left/canceled
+	// as a it can't be guaranteed that processing
+	// looop goroutines are still running.
+	select {
+	case _, ok := <-c.cancel:
+		if !ok {
+			return errors.New("chat is already left")
+		}
+	default:
+	}
+
 	var messageType string
 
 	text := strings.TrimSpace(string(data))
