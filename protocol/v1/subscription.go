@@ -40,5 +40,7 @@ func (s *Subscription) Err() error {
 }
 
 func (s *Subscription) Done() <-chan struct{} {
+	s.RLock()
+	defer s.RUnlock()
 	return s.done
 }

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
@@ -32,6 +31,8 @@ type Chat struct {
 	events chan interface{}
 	err    error
 
+	cancel chan struct{}
+
 	lastClock int64
 
 	ownMessages chan *protocol.Message // my private messages channel
@@ -41,16 +42,21 @@ type Chat struct {
 }
 
 // NewChat returns a new Chat instance.
-func NewChat(proto protocol.Chat, identity *ecdsa.PrivateKey, c Contact, db *Database) *Chat {
-	return &Chat{
+func NewChat(proto protocol.Chat, identity *ecdsa.PrivateKey, contact Contact, db *Database) *Chat {
+	c := Chat{
 		proto:          proto,
 		identity:       identity,
-		contact:        c,
+		contact:        contact,
 		db:             db,
 		events:         make(chan interface{}),
+		cancel:         make(chan struct{}),
 		ownMessages:    make(chan *protocol.Message),
 		messagesByHash: make(map[string]*protocol.Message),
 	}
+
+	go c.readOwnMessagesLoop(c.ownMessages, c.cancel)
+
+	return &c
 }
 
 // Events returns a channel with Chat events.
@@ -72,6 +78,19 @@ func (c *Chat) Messages() []*protocol.Message {
 	c.RLock()
 	defer c.RUnlock()
 	return c.messages
+}
+
+// HasMessage returns true if a given message is already cached.
+func (c *Chat) HasMessage(m *protocol.Message) bool {
+	c.RLock()
+	defer c.RUnlock()
+	return c.hasMessage(m)
+}
+
+func (c *Chat) hasMessage(m *protocol.Message) bool {
+	hash := messageHashStr(m)
+	_, ok := c.messagesByHash[hash]
+	return ok
 }
 
 // Subscribe reads messages from the network.
@@ -105,10 +124,7 @@ func (c *Chat) Subscribe() (err error) {
 	c.sub = sub
 	c.Unlock()
 
-	cancel := make(chan struct{}) // can be closed by any loop
-
-	go c.readLoop(messages, sub, cancel)
-	go c.readOwnMessagesLoop(c.ownMessages, cancel)
+	go c.readLoop(messages, sub, c.cancel)
 
 	// Load should have it's own lock.
 	return c.Load()
@@ -153,11 +169,12 @@ func (c *Chat) Load() error {
 
 // Unsubscribe cancels the current subscription.
 func (c *Chat) Unsubscribe() {
-	c.RLock()
-	defer c.RUnlock()
+	c.Lock()
 	if c.sub != nil {
 		c.sub.Unsubscribe()
+		c.sub = nil
 	}
+	c.Unlock()
 }
 
 // Request sends a request for historic messages.
@@ -222,8 +239,6 @@ func (c *Chat) Send(data []byte) error {
 }
 
 func (c *Chat) readLoop(messages <-chan *protocol.Message, sub *protocol.Subscription, cancel chan struct{}) {
-	defer close(cancel)
-
 	for {
 		select {
 		case m := <-messages:
@@ -239,6 +254,9 @@ func (c *Chat) readLoop(messages <-chan *protocol.Message, sub *protocol.Subscri
 				c.Lock()
 				c.err = err
 				c.Unlock()
+
+				close(cancel)
+
 				return
 			}
 
@@ -251,6 +269,7 @@ func (c *Chat) readLoop(messages <-chan *protocol.Message, sub *protocol.Subscri
 			}
 		case <-sub.Done():
 			c.err = sub.Err()
+			close(cancel)
 			return
 		case <-cancel:
 			return
@@ -259,8 +278,6 @@ func (c *Chat) readLoop(messages <-chan *protocol.Message, sub *protocol.Subscri
 }
 
 func (c *Chat) readOwnMessagesLoop(messages <-chan *protocol.Message, cancel chan struct{}) {
-	defer close(cancel)
-
 	for {
 		select {
 		case m := <-messages:
@@ -276,6 +293,9 @@ func (c *Chat) readOwnMessagesLoop(messages <-chan *protocol.Message, cancel cha
 				c.Lock()
 				c.err = err
 				c.Unlock()
+
+				close(cancel)
+
 				return
 			}
 
@@ -317,19 +337,6 @@ func (c *Chat) updateLastClock(clock int64) {
 	if clock > c.lastClock {
 		c.lastClock = clock
 	}
-}
-
-func (c *Chat) hasMessage(m *protocol.Message) bool {
-	hash := messageHashStr(m)
-	_, ok := c.messagesByHash[hash]
-	return ok
-}
-
-// HasMessage returns true if a given message is already cached.
-func (c *Chat) HasMessage(m *protocol.Message) bool {
-	c.Lock()
-	defer c.Unlock()
-	return c.hasMessage(m)
 }
 
 func messageHashStr(m *protocol.Message) string {

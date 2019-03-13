@@ -51,6 +51,10 @@ func NewDatabase(path string) (*Database, error) {
 	return &Database{db: db}, nil
 }
 
+func (d *Database) Close() error {
+	return d.db.Close()
+}
+
 // Messages returns all messages for a given contact
 // and between from and to timestamps.
 func (d *Database) Messages(c Contact, from, to int64) (result []*protocol.Message, err error) {
