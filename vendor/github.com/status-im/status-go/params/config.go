@@ -259,11 +259,23 @@ type NodeConfig struct {
 	// LogEnabled enables the logger
 	LogEnabled bool `json:"LogEnabled"`
 
+	// LogMobileSystem enables log redirection to android/ios system logger.
+	LogMobileSystem bool
+
 	// LogFile is filename where exposed logs get written to
 	LogFile string
 
 	// LogLevel defines minimum log level. Valid names are "ERROR", "WARN", "INFO", "DEBUG", and "TRACE".
 	LogLevel string `validate:"eq=ERROR|eq=WARN|eq=INFO|eq=DEBUG|eq=TRACE"`
+
+	// LogMaxBackups defines number of rotated log files that will be stored.
+	LogMaxBackups int
+
+	// LogMaxSize after current size is reached log file will be rotated
+	LogMaxSize int
+
+	// LogCompressRotated if true all rotated files will be gzipped.
+	LogCompressRotated bool
 
 	// LogToStderr defines whether logged info should also be output to os.Stderr
 	LogToStderr bool
@@ -307,8 +319,7 @@ type ShhextConfig struct {
 	// BackupDisabledDataDir is the file system folder the node should use for any data storage needs that it doesn't want backed up.
 	BackupDisabledDataDir string
 	// InstallationId id of the current installation
-	InstallationID  string
-	DebugAPIEnabled bool
+	InstallationID string
 	// MailServerConfirmations should be true if client wants to receive confirmatons only from a selected mail servers.
 	MailServerConfirmations bool
 	// EnableConnectionManager turns on management of the mail server connections if true.
@@ -322,6 +333,9 @@ type ShhextConfig struct {
 
 	// MaxServerFailures defines maximum allowed expired requests before server will be swapped to another one.
 	MaxServerFailures int
+
+	// MaxMessageDeliveryAttempts defines how many times we will try to deliver not-acknowledged envelopes.
+	MaxMessageDeliveryAttempts int
 }
 
 // Validate validates the ShhextConfig struct and returns an error if inconsistent values are found
@@ -378,6 +392,9 @@ func NewNodeConfigWithDefaults(dataDir string, networkID uint64, opts ...Option)
 	c.ListenAddr = ":30303"
 	c.LogEnabled = true
 	c.LogLevel = "INFO"
+	c.LogMaxSize = 100
+	c.LogCompressRotated = true
+	c.LogMaxBackups = 3
 	c.LogToStderr = true
 	c.WhisperConfig.Enabled = true
 	c.WhisperConfig.EnableNTPSync = true

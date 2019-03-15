@@ -31,9 +31,9 @@ github.com/ethereum/go-ethereum/common
 github.com/ethereum/go-ethereum/crypto
 github.com/ethereum/go-ethereum/rpc
 github.com/ethereum/go-ethereum/crypto/secp256k1
-github.com/ethereum/go-ethereum/crypto/sha3
 github.com/ethereum/go-ethereum/p2p
 github.com/ethereum/go-ethereum/common/hexutil
+github.com/ethereum/go-ethereum/crypto/sha3
 github.com/ethereum/go-ethereum/common/math
 github.com/ethereum/go-ethereum/rlp
 github.com/ethereum/go-ethereum/log
@@ -297,7 +297,7 @@ github.com/status-im/migrate/source/go_bindata
 # github.com/status-im/rendezvous v1.1.0
 github.com/status-im/rendezvous
 github.com/status-im/rendezvous/protocol
-# github.com/status-im/status-go v0.23.0-beta.7
+# github.com/status-im/status-go v0.23.0-beta.9
 github.com/status-im/status-go/logutils
 github.com/status-im/status-go/node
 github.com/status-im/status-go/params
@@ -314,7 +314,6 @@ github.com/status-im/status-go/services/personal
 github.com/status-im/status-go/services/status
 github.com/status-im/status-go/static
 github.com/status-im/status-go/timesource
-github.com/status-im/status-go/services
 github.com/status-im/status-go/services/shhext/chat
 github.com/status-im/status-go/services/shhext/dedup
 github.com/status-im/status-go/services/shhext/mailservers
@@ -333,6 +332,7 @@ github.com/stretchr/testify/require
 github.com/stretchr/testify/assert
 # github.com/syndtr/goleveldb v0.0.0-20181128100959-b001fa50d6b2
 github.com/syndtr/goleveldb/leveldb
+github.com/syndtr/goleveldb/leveldb/storage
 github.com/syndtr/goleveldb/leveldb/util
 github.com/syndtr/goleveldb/leveldb/cache
 github.com/syndtr/goleveldb/leveldb/comparer
@@ -342,7 +342,6 @@ github.com/syndtr/goleveldb/leveldb/iterator
 github.com/syndtr/goleveldb/leveldb/journal
 github.com/syndtr/goleveldb/leveldb/memdb
 github.com/syndtr/goleveldb/leveldb/opt
-github.com/syndtr/goleveldb/leveldb/storage
 github.com/syndtr/goleveldb/leveldb/table
 # github.com/whyrusleeping/go-logging v0.0.0-20170515211332-0457bb6b88fc
 github.com/whyrusleeping/go-logging
@@ -404,6 +403,8 @@ golang.org/x/text/runes
 golang.org/x/text/internal/tag
 # gopkg.in/go-playground/validator.v9 v9.24.0
 gopkg.in/go-playground/validator.v9
+# gopkg.in/natefinch/lumberjack.v2 v2.0.0
+gopkg.in/natefinch/lumberjack.v2
 # gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
 gopkg.in/natefinch/npipe.v2
 # gopkg.in/olebedev/go-duktape.v3 v3.0.0-20181125150206-ccb656ba24c2

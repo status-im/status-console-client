@@ -193,7 +193,13 @@ func (a *WhisperServiceAdapter) Request(ctx context.Context, options RequestOpti
 		return err
 	}
 
-	return a.requestMessages(ctx, enode, options)
+	// TODO: handle cursor from the response.
+	resp, err := a.requestMessages(ctx, enode, options)
+	if err != nil {
+		return err
+	}
+
+	return resp.Error
 }
 
 func (a *WhisperServiceAdapter) selectAndAddMailServer() (string, error) {
@@ -223,16 +229,16 @@ func (a *WhisperServiceAdapter) selectAndAddMailServer() (string, error) {
 	return enode, err
 }
 
-func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode string, params RequestOptions) error {
+func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode string, params RequestOptions) (resp shhext.MessagesResponse, err error) {
 	shhextService, err := a.node.ShhExtService()
 	if err != nil {
-		return err
+		return
 	}
 	shhextAPI := shhext.NewPublicAPI(shhextService)
 
 	req, err := a.createMessagesRequest(enode, params)
 	if err != nil {
-		return err
+		return
 	}
 
 	return shhextAPI.RequestMessagesSync(shhext.RetryConfig{
