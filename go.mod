@@ -104,7 +104,7 @@ require (
 	github.com/status-im/go-multiaddr-ethv4 v0.0.0-20181028111254-cbcba3a7c121 // indirect
 	github.com/status-im/migrate v0.0.0-20181227113212-3bde36291b5c // indirect
 	github.com/status-im/rendezvous v1.1.0 // indirect
-	github.com/status-im/status-go v0.23.0-beta.7
+	github.com/status-im/status-go v0.23.0-beta.9
 	github.com/status-im/whisper v1.4.8
 	github.com/stretchr/objx v0.1.1 // indirect
 	github.com/stretchr/testify v1.2.2
@@ -119,7 +119,7 @@ require (
 	github.com/whyrusleeping/multiaddr-filter v0.0.0-20160516205228-e903e4adabd7 // indirect
 	github.com/whyrusleeping/yamux v1.1.2 // indirect
 	golang.org/x/arch v0.0.0-20181203225421-5a4828bb7045 // indirect
-	golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9 // indirect
+	golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9
 	golang.org/x/sync v0.0.0-20181221193216-37e7f081c4d4 // indirect
 	golang.org/x/sys v0.0.0-20181221143128-b4a75ba826a6 // indirect
 	gopkg.in/go-playground/validator.v9 v9.24.0 // indirect

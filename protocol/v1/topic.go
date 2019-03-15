@@ -1,13 +1,13 @@
 package protocol
 
 import (
-	"github.com/ethereum/go-ethereum/crypto/sha3"
 	whisper "github.com/status-im/whisper/whisperv6"
+	"golang.org/x/crypto/sha3"
 )
 
 // PublicChatTopic returns a Whisper topic for a public channel name.
 func PublicChatTopic(name string) (whisper.TopicType, error) {
-	hash := sha3.NewKeccak256()
+	hash := sha3.NewLegacyKeccak256()
 	if _, err := hash.Write([]byte(name)); err != nil {
 		return whisper.TopicType{}, err
 	}

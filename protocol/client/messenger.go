@@ -66,29 +66,31 @@ func (m *Messenger) Join(contact Contact) error {
 	m.chatsCancels[contact] = cancel
 	m.Unlock()
 
-	go func(events <-chan interface{}, cancel chan struct{}) {
-		log.Printf("[Messenger::Join] waiting for events")
-
-	LOOP:
-		for {
-			select {
-			case ev := <-events:
-				log.Printf("[Messenger::Join] received an event: %+v", ev)
-				m.events <- ev
-			case <-cancel:
-				break LOOP
-			}
-		}
-
-		if err := chat.Err(); err != nil {
-			m.events <- errorEvent{
-				baseEvent: baseEvent{contact: contact, typ: EventTypeError},
-				err:       err,
-			}
-		}
-	}(chat.Events(), cancel)
+	go m.chatEventsLoop(chat, contact, cancel)
 
 	return chat.Subscribe()
+}
+
+func (m *Messenger) chatEventsLoop(chat *Chat, contact Contact, cancel chan struct{}) {
+	log.Printf("[Messenger::Join] waiting for events")
+
+LOOP:
+	for {
+		select {
+		case ev := <-chat.Events():
+			log.Printf("[Messenger::Join] received an event: %+v", ev)
+			m.events <- ev
+		case <-cancel:
+			break LOOP
+		}
+	}
+
+	if err := chat.Err(); err != nil {
+		m.events <- errorEvent{
+			baseEvent: baseEvent{contact: contact, typ: EventTypeError},
+			err:       err,
+		}
+	}
 }
 
 // Leave unsubscribes from the chat.
@@ -101,9 +103,9 @@ func (m *Messenger) Leave(contact Contact) error {
 		return errors.New("chat for the contact not found")
 	}
 
-	chat.leave()
+	chat.leave() // close chat loops; must happen before closing the chat events loop
 
-	close(cancel)
+	close(cancel) // close a loop reading and forwarding the chat events
 
 	m.Lock()
 	delete(m.chats, contact)
