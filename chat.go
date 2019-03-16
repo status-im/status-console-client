@@ -117,6 +117,8 @@ func (c *ChatViewController) Send(data []byte) error {
 }
 
 func (c *ChatViewController) printMessages(clear bool, messages ...*protocol.Message) {
+	log.Printf("[ChatViewController::printMessages] printing %d messages", len(messages))
+
 	c.g.Update(func(*gocui.Gui) error {
 		if clear {
 			if err := c.Clear(); err != nil {

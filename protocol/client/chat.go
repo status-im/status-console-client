@@ -330,6 +330,10 @@ func (c *Chat) handleMessages(messages ...*protocol.Message) {
 
 		hash := messageHashStr(message)
 
+		if _, ok := c.messagesByHash[hash]; ok {
+			continue
+		}
+
 		c.messagesByHash[hash] = message
 		c.messages = append(c.messages, message)
 
