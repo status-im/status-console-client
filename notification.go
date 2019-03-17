@@ -9,6 +9,8 @@ import (
 	"github.com/fatih/color"
 )
 
+// TODO: it's not enough. The gocui view should be updated,
+// i.e. wrapped in a callback.
 type Notifications struct {
 	writer io.Writer
 }

@@ -49,16 +49,16 @@ func (m *Messenger) Chat(c Contact) *Chat {
 }
 
 // Join creates a new chat and creates a subscription.
-func (m *Messenger) Join(contact Contact) error {
+func (m *Messenger) Join(contact Contact, params protocol.RequestOptions) error {
 	m.RLock()
-	chat, found := m.chats[contact]
+	_, found := m.chats[contact]
 	m.RUnlock()
 
 	if found {
-		return chat.Load()
+		return nil
 	}
 
-	chat = NewChat(m.proto, m.identity, contact, m.db)
+	chat := NewChat(m.proto, m.identity, contact, m.db)
 	cancel := make(chan struct{})
 
 	m.Lock()
@@ -68,7 +68,7 @@ func (m *Messenger) Join(contact Contact) error {
 
 	go m.chatEventsLoop(chat, contact, cancel)
 
-	return chat.Subscribe()
+	return chat.Subscribe(params)
 }
 
 func (m *Messenger) chatEventsLoop(chat *Chat, contact Contact, cancel chan struct{}) {
