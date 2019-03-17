@@ -2,8 +2,11 @@ package main
 
 import (
 	"io"
+	"log"
+	"strings"
 
 	"github.com/jroimartin/gocui"
+	"github.com/pkg/errors"
 )
 
 // GocuiHandler is a key binding handler.
@@ -47,9 +50,56 @@ func CursorUpHandler(g *gocui.Gui, v *gocui.View) error {
 	if v != nil {
 		ox, oy := v.Origin()
 		cx, cy := v.Cursor()
-		if err := v.SetCursor(cx, cy-1); err != nil && oy > 0 {
+		if cy == 0 && oy > 0 {
 			if err := v.SetOrigin(ox, oy-1); err != nil {
 				return err
+			}
+		}
+		if cy > 0 {
+			if err := v.SetCursor(cx, cy-1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func HomeHandler(g *gocui.Gui, v *gocui.View) error {
+	log.Printf("[HomeHandler]")
+
+	if v != nil {
+		if err := v.SetCursor(0, 0); err != nil {
+			return errors.Wrap(err, "invalid cursor position")
+		}
+		if err := v.SetOrigin(0, 0); err != nil {
+			return errors.Wrap(err, "invalid origin position")
+		}
+	}
+	return nil
+}
+
+func EndHandler(g *gocui.Gui, v *gocui.View) error {
+	log.Printf("[EndHandler]")
+
+	if v != nil {
+		lines := strings.Count(v.ViewBuffer(), "\n")
+		_, sy := v.Size()
+
+		log.Printf("[EndHandler] lines=%d sy=%d", lines, sy)
+
+		if lines < sy {
+			if err := v.SetOrigin(0, 0); err != nil {
+				return errors.Wrap(err, "invalid origin position")
+			}
+			if err := v.SetCursor(0, lines+1); err != nil {
+				return errors.Wrap(err, "invalid cursor position")
+			}
+		} else {
+			if err := v.SetOrigin(0, lines-sy-1); err != nil {
+				return errors.Wrap(err, "invalid origin position")
+			}
+			if err := v.SetCursor(0, sy-1); err != nil {
+				return errors.Wrap(err, "invalid cursor position")
 			}
 		}
 	}
