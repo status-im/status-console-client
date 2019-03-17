@@ -162,13 +162,8 @@ func (c *Chat) Load() error {
 		log.Printf("[Chat::Subscribe] sent EventTypeInit")
 	}()
 
-	if c.contact.Type == ContactPublicChat {
-		params.ChatName = c.contact.Name
-	} else {
-		params.Recipient = c.contact.PublicKey
-	}
 	// Request historic messages from the network.
-	if err := c.request(params); err != nil {
+	if err := c.Request(params); err != nil {
 		return errors.Wrap(err, "failed to request for messages")
 	}
 
@@ -177,6 +172,12 @@ func (c *Chat) Load() error {
 
 // Request sends a request for historic messages.
 func (c *Chat) Request(params protocol.RequestOptions) error {
+	if c.contact.Type == ContactPublicChat {
+		params.ChatName = c.contact.Name
+	} else {
+		params.Recipient = c.contact.PublicKey
+	}
+
 	return c.request(params)
 }
 
@@ -337,6 +338,7 @@ func (c *Chat) handleMessages(messages ...*protocol.Message) {
 		c.messagesByHash[hash] = message
 		c.messages = append(c.messages, message)
 
+		// TODO: send an event that the order changed
 		sort.Slice(c.messages, c.lessFn)
 	}
 }

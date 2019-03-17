@@ -247,6 +247,16 @@ func main() {
 					Mod:     gocui.ModNone,
 					Handler: CursorUpHandler,
 				},
+				Binding{
+					Key:     gocui.KeyHome,
+					Mod:     gocui.ModNone,
+					Handler: HomeHandler,
+				},
+				Binding{
+					Key:     gocui.KeyEnd,
+					Mod:     gocui.ModNone,
+					Handler: EndHandler,
+				},
 			},
 			OnActivate: func(self *View) {
 				self.Autoscroll = false
