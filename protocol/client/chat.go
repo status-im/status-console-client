@@ -104,8 +104,10 @@ func (c *Chat) hasMessage(m *protocol.Message) bool {
 }
 
 // Subscribe reads messages from the network.
-// TODO: change method name to Join().
-func (c *Chat) Subscribe() (err error) {
+//
+// TODO: consider removing getting data from this method.
+// Instead, getting data should be a separate call.
+func (c *Chat) Subscribe(params protocol.RequestOptions) (err error) {
 	c.RLock()
 	sub := c.sub
 	c.RUnlock()
@@ -134,14 +136,11 @@ func (c *Chat) Subscribe() (err error) {
 
 	go c.readLoop(messages, sub, c.cancel)
 
-	// Load should have it's own lock.
-	return c.Load()
+	return c.load(params)
 }
 
 // Load loads messages from the database cache and the network.
-func (c *Chat) Load() error {
-	params := protocol.DefaultRequestOptions()
-
+func (c *Chat) load(params protocol.RequestOptions) error {
 	// Get already cached messages from the database.
 	cachedMessages, err := c.db.Messages(
 		c.contact,
@@ -152,9 +151,7 @@ func (c *Chat) Load() error {
 		return errors.Wrap(err, "db failed to get messages")
 	}
 
-	c.Lock()
 	c.handleMessages(cachedMessages...)
-	c.Unlock()
 
 	go func() {
 		log.Printf("[Chat::Subscribe] sending EventTypeInit")
@@ -163,26 +160,26 @@ func (c *Chat) Load() error {
 	}()
 
 	// Request historic messages from the network.
-	if err := c.Request(params); err != nil {
+	if err := c.request(params); err != nil {
 		return errors.Wrap(err, "failed to request for messages")
 	}
 
 	return nil
 }
 
-// Request sends a request for historic messages.
-func (c *Chat) Request(params protocol.RequestOptions) error {
+func (c *Chat) request(params protocol.RequestOptions) error {
 	if c.contact.Type == ContactPublicChat {
 		params.ChatName = c.contact.Name
 	} else {
 		params.Recipient = c.contact.PublicKey
 	}
 
-	return c.request(params)
+	return c.proto.Request(context.Background(), params)
 }
 
-func (c *Chat) request(params protocol.RequestOptions) error {
-	return c.proto.Request(context.Background(), params)
+// Request historic messages.
+func (c *Chat) Request(options protocol.RequestOptions) error {
+	return c.request(options)
 }
 
 // Send sends a message into the network.
@@ -259,9 +256,7 @@ func (c *Chat) readLoop(messages <-chan *protocol.Message, sub *protocol.Subscri
 				break
 			}
 
-			c.Lock()
-			c.handleMessages(m)
-			c.Unlock()
+			rearranged := c.handleMessages(m)
 
 			if err := c.saveMessages(m); err != nil {
 				c.Lock()
@@ -273,12 +268,10 @@ func (c *Chat) readLoop(messages <-chan *protocol.Message, sub *protocol.Subscri
 				return
 			}
 
-			c.events <- messageEvent{
-				baseEvent: baseEvent{
-					contact: c.contact,
-					typ:     EventTypeMessage,
-				},
-				message: m,
+			if rearranged {
+				c.onMessagesRearrange()
+			} else {
+				c.onNewMessage(m)
 			}
 		case <-sub.Done():
 			c.err = sub.Err()
@@ -298,9 +291,7 @@ func (c *Chat) readOwnMessagesLoop(messages <-chan *protocol.Message, cancel cha
 				break
 			}
 
-			c.Lock()
-			c.handleMessages(m)
-			c.Unlock()
+			rearranged := c.handleMessages(m)
 
 			if err := c.saveMessages(m); err != nil {
 				c.Lock()
@@ -312,12 +303,10 @@ func (c *Chat) readOwnMessagesLoop(messages <-chan *protocol.Message, cancel cha
 				return
 			}
 
-			c.events <- messageEvent{
-				baseEvent: baseEvent{
-					contact: c.contact,
-					typ:     EventTypeMessage,
-				},
-				message: m,
+			if rearranged {
+				c.onMessagesRearrange()
+			} else {
+				c.onNewMessage(m)
 			}
 		case <-cancel:
 			return
@@ -325,12 +314,16 @@ func (c *Chat) readOwnMessagesLoop(messages <-chan *protocol.Message, cancel cha
 	}
 }
 
-func (c *Chat) handleMessages(messages ...*protocol.Message) {
+func (c *Chat) handleMessages(messages ...*protocol.Message) (rearranged bool) {
+	c.Lock()
+	defer c.Unlock()
+
 	for _, message := range messages {
 		c.updateLastClock(message.Decoded.Clock)
 
 		hash := messageHashStr(message)
 
+		// TODO: remove from here
 		if _, ok := c.messagesByHash[hash]; ok {
 			continue
 		}
@@ -338,17 +331,39 @@ func (c *Chat) handleMessages(messages ...*protocol.Message) {
 		c.messagesByHash[hash] = message
 		c.messages = append(c.messages, message)
 
-		// TODO: send an event that the order changed
-		sort.Slice(c.messages, c.lessFn)
+		sorted := sort.SliceIsSorted(c.messages, c.lessFn)
+		log.Printf("[Chat::handleMessages] sorted = %t", sorted)
+		if !sorted {
+			sort.SliceStable(c.messages, c.lessFn)
+			rearranged = true
+		}
+	}
+
+	return
+}
+
+func (c *Chat) lessFn(i, j int) bool {
+	return c.messages[i].Decoded.Clock < c.messages[j].Decoded.Clock
+}
+
+func (c *Chat) onMessagesRearrange() {
+	log.Printf("[Chat::onMessagesRearrange] sending EventTypeRearrange")
+	c.events <- baseEvent{contact: c.contact, typ: EventTypeRearrange}
+	log.Printf("[Chat::onMessagesRearrange] sent EventTypeRearrange")
+}
+
+func (c *Chat) onNewMessage(m *protocol.Message) {
+	c.events <- messageEvent{
+		baseEvent: baseEvent{
+			contact: c.contact,
+			typ:     EventTypeMessage,
+		},
+		message: m,
 	}
 }
 
 func (c *Chat) saveMessages(messages ...*protocol.Message) error {
 	return c.db.SaveMessages(c.contact, messages)
-}
-
-func (c *Chat) lessFn(i, j int) bool {
-	return c.messages[i].Decoded.Clock < c.messages[j].Decoded.Clock
 }
 
 func (c *Chat) updateLastClock(clock int64) {

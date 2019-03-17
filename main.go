@@ -248,9 +248,22 @@ func main() {
 					Handler: CursorUpHandler,
 				},
 				Binding{
-					Key:     gocui.KeyHome,
-					Mod:     gocui.ModNone,
-					Handler: HomeHandler,
+					Key: gocui.KeyHome,
+					Mod: gocui.ModNone,
+					Handler: func(g *gocui.Gui, v *gocui.View) error {
+						params := chat.RequestOptions(true)
+
+						// RequestMessages needs to be called asynchronously,
+						// otherwise the main thread is blocked
+						// and nothing is rendered.
+						go func() {
+							if err := chat.RequestMessages(params); err != nil {
+								log.Printf("error selecting a chat: %v", err)
+							}
+						}()
+
+						return HomeHandler(g, v)
+					},
 				},
 				Binding{
 					Key:     gocui.KeyEnd,

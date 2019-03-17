@@ -24,6 +24,9 @@ type ChatViewController struct {
 
 	contact client.Contact
 
+	firstRequest protocol.RequestOptions
+	lastRequest  protocol.RequestOptions
+
 	identity  *ecdsa.PrivateKey
 	messenger *client.Messenger
 
@@ -58,7 +61,7 @@ func (c *ChatViewController) readEventsLoop() {
 			case client.EventMessage:
 				c.printMessages(false, ev.Message())
 			case client.Event:
-				if ev.Type() != client.EventTypeInit {
+				if ev.Type() != client.EventTypeInit && ev.Type() != client.EventTypeRearrange {
 					break
 				}
 
@@ -92,7 +95,25 @@ func (c *ChatViewController) Select(contact client.Contact) error {
 
 	c.contact = contact
 
-	return c.messenger.Join(contact)
+	params := protocol.DefaultRequestOptions()
+	err := c.messenger.Join(contact, params)
+	if err == nil {
+		c.updateRequests(params)
+	}
+	return err
+}
+
+func (c *ChatViewController) RequestOptions(older bool) protocol.RequestOptions {
+	params := protocol.DefaultRequestOptions()
+
+	if older && c.firstRequest != (protocol.RequestOptions{}) {
+		params.From = c.firstRequest.From - 60*60*24
+		params.To = c.firstRequest.From
+	} else if c.lastRequest != (protocol.RequestOptions{}) {
+		params.From = c.lastRequest.To
+	}
+
+	return params
 }
 
 func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) error {
@@ -105,7 +126,21 @@ func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) err
 	if chat == nil {
 		return fmt.Errorf("chat not found")
 	}
-	return chat.Request(params)
+
+	err := chat.Request(params)
+	if err == nil {
+		c.updateRequests(params)
+	}
+	return err
+}
+
+func (c *ChatViewController) updateRequests(params protocol.RequestOptions) {
+	if c.firstRequest.From == 0 || c.firstRequest.From > params.From {
+		c.firstRequest = params
+	}
+	if c.lastRequest.To < params.To {
+		c.lastRequest = params
+	}
 }
 
 func (c *ChatViewController) Send(data []byte) error {

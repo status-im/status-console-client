@@ -2,9 +2,11 @@ package client
 
 import "github.com/status-im/status-console-client/protocol/v1"
 
+// A list of available events sent from the client.
 const (
-	EventTypeInit int = iota + 1
-	EventTypeMessage
+	EventTypeInit      int = iota + 1
+	EventTypeRearrange     // messages were rearranged
+	EventTypeMessage       // a new message was appended
 	EventTypeError
 )
 
