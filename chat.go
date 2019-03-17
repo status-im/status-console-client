@@ -48,41 +48,68 @@ func (c *ChatViewController) readEventsLoop() {
 	c.done = make(chan struct{})
 	defer close(c.done)
 
+	var buffer []interface{}
+
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+
 	for {
 		log.Printf("[ChatViewController::readEventsLoops] waiting for events")
 
 		select {
+		case <-t.C:
+			chat := c.messenger.Chat(c.contact)
+			if chat == nil {
+				c.notifications.Error("getting chat", "chat does not exist") // nolint: errcheck
+				break
+			}
+
+			redraw := requiresRedraw(buffer)
+
+			log.Printf("[ChatViewController::readEventsLoops] redraw = %t", redraw)
+
+			if redraw {
+				messages := chat.Messages()
+
+				log.Printf("[ChatViewController::readEventsLoops] retrieved %d messages", len(messages))
+
+				c.printMessages(true, messages...)
+			} else {
+				for _, event := range buffer {
+					switch ev := event.(type) {
+					case client.EventMessage:
+						c.printMessages(false, ev.Message())
+					}
+				}
+			}
+
+			buffer = nil
 		case event := <-c.messenger.Events():
 			log.Printf("[ChatViewController::readEventsLoops] received an event: %+v", event)
 
 			switch ev := event.(type) {
 			case client.EventError:
 				c.notifications.Error("error", ev.Error().Error()) // nolint: errcheck
-			case client.EventMessage:
-				c.printMessages(false, ev.Message())
-			case client.Event:
-				if ev.Type() != client.EventTypeInit && ev.Type() != client.EventTypeRearrange {
-					break
-				}
-
-				chat := c.messenger.Chat(c.contact)
-				if chat == nil {
-					c.notifications.Error("getting chat", "chat does not exist") // nolint: errcheck
-					break
-				}
-
-				messages := chat.Messages()
-
-				log.Printf("[ChatViewController::readEventsLoops] retrieved %d messages", len(messages))
-
-				if messages != nil {
-					c.printMessages(true, messages...)
-				}
+			default:
+				buffer = append(buffer, event)
 			}
 		case <-c.cancel:
 			return
 		}
 	}
+}
+
+func requiresRedraw(events []interface{}) bool {
+	for _, event := range events {
+		switch ev := event.(type) {
+		case client.Event:
+			switch ev.Type() {
+			case client.EventTypeInit, client.EventTypeRearrange:
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Select informs the chat view controller about a selected contact.
