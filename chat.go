@@ -75,7 +75,9 @@ func (c *ChatViewController) readEventsLoop() {
 
 				log.Printf("[ChatViewController::readEventsLoops] retrieved %d messages", len(messages))
 
-				c.printMessages(true, messages...)
+				if messages != nil {
+					c.printMessages(true, messages...)
+				}
 			}
 		case <-c.cancel:
 			return

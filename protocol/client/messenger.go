@@ -58,7 +58,7 @@ func (m *Messenger) Join(contact Contact, params protocol.RequestOptions) error 
 		return nil
 	}
 
-	chat = NewChat(m.proto, m.identity, contact, m.db)
+	chat := NewChat(m.proto, m.identity, contact, m.db)
 	cancel := make(chan struct{})
 
 	m.Lock()
