@@ -51,7 +51,7 @@ func (m *Messenger) Chat(c Contact) *Chat {
 // Join creates a new chat and creates a subscription.
 func (m *Messenger) Join(contact Contact, params protocol.RequestOptions) error {
 	m.RLock()
-	chat, found := m.chats[contact]
+	_, found := m.chats[contact]
 	m.RUnlock()
 
 	if found {
