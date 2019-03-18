@@ -1,6 +1,8 @@
 package protocol
 
-import "sync"
+import (
+	"sync"
+)
 
 type Subscription struct {
 	sync.RWMutex
@@ -15,12 +17,17 @@ func NewSubscription() *Subscription {
 	}
 }
 
-func (s *Subscription) cancel(err error) {
+func (s *Subscription) Cancel(err error) {
 	s.Lock()
+	defer s.Unlock()
+
+	if s.done == nil {
+		return
+	}
+
 	close(s.done)
 	s.done = nil
 	s.err = err
-	s.Unlock()
 }
 
 func (s *Subscription) Unsubscribe() {

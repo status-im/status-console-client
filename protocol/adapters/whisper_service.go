@@ -1,4 +1,4 @@
-package protocol
+package adapters
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/status-im/status-console-client/protocol/v1"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/services/shhext"
 	"github.com/status-im/status-go/t/helpers"
@@ -27,7 +28,7 @@ type WhisperServiceAdapter struct {
 }
 
 // WhisperServiceAdapter must implement Chat interface.
-var _ Chat = (*WhisperServiceAdapter)(nil)
+var _ protocol.Chat = (*WhisperServiceAdapter)(nil)
 
 // NewWhisperServiceAdapter returns a new WhisperServiceAdapter.
 func NewWhisperServiceAdapter(node *node.StatusNode, shh *whisper.Whisper) *WhisperServiceAdapter {
@@ -37,12 +38,12 @@ func NewWhisperServiceAdapter(node *node.StatusNode, shh *whisper.Whisper) *Whis
 	}
 }
 
-// SubscribePublicChat subscribes to a public chat using the Whisper service.
+// Subscribe subscribes to a public chat using the Whisper service.
 func (a *WhisperServiceAdapter) Subscribe(
 	ctx context.Context,
-	in chan<- *Message,
-	options SubscribeOptions,
-) (*Subscription, error) {
+	in chan<- *protocol.Message,
+	options protocol.SubscribeOptions,
+) (*protocol.Subscription, error) {
 	if err := options.Validate(); err != nil {
 		return nil, err
 	}
@@ -58,7 +59,7 @@ func (a *WhisperServiceAdapter) Subscribe(
 	}
 
 	subWhisper := newWhisperSubscription(a.shh, filterID)
-	sub := NewSubscription()
+	sub := protocol.NewSubscription()
 
 	go func() {
 		defer subWhisper.Unsubscribe() // nolint: errcheck
@@ -71,7 +72,7 @@ func (a *WhisperServiceAdapter) Subscribe(
 			case <-t.C:
 				messages, err := subWhisper.Messages()
 				if err != nil {
-					sub.cancel(err)
+					sub.Cancel(err)
 					return
 				}
 
@@ -91,7 +92,7 @@ func (a *WhisperServiceAdapter) Subscribe(
 	return sub, nil
 }
 
-func (a *WhisperServiceAdapter) createFilter(opts SubscribeOptions) (*whisper.Filter, error) {
+func (a *WhisperServiceAdapter) createFilter(opts protocol.SubscribeOptions) (*whisper.Filter, error) {
 	filter := whisper.Filter{
 		PoW:      0,
 		AllowP2P: true,
@@ -131,7 +132,7 @@ func (a *WhisperServiceAdapter) createFilter(opts SubscribeOptions) (*whisper.Fi
 func (a *WhisperServiceAdapter) Send(
 	ctx context.Context,
 	data []byte,
-	options SendOptions,
+	options protocol.SendOptions,
 ) ([]byte, error) {
 	if err := options.Validate(); err != nil {
 		return nil, err
@@ -147,7 +148,7 @@ func (a *WhisperServiceAdapter) Send(
 	return shhAPI.Post(ctx, newMessage)
 }
 
-func (a *WhisperServiceAdapter) createNewMessage(data []byte, options SendOptions) (message whisper.NewMessage, err error) {
+func (a *WhisperServiceAdapter) createNewMessage(data []byte, options protocol.SendOptions) (message whisper.NewMessage, err error) {
 	// TODO: add cache
 	keyID, err := a.shh.AddKeyPair(options.Identity)
 	if err != nil {
@@ -182,7 +183,7 @@ func (a *WhisperServiceAdapter) createNewMessage(data []byte, options SendOption
 }
 
 // Request requests messages from mail servers.
-func (a *WhisperServiceAdapter) Request(ctx context.Context, options RequestOptions) error {
+func (a *WhisperServiceAdapter) Request(ctx context.Context, options protocol.RequestOptions) error {
 	if err := options.Validate(); err != nil {
 		return err
 	}
@@ -229,7 +230,7 @@ func (a *WhisperServiceAdapter) selectAndAddMailServer() (string, error) {
 	return enode, err
 }
 
-func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode string, params RequestOptions) (resp shhext.MessagesResponse, err error) {
+func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode string, params protocol.RequestOptions) (resp shhext.MessagesResponse, err error) {
 	shhextService, err := a.node.ShhExtService()
 	if err != nil {
 		return
@@ -250,7 +251,7 @@ func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, enode strin
 
 func (a *WhisperServiceAdapter) createMessagesRequest(
 	enode string,
-	params RequestOptions,
+	params protocol.RequestOptions,
 ) (req shhext.MessagesRequest, err error) {
 	mailSymKeyID, err := a.shh.AddSymKeyFromPassword(MailServerPassword)
 	if err != nil {
@@ -294,23 +295,23 @@ func newWhisperSubscription(shh *whisper.Whisper, filterID string) *whisperSubsc
 }
 
 // Messages retrieves a list of messages for a given filter.
-func (s whisperSubscription) Messages() ([]*Message, error) {
+func (s whisperSubscription) Messages() ([]*protocol.Message, error) {
 	f := s.shh.GetFilter(s.filterID)
 	if f == nil {
 		return nil, errors.New("filter does not exist")
 	}
 
 	items := f.Retrieve()
-	result := make([]*Message, 0, len(items))
+	result := make([]*protocol.Message, 0, len(items))
 
 	for _, item := range items {
-		decoded, err := DecodeMessage(item.Payload)
+		decoded, err := protocol.DecodeMessage(item.Payload)
 		if err != nil {
 			log.Printf("failed to decode message: %v", err)
 			continue
 		}
 
-		result = append(result, &Message{
+		result = append(result, &protocol.Message{
 			Decoded:   decoded,
 			Hash:      item.EnvelopeHash.Bytes(),
 			SigPubKey: item.SigToPubKey(),

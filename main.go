@@ -15,6 +15,7 @@ import (
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
+	"github.com/status-im/status-console-client/protocol/adapters"
 	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/v1"
 	"github.com/status-im/status-go/node"
@@ -88,7 +89,7 @@ func main() {
 			exitErr(errors.Wrap(err, "failed to generate node config"))
 		}
 
-		chatAdapter = protocol.NewWhisperClientAdapter(rpc, nodeConfig.ClusterConfig.TrustedMailServers)
+		chatAdapter = adapters.NewWhisperClientAdapter(rpc, nodeConfig.ClusterConfig.TrustedMailServers)
 	} else {
 		// collect mail server request signals
 		signalsForwarder := newSignalForwarder()
@@ -115,7 +116,7 @@ func main() {
 			exitErr(errors.Wrap(err, "failed to get Whisper service"))
 		}
 
-		chatAdapter = protocol.NewWhisperServiceAdapter(statusNode, shhService)
+		chatAdapter = adapters.NewWhisperServiceAdapter(statusNode, shhService)
 	}
 
 	var err error
