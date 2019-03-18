@@ -1,4 +1,4 @@
-package protocol
+package adapters
 
 import (
 	"math/rand"

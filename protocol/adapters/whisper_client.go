@@ -1,4 +1,4 @@
-package protocol
+package adapters
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/status-im/status-console-client/protocol/v1"
 	"github.com/status-im/status-go/services/shhext"
 	"github.com/status-im/whisper/shhclient"
 	whisper "github.com/status-im/whisper/whisperv6"
@@ -28,7 +29,7 @@ type WhisperClientAdapter struct {
 }
 
 // WhisperClientAdapter must implement Chat interface.
-var _ Chat = (*WhisperClientAdapter)(nil)
+var _ protocol.Chat = (*WhisperClientAdapter)(nil)
 
 // NewWhisperClientAdapter returns a new WhisperClientAdapter.
 func NewWhisperClientAdapter(c *rpc.Client, mailServers []string) *WhisperClientAdapter {
@@ -40,13 +41,13 @@ func NewWhisperClientAdapter(c *rpc.Client, mailServers []string) *WhisperClient
 	}
 }
 
-// SubscribePublicChat subscribes to a public channel.
+// Subscribe subscribes to a public channel.
 // in channel is used to receive messages.
 func (a *WhisperClientAdapter) Subscribe(
 	ctx context.Context,
-	in chan<- *Message,
-	options SubscribeOptions,
-) (*Subscription, error) {
+	in chan<- *protocol.Message,
+	options protocol.SubscribeOptions,
+) (*protocol.Subscription, error) {
 	criteria := whisper.Criteria{
 		MinPow:   0,    // TODO: set it to proper value
 		AllowP2P: true, // messages from mail server are direct p2p messages
@@ -84,15 +85,15 @@ func (a *WhisperClientAdapter) Subscribe(
 func (a *WhisperClientAdapter) subscribeMessages(
 	ctx context.Context,
 	crit whisper.Criteria,
-	in chan<- *Message,
-) (*Subscription, error) {
+	in chan<- *protocol.Message,
+) (*protocol.Subscription, error) {
 	messages := make(chan *whisper.Message)
 	shhSub, err := a.shhClient.SubscribeMessages(ctx, crit, messages)
 	if err != nil {
 		return nil, err
 	}
 
-	sub := NewSubscription()
+	sub := protocol.NewSubscription()
 
 	go func() {
 		defer shhSub.Unsubscribe()
@@ -100,7 +101,7 @@ func (a *WhisperClientAdapter) subscribeMessages(
 		for {
 			select {
 			case raw := <-messages:
-				m, err := DecodeMessage(raw.Payload)
+				m, err := protocol.DecodeMessage(raw.Payload)
 				if err != nil {
 					log.Printf("failed to decode message: %v", err)
 					break
@@ -112,12 +113,12 @@ func (a *WhisperClientAdapter) subscribeMessages(
 					break
 				}
 
-				in <- &Message{
+				in <- &protocol.Message{
 					Decoded:   m,
 					SigPubKey: sigPubKey,
 				}
 			case err := <-shhSub.Err():
-				sub.cancel(err)
+				sub.Cancel(err)
 				return
 			case <-sub.Done():
 				return
@@ -128,13 +129,13 @@ func (a *WhisperClientAdapter) subscribeMessages(
 	return sub, nil
 }
 
-// SendPublicMessage sends a new message to a public chat.
+// Send sends a new message to a public chat.
 // Identity is required to sign a message as only signed messages
 // are accepted and displayed.
 func (a *WhisperClientAdapter) Send(
 	ctx context.Context,
 	data []byte,
-	options SendOptions,
+	options protocol.SendOptions,
 ) ([]byte, error) {
 	identityID, err := a.shhClient.AddPrivateKey(ctx, crypto.FromECDSA(options.Identity))
 	if err != nil {
@@ -179,7 +180,7 @@ func (a *WhisperClientAdapter) Send(
 }
 
 // Request sends a request to MailServer for historic messages.
-func (a *WhisperClientAdapter) Request(ctx context.Context, params RequestOptions) error {
+func (a *WhisperClientAdapter) Request(ctx context.Context, params protocol.RequestOptions) error {
 	enode, err := a.addMailServer(ctx)
 	if err != nil {
 		return err
@@ -217,7 +218,7 @@ func (a *WhisperClientAdapter) addMailServer(ctx context.Context) (string, error
 	return enode, nil
 }
 
-func (a *WhisperClientAdapter) requestMessages(ctx context.Context, enode string, params RequestOptions) error {
+func (a *WhisperClientAdapter) requestMessages(ctx context.Context, enode string, params protocol.RequestOptions) error {
 	log.Printf("requesting messages from node %s", enode)
 
 	req, err := a.createMessagesRequest(enode, params)
@@ -230,7 +231,7 @@ func (a *WhisperClientAdapter) requestMessages(ctx context.Context, enode string
 
 func (a *WhisperClientAdapter) createMessagesRequest(
 	enode string,
-	params RequestOptions,
+	params protocol.RequestOptions,
 ) (req shhext.MessagesRequest, err error) {
 	mailSymKeyID, err := a.getOrAddSymKey(context.Background(), MailServerPassword)
 	if err != nil {

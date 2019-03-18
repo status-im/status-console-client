@@ -1,4 +1,4 @@
-package protocol
+package adapters
 
 import (
 	whisper "github.com/status-im/whisper/whisperv6"
