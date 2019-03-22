@@ -33,8 +33,8 @@ type StatusMessage struct {
 	Text      string // TODO: why is this duplicated?
 	ContentT  string
 	MessageT  string
-	Clock     int64
-	Timestamp int64
+	Clock     int64 // in milliseconds; see CalcMessageClock for more details
+	Timestamp int64 // in milliseconds
 	Content   StatusMessageContent
 }
 

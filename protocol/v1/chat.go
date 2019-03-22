@@ -7,22 +7,17 @@ import (
 	"time"
 )
 
+// Chat is an interface defining basic methods to receive and send messages.
 type Chat interface {
-	Subscribe(
-		ctx context.Context,
-		messages chan<- *Message,
-		options SubscribeOptions,
-	) (*Subscription, error)
+	// Subscribe listens to new messages.
+	Subscribe(ctx context.Context, messages chan<- *Message, options SubscribeOptions) (*Subscription, error)
 
 	// Send sends a message to the network.
 	// Identity is required as the protocol requires
 	// all messages to be signed.
-	Send(
-		ctx context.Context,
-		data []byte,
-		options SendOptions,
-	) ([]byte, error)
+	Send(ctx context.Context, data []byte, options SendOptions) ([]byte, error)
 
+	// Request retrieves historic messages.
 	Request(ctx context.Context, params RequestOptions) error
 }
 
@@ -31,85 +26,40 @@ type Chat interface {
 // about the message.
 type Message struct {
 	Decoded   StatusMessage
-	Hash      []byte
 	SigPubKey *ecdsa.PublicKey
+	Hash      []byte
 }
-
-// type receivedMessageGob struct {
-// 	Decoded   StatusMessage
-// 	Hash      []byte
-// 	SigPubKey []byte
-// }
-
-// func (m *ReceivedMessage) GobEncode() ([]byte, error) {
-// 	val := receivedMessageGob{
-// 		Decoded: m.Decoded,
-// 		Hash:    m.Hash,
-// 	}
-
-// 	if m.SigPubKey != nil {
-// 		val.SigPubKey = crypto.FromECDSAPub(m.SigPubKey)
-// 	}
-
-// 	fmt.Printf("GobEncode: %+v", val)
-
-// 	var buf bytes.Buffer
-
-// 	enc := gob.NewEncoder(&buf)
-// 	if err := enc.Encode(&val); err != nil {
-// 		return nil, err
-// 	}
-
-// 	return buf.Bytes(), nil
-// }
-
-// func (m *ReceivedMessage) GobDecode(data []byte) error {
-// 	var val receivedMessageGob
-
-// 	buf := bytes.NewBuffer(data)
-// 	enc := gob.NewDecoder(buf)
-// 	if err := enc.Decode(&val); err != nil {
-// 		return err
-// 	}
-
-// 	var err error
-
-// 	m.Decoded = val.Decoded
-// 	m.Hash = val.Hash
-// 	if val.SigPubKey != nil {
-// 		m.SigPubKey, err = crypto.UnmarshalPubkey(val.SigPubKey)
-// 	}
-
-// 	fmt.Printf("GobDecode: %+v", val)
-
-// 	return err
-// }
 
 // RequestOptions is a list of params required
 // to request for historic messages.
 type RequestOptions struct {
+	Limit int
+	From  int64
+	To    int64
+
 	ChatName  string           // for public chats
 	Recipient *ecdsa.PublicKey // for private chats
-	Limit     int
-	From      int64
-	To        int64
 }
 
+// Validate verifies that the given request options are valid.
 func (o RequestOptions) Validate() error {
 	if o == (RequestOptions{}) {
-		return errors.New("empty request messages options")
+		return errors.New("empty options")
 	}
 	if o.ChatName == "" && o.Recipient == nil {
-		return errors.New("chat name or recipient is required")
+		return errors.New("field ChatName or Recipient is required")
 	}
 	if o.ChatName != "" && o.Recipient != nil {
-		return errors.New("chat name and recipient both set")
+		return errors.New("field ChatName and Recipient both set")
 	}
 	return nil
 }
 
+// IsPublic returns true if RequestOptions are for a public chat.
 func (o RequestOptions) IsPublic() bool { return o.ChatName != "" }
 
+// DefaultRequestOptions returns default options returning messages
+// from the last 24 hours.
 func DefaultRequestOptions() RequestOptions {
 	return RequestOptions{
 		From:  time.Now().Add(-24 * time.Hour).Unix(),
@@ -118,40 +68,47 @@ func DefaultRequestOptions() RequestOptions {
 	}
 }
 
+// SubscribeOptions are options for Chat.Subscribe method.
 type SubscribeOptions struct {
 	Identity *ecdsa.PrivateKey // for private chats
 	ChatName string            // for public chats
 }
 
+// Validate vierifies that the given options are valid.
 func (o SubscribeOptions) Validate() error {
 	if o == (SubscribeOptions{}) {
-		return errors.New("empty subscribe options")
+		return errors.New("empty options")
 	}
 	if o.Identity != nil && o.ChatName != "" {
-		return errors.New("identity and chat name both set")
+		return errors.New("fields Identity and ChatName both set")
 	}
 	return nil
 }
 
+// IsPublic returns true if SubscribeOptions are for a public chat.
 func (o SubscribeOptions) IsPublic() bool { return o.ChatName != "" }
 
+// SendOptions are options for Chat.Send.
 type SendOptions struct {
-	Identity  *ecdsa.PrivateKey
+	Identity *ecdsa.PrivateKey
+
 	ChatName  string           // for public chats
 	Recipient *ecdsa.PublicKey // for private chats
 }
 
+// Validate verifies that the given options are valid.
 func (o SendOptions) Validate() error {
 	if o.Identity == nil {
-		return errors.New("identity is required")
+		return errors.New("field Identity is required")
 	}
 	if o.ChatName == "" && o.Recipient == nil {
-		return errors.New("chat name or recipient is required")
+		return errors.New("field ChatName or Recipient is required")
 	}
 	if o.ChatName != "" && o.Recipient != nil {
-		return errors.New("chat name and recipient both set")
+		return errors.New("fields ChatName and Recipient both set")
 	}
 	return nil
 }
 
+// IsPublic returns true if SendOptions are for a public chat.
 func (o SendOptions) IsPublic() bool { return o.ChatName != "" }
