@@ -46,10 +46,3 @@ type messageEvent struct {
 }
 
 func (e messageEvent) Message() *protocol.Message { return e.message }
-
-// type eventError struct {
-// 	Event
-// 	err error
-// }
-
-// func (e eventError) Error() error { return e.err }
