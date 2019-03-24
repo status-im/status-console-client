@@ -2,37 +2,59 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/jroimartin/gocui"
 )
 
-// TODO: it's not enough. The gocui view should be updated,
-// i.e. wrapped in a callback.
-type Notifications struct {
-	writer io.Writer
+type NotificationViewController struct {
+	*ViewController
 }
 
-func (n *Notifications) Debug(title, message string) error {
+func NewNotificationViewController(vc *ViewController) *NotificationViewController {
+	return &NotificationViewController{
+		ViewController: vc,
+	}
+}
+
+func (n *NotificationViewController) Debug(title, message string) error {
+	if err := n.vm.EnableView(n.viewName); err != nil {
+		return err
+	}
+
 	str := fmt.Sprintf(
 		"%s | %s | %s",
 		title,
 		time.Now().Format(time.RFC822),
 		strings.TrimSpace(message),
 	)
-	_, err := color.New(color.FgYellow).Fprintln(n.writer, str)
-	return err
+
+	n.g.Update(func(*gocui.Gui) error {
+		_, err := color.New(color.FgYellow).Fprintln(n.ViewController, str)
+		return err
+	})
+
+	return nil
 }
 
-func (n *Notifications) Error(title, message string) error {
+func (n *NotificationViewController) Error(title, message string) error {
+	if err := n.vm.EnableView(n.viewName); err != nil {
+		return err
+	}
+
 	str := fmt.Sprintf(
 		"%s | %s | %s",
 		title,
 		time.Now().Format(time.RFC822),
 		strings.TrimSpace(message),
 	)
-	_, err := color.New(color.FgRed).Fprintln(n.writer, str)
-	return err
+
+	n.g.Update(func(*gocui.Gui) error {
+		_, err := color.New(color.FgRed).Fprintln(n.ViewController, str)
+		return err
+	})
+
+	return nil
 }

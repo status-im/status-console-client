@@ -20,8 +20,6 @@ import (
 type ChatViewController struct {
 	*ViewController
 
-	notifications *Notifications
-
 	contact client.Contact
 
 	firstRequest protocol.RequestOptions
@@ -38,7 +36,6 @@ type ChatViewController struct {
 func NewChatViewController(vc *ViewController, id Identity, m *client.Messenger) (*ChatViewController, error) {
 	return &ChatViewController{
 		ViewController: vc,
-		notifications:  &Notifications{writer: vc},
 		identity:       id,
 		messenger:      m,
 	}, nil
@@ -54,19 +51,15 @@ func (c *ChatViewController) readEventsLoop() {
 	defer t.Stop()
 
 	for {
-		log.Printf("[ChatViewController::readEventsLoops] waiting for events")
-
 		select {
 		case <-t.C:
 			chat := c.messenger.Chat(c.contact)
 			if chat == nil {
-				c.notifications.Error("getting chat", "chat does not exist") // nolint: errcheck
+				// TODO: handle this
 				break
 			}
 
 			redraw := requiresRedraw(buffer)
-
-			log.Printf("[ChatViewController::readEventsLoops] redraw = %t", redraw)
 
 			if redraw {
 				messages := chat.Messages()
@@ -87,9 +80,9 @@ func (c *ChatViewController) readEventsLoop() {
 		case event := <-c.messenger.Events():
 			log.Printf("[ChatViewController::readEventsLoops] received an event: %+v", event)
 
-			switch ev := event.(type) {
+			switch event.(type) {
 			case client.EventError:
-				c.notifications.Error("error", ev.Error().Error()) // nolint: errcheck
+				// TODO: handle ev.Error()
 			default:
 				buffer = append(buffer, event)
 			}
@@ -146,11 +139,6 @@ func (c *ChatViewController) RequestOptions(older bool) protocol.RequestOptions 
 }
 
 func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) error {
-	c.notifications.Debug( // nolint: errcheck
-		"REQUEST",
-		fmt.Sprintf("get historic messages: %+v", params),
-	)
-
 	chat := c.messenger.Chat(c.contact)
 	if chat == nil {
 		return fmt.Errorf("chat not found")
@@ -206,6 +194,7 @@ func (c *ChatViewController) writeMessage(message *protocol.Message) error {
 	line := formatMessageLine(
 		pubKey,
 		message.Hash,
+		message.Decoded.Clock,
 		time.Unix(message.Decoded.Timestamp/1000, 0),
 		message.Decoded.Text,
 	)
@@ -223,15 +212,16 @@ func (c *ChatViewController) writeMessage(message *protocol.Message) error {
 	return nil
 }
 
-func formatMessageLine(id *ecdsa.PublicKey, hash []byte, t time.Time, text string) string {
+func formatMessageLine(id *ecdsa.PublicKey, hash []byte, clock int64, t time.Time, text string) string {
 	author := "<unknown>"
 	if id != nil {
 		author = "0x" + hex.EncodeToString(crypto.CompressPubkey(id))[:7]
 	}
 	return fmt.Sprintf(
-		"%s | %#+x | %s | %s",
+		"%s | %#+x | %d | %s | %s",
 		author,
 		hash[:3],
+		clock,
 		t.Format(time.RFC822),
 		strings.TrimSpace(text),
 	)

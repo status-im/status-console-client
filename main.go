@@ -170,6 +170,8 @@ func main() {
 		exitErr(err)
 	}
 
+	notifications := NewNotificationViewController(&ViewController{vm, g, ViewNotification})
+
 	inputMultiplexer := NewInputMultiplexer()
 	inputMultiplexer.AddHandler(DefaultMultiplexerPrefix, func(b []byte) error {
 		log.Printf("default multiplexer handler")
@@ -181,6 +183,7 @@ func main() {
 	views := []*View{
 		&View{
 			Name:       ViewContacts,
+			Enabled:    true,
 			Cursor:     true,
 			Highlight:  true,
 			SelBgColor: gocui.ColorGreen,
@@ -225,6 +228,7 @@ func main() {
 		},
 		&View{
 			Name:       ViewChat,
+			Enabled:    true,
 			Cursor:     true,
 			Autoscroll: false,
 			Highlight:  true,
@@ -254,12 +258,16 @@ func main() {
 					Handler: func(g *gocui.Gui, v *gocui.View) error {
 						params := chat.RequestOptions(true)
 
+						if err := notifications.Debug("Request", fmt.Sprintf("options = %+v", params)); err != nil {
+							return err
+						}
+
 						// RequestMessages needs to be called asynchronously,
 						// otherwise the main thread is blocked
 						// and nothing is rendered.
 						go func() {
 							if err := chat.RequestMessages(params); err != nil {
-								log.Printf("error selecting a chat: %v", err)
+								log.Printf("error requesting messages: %v", err)
 							}
 						}()
 
@@ -272,15 +280,10 @@ func main() {
 					Handler: EndHandler,
 				},
 			},
-			OnActivate: func(self *View) {
-				self.Autoscroll = false
-			},
-			OnDeactivate: func(self *View) {
-				self.Autoscroll = true
-			},
 		},
 		&View{
 			Name:      ViewInput,
+			Enabled:   true,
 			Editable:  true,
 			Cursor:    true,
 			Highlight: true,
@@ -300,6 +303,38 @@ func main() {
 					Key:     gocui.KeyEnter,
 					Mod:     gocui.ModAlt,
 					Handler: MoveToNewLineHandler,
+				},
+			},
+		},
+		&View{
+			Name:      ViewNotification,
+			Enabled:   false,
+			Editable:  false,
+			Cursor:    false,
+			Highlight: true,
+			TopLeft: func(maxX, maxY int) (int, int) {
+				return maxX/2 - 50, maxY / 2
+			},
+			BottomRight: func(maxX, maxY int) (int, int) {
+				return maxX/2 + 50, maxY/2 + 2
+			},
+			Keybindings: []Binding{
+				Binding{
+					Key: gocui.KeyEnter,
+					Mod: gocui.ModNone,
+					Handler: func(g *gocui.Gui, v *gocui.View) error {
+						log.Printf("Notification Enter binding")
+
+						if err := vm.DisableView(ViewNotification); err != nil {
+							return err
+						}
+
+						if err := vm.DeleteView(ViewNotification); err != nil {
+							return err
+						}
+
+						return nil
+					},
 				},
 			},
 		},
