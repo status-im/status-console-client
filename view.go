@@ -93,15 +93,6 @@ func (m *ViewManager) setKeybindings(viewName string, bindings []Binding) error 
 	return nil
 }
 
-func (m *ViewManager) deleteKeybindings(viewName string, bindings []Binding) error {
-	for _, b := range bindings {
-		if err := m.g.DeleteKeybinding(viewName, b.Key, b.Mod); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // SetGlobalKeybindings sets a global key bindings which work from each view.
 func (m *ViewManager) SetGlobalKeybindings(bindings []Binding) error {
 	globalKeybindingsViewName := ""
@@ -194,13 +185,6 @@ func (m *ViewManager) DeleteView(name string) error {
 	m.g.DeleteKeybindings(name)
 
 	return nil
-}
-
-func (m *ViewManager) currentViewName() (name string) {
-	if currentView := m.g.CurrentView(); currentView != nil {
-		name = currentView.Name()
-	}
-	return
 }
 
 func (m *ViewManager) setCurrentView(name string) (*gocui.View, error) {
