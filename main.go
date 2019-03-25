@@ -137,16 +137,18 @@ func main() {
 	}
 	// TODO: close the database properly
 
+	notifications := NewNotificationViewController(&ViewController{vm, g, ViewNotification})
+
 	messenger := client.NewMessenger(chatAdapter, privateKey, db)
 
-	chat, err := NewChatViewController(
+	chat := NewChatViewController(
 		&ViewController{vm, g, ViewChat},
 		privateKey,
 		messenger,
+		func(err error) {
+			_ = notifications.Error("Chat error", fmt.Sprintf("%v", err))
+		},
 	)
-	if err != nil {
-		exitErr(err)
-	}
 
 	adambContact, err := client.ContactWithPublicKey("adamb", "0x0493ac727e70ea62c4428caddf4da301ca67b699577988d6a782898acfd813addf79b2a2ca2c411499f2e0a12b7de4d00574cbddb442bec85789aea36b10f46895")
 	if err != nil {
@@ -169,8 +171,6 @@ func main() {
 	if err := contacts.Load(); err != nil {
 		exitErr(err)
 	}
-
-	notifications := NewNotificationViewController(&ViewController{vm, g, ViewNotification})
 
 	inputMultiplexer := NewInputMultiplexer()
 	inputMultiplexer.AddHandler(DefaultMultiplexerPrefix, func(b []byte) error {
@@ -258,7 +258,7 @@ func main() {
 					Handler: func(g *gocui.Gui, v *gocui.View) error {
 						params := chat.RequestOptions(true)
 
-						if err := notifications.Debug("Request", fmt.Sprintf("options = %+v", params)); err != nil {
+						if err := notifications.Debug("Messages request", fmt.Sprintf("%v", params)); err != nil {
 							return err
 						}
 
@@ -267,7 +267,7 @@ func main() {
 						// and nothing is rendered.
 						go func() {
 							if err := chat.RequestMessages(params); err != nil {
-								log.Printf("error requesting messages: %v", err)
+								_ = notifications.Error("Request failed", fmt.Sprintf("%v", err))
 							}
 						}()
 

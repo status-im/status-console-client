@@ -28,17 +28,20 @@ type ChatViewController struct {
 	identity  *ecdsa.PrivateKey
 	messenger *client.Messenger
 
+	onError func(error)
+
 	cancel chan struct{} // cancel the current chat loop
 	done   chan struct{} // wait for the current chat loop to finish
 }
 
 // NewChatViewController returns a new chat view controller.
-func NewChatViewController(vc *ViewController, id Identity, m *client.Messenger) (*ChatViewController, error) {
+func NewChatViewController(vc *ViewController, id Identity, m *client.Messenger, onError func(error)) *ChatViewController {
 	return &ChatViewController{
 		ViewController: vc,
 		identity:       id,
 		messenger:      m,
-	}, nil
+		onError:        onError,
+	}
 }
 
 func (c *ChatViewController) readEventsLoop() {
@@ -55,7 +58,7 @@ func (c *ChatViewController) readEventsLoop() {
 		case <-t.C:
 			chat := c.messenger.Chat(c.contact)
 			if chat == nil {
-				// TODO: handle this
+				c.onError(fmt.Errorf("no chat for contact '%s'", c.contact))
 				break
 			}
 
@@ -80,9 +83,9 @@ func (c *ChatViewController) readEventsLoop() {
 		case event := <-c.messenger.Events():
 			log.Printf("[ChatViewController::readEventsLoops] received an event: %+v", event)
 
-			switch event.(type) {
+			switch ev := event.(type) {
 			case client.EventError:
-				// TODO: handle ev.Error()
+				c.onError(ev.Error())
 			default:
 				buffer = append(buffer, event)
 			}
