@@ -137,16 +137,18 @@ func main() {
 	}
 	// TODO: close the database properly
 
+	notifications := NewNotificationViewController(&ViewController{vm, g, ViewNotification})
+
 	messenger := client.NewMessenger(chatAdapter, privateKey, db)
 
-	chat, err := NewChatViewController(
+	chat := NewChatViewController(
 		&ViewController{vm, g, ViewChat},
 		privateKey,
 		messenger,
+		func(err error) {
+			_ = notifications.Error("Chat error", fmt.Sprintf("%v", err))
+		},
 	)
-	if err != nil {
-		exitErr(err)
-	}
 
 	adambContact, err := client.ContactWithPublicKey("adamb", "0x0493ac727e70ea62c4428caddf4da301ca67b699577988d6a782898acfd813addf79b2a2ca2c411499f2e0a12b7de4d00574cbddb442bec85789aea36b10f46895")
 	if err != nil {
@@ -181,6 +183,7 @@ func main() {
 	views := []*View{
 		&View{
 			Name:       ViewContacts,
+			Enabled:    true,
 			Cursor:     true,
 			Highlight:  true,
 			SelBgColor: gocui.ColorGreen,
@@ -225,6 +228,7 @@ func main() {
 		},
 		&View{
 			Name:       ViewChat,
+			Enabled:    true,
 			Cursor:     true,
 			Autoscroll: false,
 			Highlight:  true,
@@ -254,12 +258,16 @@ func main() {
 					Handler: func(g *gocui.Gui, v *gocui.View) error {
 						params := chat.RequestOptions(true)
 
+						if err := notifications.Debug("Messages request", fmt.Sprintf("%v", params)); err != nil {
+							return err
+						}
+
 						// RequestMessages needs to be called asynchronously,
 						// otherwise the main thread is blocked
 						// and nothing is rendered.
 						go func() {
 							if err := chat.RequestMessages(params); err != nil {
-								log.Printf("error selecting a chat: %v", err)
+								_ = notifications.Error("Request failed", fmt.Sprintf("%v", err))
 							}
 						}()
 
@@ -272,15 +280,10 @@ func main() {
 					Handler: EndHandler,
 				},
 			},
-			OnActivate: func(self *View) {
-				self.Autoscroll = false
-			},
-			OnDeactivate: func(self *View) {
-				self.Autoscroll = true
-			},
 		},
 		&View{
 			Name:      ViewInput,
+			Enabled:   true,
 			Editable:  true,
 			Cursor:    true,
 			Highlight: true,
@@ -300,6 +303,38 @@ func main() {
 					Key:     gocui.KeyEnter,
 					Mod:     gocui.ModAlt,
 					Handler: MoveToNewLineHandler,
+				},
+			},
+		},
+		&View{
+			Name:      ViewNotification,
+			Enabled:   false,
+			Editable:  false,
+			Cursor:    false,
+			Highlight: true,
+			TopLeft: func(maxX, maxY int) (int, int) {
+				return maxX/2 - 50, maxY / 2
+			},
+			BottomRight: func(maxX, maxY int) (int, int) {
+				return maxX/2 + 50, maxY/2 + 2
+			},
+			Keybindings: []Binding{
+				Binding{
+					Key: gocui.KeyEnter,
+					Mod: gocui.ModNone,
+					Handler: func(g *gocui.Gui, v *gocui.View) error {
+						log.Printf("Notification Enter binding")
+
+						if err := vm.DisableView(ViewNotification); err != nil {
+							return err
+						}
+
+						if err := vm.DeleteView(ViewNotification); err != nil {
+							return err
+						}
+
+						return nil
+					},
 				},
 			},
 		},

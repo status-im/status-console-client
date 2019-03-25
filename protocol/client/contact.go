@@ -23,6 +23,11 @@ type Contact struct {
 	PublicKey *ecdsa.PublicKey
 }
 
+// String returns a string representation of Contact.
+func (c Contact) String() string {
+	return c.Name
+}
+
 // ContactWithPublicKey creates a new private contact.
 func ContactWithPublicKey(name, pubKeyHex string) (c Contact, err error) {
 	c.Name = name

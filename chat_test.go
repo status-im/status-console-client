@@ -55,9 +55,7 @@ func TestSendMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	messenger := client.NewMessenger(&chatMock, nil, db)
-
-	vc, err := NewChatViewController(nil, nil, messenger)
-	require.NoError(t, err)
+	vc := NewChatViewController(nil, nil, messenger, nil)
 
 	err = vc.Select(client.Contact{Name: chatName, Type: client.ContactPublicChat})
 	require.NoError(t, err)

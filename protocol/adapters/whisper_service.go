@@ -251,7 +251,7 @@ func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, req shhext.
 		return
 	}
 
-	if !followCursor {
+	if !followCursor || req.Cursor == "" {
 		return
 	}
 

@@ -72,8 +72,6 @@ func (m *Messenger) Join(contact Contact, params protocol.RequestOptions) error 
 }
 
 func (m *Messenger) chatEventsLoop(chat *Chat, contact Contact, cancel chan struct{}) {
-	log.Printf("[Messenger::Join] waiting for events")
-
 LOOP:
 	for {
 		select {

@@ -12,7 +12,7 @@ type ViewController struct {
 }
 
 func (c *ViewController) view() (*gocui.View, error) {
-	return c.vm.View(c.viewName)
+	return c.vm.RawView(c.viewName)
 }
 
 // Write writes a payload to the view.
@@ -33,11 +33,11 @@ func (c *ViewController) Clear() error {
 
 	v.Clear()
 
-	if err := v.SetCursor(0, 0); err != nil {
+	if err := v.SetOrigin(0, 0); err != nil {
 		return err
 	}
 
-	if err := v.SetOrigin(0, 0); err != nil {
+	if err := v.SetCursor(0, 0); err != nil {
 		return err
 	}
 
