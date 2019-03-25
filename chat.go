@@ -36,6 +36,10 @@ type ChatViewController struct {
 
 // NewChatViewController returns a new chat view controller.
 func NewChatViewController(vc *ViewController, id Identity, m *client.Messenger, onError func(error)) *ChatViewController {
+	if onError == nil {
+		onError = func(error) {}
+	}
+
 	return &ChatViewController{
 		ViewController: vc,
 		identity:       id,
