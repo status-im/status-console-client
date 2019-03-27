@@ -3,6 +3,8 @@ package protocol
 import (
 	"bytes"
 	"errors"
+	"strings"
+	"time"
 )
 
 const (
@@ -36,6 +38,32 @@ type StatusMessage struct {
 	Clock     int64 // in milliseconds; see CalcMessageClock for more details
 	Timestamp int64 // in milliseconds
 	Content   StatusMessageContent
+}
+
+// CreateTextStatusMessage creates a StatusMessage.
+func CreateTextStatusMessage(data []byte, lastClock int64, chatID, messageType string) StatusMessage {
+	text := strings.TrimSpace(string(data))
+	ts := time.Now().Unix() * 1000
+	clock := CalcMessageClock(lastClock, ts)
+
+	return StatusMessage{
+		Text:      text,
+		ContentT:  ContentTypeTextPlain,
+		MessageT:  messageType,
+		Clock:     clock,
+		Timestamp: ts,
+		Content:   StatusMessageContent{ChatID: chatID, Text: text},
+	}
+}
+
+// CreatePublicTextMessage creates a public text StatusMessage.
+func CreatePublicTextMessage(data []byte, lastClock int64, chatID string) StatusMessage {
+	return CreateTextStatusMessage(data, lastClock, chatID, MessageTypePublicGroupUserMessage)
+}
+
+// CreatePrivateTextMessage creates a public text StatusMessage.
+func CreatePrivateTextMessage(data []byte, lastClock int64, chatID string) StatusMessage {
+	return CreateTextStatusMessage(data, lastClock, chatID, MessageTypePrivateUserMessage)
 }
 
 // DecodeMessage decodes a raw payload to StatusMessage struct.

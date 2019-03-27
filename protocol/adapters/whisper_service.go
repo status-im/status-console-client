@@ -8,12 +8,13 @@ import (
 	"sort"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/status-im/status-console-client/protocol/v1"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/services/shhext"
-	"github.com/status-im/status-go/t/helpers"
+
+	"github.com/status-im/status-console-client/protocol/v1"
+
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/p2p"
 
 	whisper "github.com/status-im/whisper/whisperv6"
 )
@@ -98,7 +99,17 @@ func (a *WhisperServiceAdapter) createFilter(opts protocol.SubscribeOptions) (*w
 		AllowP2P: true,
 	}
 
-	if opts.IsPublic() {
+	if opts.Identity != nil {
+		filter.KeyAsym = opts.Identity
+
+		topic, err := PrivateChatTopic()
+		if err != nil {
+			return nil, err
+		}
+		filter.Topics = append(filter.Topics, topic[:])
+	}
+
+	if opts.ChatName != "" {
 		symKeyID, err := a.shh.AddSymKeyFromPassword(opts.ChatName)
 		if err != nil {
 			return nil, err
@@ -107,21 +118,12 @@ func (a *WhisperServiceAdapter) createFilter(opts protocol.SubscribeOptions) (*w
 		if err != nil {
 			return nil, err
 		}
+		filter.KeySym = symKey
+
 		topic, err := PublicChatTopic(opts.ChatName)
 		if err != nil {
 			return nil, err
 		}
-
-		filter.KeySym = symKey
-		filter.Topics = append(filter.Topics, topic[:])
-	} else {
-		filter.KeyAsym = opts.Identity
-
-		topic, err := PrivateChatTopic()
-		if err != nil {
-			return nil, err
-		}
-
 		filter.Topics = append(filter.Topics, topic[:])
 	}
 
@@ -157,7 +159,17 @@ func (a *WhisperServiceAdapter) createNewMessage(data []byte, options protocol.S
 
 	message = createWhisperNewMessage(data, keyID)
 
-	if options.IsPublic() {
+	if options.Recipient != nil {
+		message.PublicKey = crypto.FromECDSAPub(options.Recipient)
+
+		topic, err := PrivateChatTopic()
+		if err != nil {
+			return message, err
+		}
+		message.Topic = topic
+	}
+
+	if options.ChatName != "" {
 		symKeyID, err := a.shh.AddSymKeyFromPassword(options.ChatName)
 		if err != nil {
 			return message, err
@@ -165,14 +177,6 @@ func (a *WhisperServiceAdapter) createNewMessage(data []byte, options protocol.S
 		message.SymKeyID = symKeyID
 
 		topic, err := PublicChatTopic(options.ChatName)
-		if err != nil {
-			return message, err
-		}
-		message.Topic = topic
-	} else {
-		message.PublicKey = crypto.FromECDSAPub(options.Recipient)
-
-		topic, err := PrivateChatTopic()
 		if err != nil {
 			return message, err
 		}
@@ -199,7 +203,11 @@ func (a *WhisperServiceAdapter) Request(ctx context.Context, options protocol.Re
 		return err
 	}
 
+	now := time.Now()
 	_, err = a.requestMessages(ctx, req, true)
+
+	log.Printf("[WhisperServiceAdapter::Request] took %s", time.Since(now))
+
 	return err
 }
 
@@ -210,12 +218,15 @@ func (a *WhisperServiceAdapter) selectAndAddMailServer() (string, error) {
 
 	config := a.node.Config()
 	enode := randomItem(config.ClusterConfig.TrustedMailServers)
-	errCh := helpers.WaitForPeerAsync(
+	errCh := waitForPeerAsync(
 		a.node.GethNode().Server(),
 		enode,
 		p2p.PeerEventTypeAdd,
 		time.Second*5,
 	)
+
+	log.Printf("[WhisperServiceAdapter::selectAndAddMailServer] randomly selected %s node", enode)
+
 	if err := a.node.AddPeer(enode); err != nil {
 		return "", err
 	}
@@ -246,6 +257,9 @@ func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, req shhext.
 	if err != nil {
 		return
 	}
+
+	log.Printf("[WhisperServiceAdapter::requestMessages] response = %+v, err = %v", resp, err)
+
 	if resp.Error != nil {
 		err = resp.Error
 		return
@@ -276,14 +290,16 @@ func (a *WhisperServiceAdapter) createMessagesRequest(
 		SymKeyID:       mailSymKeyID,
 	}
 
-	if params.IsPublic() {
-		topic, err := PublicChatTopic(params.ChatName)
+	if params.Recipient != nil {
+		topic, err := PrivateChatTopic()
 		if err != nil {
 			return req, err
 		}
 		req.Topics = append(req.Topics, topic)
-	} else {
-		topic, err := PrivateChatTopic()
+	}
+
+	if params.ChatName != "" {
+		topic, err := PublicChatTopic(params.ChatName)
 		if err != nil {
 			return req, err
 		}

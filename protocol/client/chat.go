@@ -4,11 +4,10 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"sort"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/status-im/status-console-client/protocol/v1"
@@ -36,7 +35,8 @@ type Chat struct {
 	lastClock int64
 
 	ownMessages chan *protocol.Message // my private messages channel
-	// TODO: make it a ring buffer
+	// TODO: make it a ring buffer. It will require loading newer messages
+	// from the cache as well.
 	messages       []*protocol.Message          // all messages ordered by Clock
 	messagesByHash map[string]*protocol.Message // quick access to messages by hash
 }
@@ -116,11 +116,9 @@ func (c *Chat) Subscribe(params protocol.RequestOptions) (err error) {
 		return errors.New("already subscribed")
 	}
 
-	opts := protocol.SubscribeOptions{}
-	if c.contact.Type == ContactPublicChat {
-		opts.ChatName = c.contact.Name
-	} else {
-		opts.Identity = c.identity
+	opts, err := extendSubscribeOptions(protocol.SubscribeOptions{}, c)
+	if err != nil {
+		return errors.Wrap(err, "failed to subscribe")
 	}
 
 	messages := make(chan *protocol.Message)
@@ -140,12 +138,12 @@ func (c *Chat) Subscribe(params protocol.RequestOptions) (err error) {
 }
 
 // Load loads messages from the database cache and the network.
-func (c *Chat) load(params protocol.RequestOptions) error {
+func (c *Chat) load(options protocol.RequestOptions) error {
 	// Get already cached messages from the database.
 	cachedMessages, err := c.db.Messages(
 		c.contact,
-		params.From,
-		params.To,
+		options.From,
+		options.To,
 	)
 	if err != nil {
 		return errors.Wrap(err, "db failed to get messages")
@@ -160,21 +158,19 @@ func (c *Chat) load(params protocol.RequestOptions) error {
 	}()
 
 	// Request historic messages from the network.
-	if err := c.request(params); err != nil {
+	if err := c.request(options); err != nil {
 		return errors.Wrap(err, "failed to request for messages")
 	}
 
 	return nil
 }
 
-func (c *Chat) request(params protocol.RequestOptions) error {
-	if c.contact.Type == ContactPublicChat {
-		params.ChatName = c.contact.Name
-	} else {
-		params.Recipient = c.contact.PublicKey
+func (c *Chat) request(options protocol.RequestOptions) error {
+	opts, err := extendRequestOptions(options, c)
+	if err != nil {
+		return err
 	}
-
-	return c.proto.Request(context.Background(), params)
+	return c.proto.Request(context.Background(), opts)
 }
 
 // Request historic messages.
@@ -189,7 +185,7 @@ func (c *Chat) Send(data []byte) error {
 	// This is needed to prevent sending messages
 	// if the chat is already left/canceled
 	// as a it can't be guaranteed that processing
-	// looop goroutines are still running.
+	// loop goroutines are still running.
 	select {
 	case _, ok := <-c.cancel:
 		if !ok {
@@ -198,39 +194,30 @@ func (c *Chat) Send(data []byte) error {
 	default:
 	}
 
-	var messageType string
+	var message protocol.StatusMessage
 
-	text := strings.TrimSpace(string(data))
-	ts := time.Now().Unix() * 1000
-	clock := protocol.CalcMessageClock(c.lastClock, ts)
-	opts := protocol.SendOptions{
-		Identity: c.identity,
+	switch c.contact.Type {
+	case ContactPublicChat:
+		message = protocol.CreatePublicTextMessage(data, c.lastClock, c.contact.Name)
+	case ContactPrivateChat:
+		message = protocol.CreatePrivateTextMessage(data, c.lastClock, c.contact.Name)
+	default:
+		return fmt.Errorf("failed to send message: unsupported contact type")
 	}
 
-	if c.contact.Type == ContactPublicChat {
-		opts.ChatName = c.contact.Name
-		messageType = protocol.MessageTypePublicGroupUserMessage
-	} else {
-		opts.Recipient = c.contact.PublicKey
-		messageType = protocol.MessageTypePrivateUserMessage
-	}
-
-	message := protocol.StatusMessage{
-		Text:      text,
-		ContentT:  protocol.ContentTypeTextPlain,
-		MessageT:  messageType,
-		Clock:     clock,
-		Timestamp: ts,
-		Content:   protocol.StatusMessageContent{ChatID: c.contact.Name, Text: text},
-	}
 	encodedMessage, err := protocol.EncodeMessage(message)
 	if err != nil {
 		return errors.Wrap(err, "failed to encode message")
 	}
 
 	c.Lock()
-	c.updateLastClock(clock)
+	c.updateLastClock(message.Clock)
 	c.Unlock()
+
+	opts, err := extendSendOptions(protocol.SendOptions{Identity: c.identity}, c)
+	if err != nil {
+		return errors.Wrap(err, "failed to prepare send options")
+	}
 
 	hash, err := c.proto.Send(context.Background(), encodedMessage, opts)
 
