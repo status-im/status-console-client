@@ -55,7 +55,7 @@ func (m *ChatMock) Request(ctx context.Context, params protocol.RequestOptions) 
 
 func TestSubscribe(t *testing.T) {
 	proto := ChatMock{}
-	contact := Contact{}
+	contact := Contact{Name: "test", Type: ContactPublicChat}
 
 	db, err := NewDatabase("")
 	require.NoError(t, err)
