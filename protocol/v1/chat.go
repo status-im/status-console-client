@@ -55,9 +55,6 @@ func (o RequestOptions) Validate() error {
 	return nil
 }
 
-// IsPublic returns true if RequestOptions are for a public chat.
-func (o RequestOptions) IsPublic() bool { return o.ChatName != "" }
-
 // DefaultRequestOptions returns default options returning messages
 // from the last 24 hours.
 func DefaultRequestOptions() RequestOptions {
@@ -85,9 +82,6 @@ func (o SubscribeOptions) Validate() error {
 	return nil
 }
 
-// IsPublic returns true if SubscribeOptions are for a public chat.
-func (o SubscribeOptions) IsPublic() bool { return o.ChatName != "" }
-
 // SendOptions are options for Chat.Send.
 type SendOptions struct {
 	Identity *ecdsa.PrivateKey
@@ -109,6 +103,3 @@ func (o SendOptions) Validate() error {
 	}
 	return nil
 }
-
-// IsPublic returns true if SendOptions are for a public chat.
-func (o SendOptions) IsPublic() bool { return o.ChatName != "" }

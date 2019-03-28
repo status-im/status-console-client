@@ -23,7 +23,7 @@ type Messenger struct {
 	events chan interface{}
 }
 
-// NewMessanger returns a new Messanger.
+// NewMessenger returns a new Messanger.
 func NewMessenger(proto protocol.Chat, identity *ecdsa.PrivateKey, db *Database) *Messenger {
 	return &Messenger{
 		proto:        proto,
@@ -50,15 +50,12 @@ func (m *Messenger) Chat(c Contact) *Chat {
 
 // Join creates a new chat and creates a subscription.
 func (m *Messenger) Join(contact Contact, params protocol.RequestOptions) error {
-	m.RLock()
-	_, found := m.chats[contact]
-	m.RUnlock()
-
-	if found {
-		return nil
+	chat := m.Chat(contact)
+	if chat != nil {
+		return chat.load(params)
 	}
 
-	chat := NewChat(m.proto, m.identity, contact, m.db)
+	chat = NewChat(m.proto, m.identity, contact, m.db)
 	cancel := make(chan struct{})
 
 	m.Lock()
