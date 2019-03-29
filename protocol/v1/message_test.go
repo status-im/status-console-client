@@ -24,6 +24,19 @@ func TestDecodeMessage(t *testing.T) {
 	require.EqualValues(t, testMessageStruct, val)
 }
 
+func BenchmarkDecodeMessage(b *testing.B) {
+	_, err := DecodeMessage(testMessageBytes)
+	if err != nil {
+		b.Fatalf("failed to decode message: %v", err)
+	}
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_, _ = DecodeMessage(testMessageBytes)
+	}
+}
+
 func TestEncodeMessage(t *testing.T) {
 	data, err := EncodeMessage(testMessageStruct)
 	require.NoError(t, err)
