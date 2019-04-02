@@ -2,7 +2,9 @@ package adapters
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -18,29 +20,64 @@ import (
 	whisper "github.com/status-im/whisper/whisperv6"
 )
 
-// WhisperClientAdapter is an adapter for Whisper client
-// which implements Chat interface. It requires an RPC client
-// which can use various transports like HTTP, IPC or in-proc.
-type WhisperClientAdapter struct {
-	rpcClient               *rpc.Client
-	shhClient               *shhclient.Client
-	mailServerEnodes        []string
-	selectedMailServerEnode string
+type whisperClientKeysManager struct {
+	client *shhclient.Client
 
-	mu              sync.RWMutex
-	passSymKeyCache map[string]string
+	passToSymMutex    sync.RWMutex
+	passToSymKeyCache map[string]string
 }
 
-// WhisperClientAdapter must implement Chat interface.
-var _ protocol.Chat = (*WhisperClientAdapter)(nil)
+func (m *whisperClientKeysManager) AddOrGetKeyPair(priv *ecdsa.PrivateKey) (string, error) {
+	// caching is handled in Whisper
+	return m.client.AddPrivateKey(context.Background(), crypto.FromECDSA(priv))
+}
+
+func (m *whisperClientKeysManager) AddOrGetSymKeyFromPassword(password string) (string, error) {
+	m.passToSymMutex.Lock()
+	defer m.passToSymMutex.Unlock()
+
+	if val, ok := m.passToSymKeyCache[password]; ok {
+		return val, nil
+	}
+
+	id, err := m.client.GenerateSymmetricKeyFromPassword(context.Background(), password)
+	if err != nil {
+		return "", err
+	}
+
+	m.passToSymKeyCache[password] = id
+
+	return id, nil
+}
+
+func (m *whisperClientKeysManager) GetRawSymKey(id string) ([]byte, error) {
+	return nil, errors.New("not implemented")
+}
+
+// WhisperClientAdapter is an adapter for Whisper client
+// which implements Protocol interface. It requires an RPC client
+// which can use various transports like HTTP, IPC or in-proc.
+type WhisperClientAdapter struct {
+	rpcClient   *rpc.Client
+	shhClient   *shhclient.Client
+	keysManager *whisperClientKeysManager
+
+	mailServerEnodes        []string
+	selectedMailServerEnode string
+}
+
+// WhisperClientAdapter must implement Protocol interface.
+var _ protocol.Protocol = (*WhisperClientAdapter)(nil)
 
 // NewWhisperClientAdapter returns a new WhisperClientAdapter.
 func NewWhisperClientAdapter(c *rpc.Client, mailServers []string) *WhisperClientAdapter {
+	client := shhclient.NewClient(c)
+
 	return &WhisperClientAdapter{
 		rpcClient:        c,
-		shhClient:        shhclient.NewClient(c),
+		shhClient:        client,
 		mailServerEnodes: mailServers,
-		passSymKeyCache:  make(map[string]string),
+		keysManager:      &whisperClientKeysManager{client: client},
 	}
 }
 
@@ -55,37 +92,9 @@ func (a *WhisperClientAdapter) Subscribe(
 		return nil, err
 	}
 
-	criteria := whisper.Criteria{
-		MinPow:   0,    // TODO: set it to proper value
-		AllowP2P: true, // messages from mail server are direct p2p messages
-	}
-
-	if options.Identity != nil {
-		identityID, err := a.shhClient.AddPrivateKey(ctx, crypto.FromECDSA(options.Identity))
-		if err != nil {
-			return nil, err
-		}
-		criteria.PrivateKeyID = identityID
-
-		topic, err := PrivateChatTopic()
-		if err != nil {
-			return nil, err
-		}
-		criteria.Topics = append(criteria.Topics, topic)
-	}
-
-	if options.ChatName != "" {
-		symKeyID, err := a.getOrAddSymKey(ctx, options.ChatName)
-		if err != nil {
-			return nil, err
-		}
-		criteria.SymKeyID = symKeyID
-
-		topic, err := PublicChatTopic(options.ChatName)
-		if err != nil {
-			return nil, err
-		}
-		criteria.Topics = append(criteria.Topics, topic)
+	criteria, err := createRichCriteria(a.keysManager, options)
+	if err != nil {
+		return nil, err
 	}
 
 	return a.subscribeMessages(ctx, criteria, in)
@@ -150,12 +159,7 @@ func (a *WhisperClientAdapter) Send(
 		return nil, err
 	}
 
-	identityID, err := a.shhClient.AddPrivateKey(ctx, crypto.FromECDSA(options.Identity))
-	if err != nil {
-		return nil, err
-	}
-
-	message, err := a.createNewMessage(data, identityID, options)
+	message, err := createRichWhisperNewMessage(a.keysManager, data, options)
 	if err != nil {
 		return nil, err
 	}
@@ -165,37 +169,6 @@ func (a *WhisperClientAdapter) Send(
 		return nil, err
 	}
 	return hex.DecodeString(hash)
-}
-
-func (a *WhisperClientAdapter) createNewMessage(data []byte, sigKey string, options protocol.SendOptions) (whisper.NewMessage, error) {
-	message := createWhisperNewMessage(data, sigKey)
-
-	if options.Recipient != nil {
-		message.PublicKey = crypto.FromECDSAPub(options.Recipient)
-
-		topic, err := PrivateChatTopic()
-		if err != nil {
-			return message, err
-		}
-		message.Topic = topic
-	}
-
-	if options.ChatName != "" {
-		ctx := context.Background()
-		symKeyID, err := a.getOrAddSymKey(ctx, options.ChatName)
-		if err != nil {
-			return message, err
-		}
-		message.SymKeyID = symKeyID
-
-		topic, err := PublicChatTopic(options.ChatName)
-		if err != nil {
-			return message, err
-		}
-		message.Topic = topic
-	}
-
-	return message, nil
 }
 
 // Request sends a request to MailServer for historic messages.
@@ -242,10 +215,15 @@ func (a *WhisperClientAdapter) selectAndAddMailServer(ctx context.Context) (stri
 	return enode, nil
 }
 
-func (a *WhisperClientAdapter) requestMessages(ctx context.Context, enode string, params protocol.RequestOptions) error {
+func (a *WhisperClientAdapter) requestMessages(ctx context.Context, enode string, options protocol.RequestOptions) error {
 	log.Printf("requesting messages from node %s", enode)
 
-	arg, err := a.createMessagesRequest(enode, params)
+	mailSymKeyID, err := a.keysManager.AddOrGetSymKeyFromPassword(MailServerPassword)
+	if err != nil {
+		return err
+	}
+
+	arg, err := createShhextRequestMessagesParam(enode, mailSymKeyID, options)
 	if err != nil {
 		return err
 	}
@@ -253,59 +231,34 @@ func (a *WhisperClientAdapter) requestMessages(ctx context.Context, enode string
 	return a.rpcClient.CallContext(ctx, nil, "shhext_requestMessages", arg)
 }
 
-func (a *WhisperClientAdapter) createMessagesRequest(
-	enode string,
-	params protocol.RequestOptions,
-) (req shhextRequestMessagesParam, err error) {
-	mailSymKeyID, err := a.getOrAddSymKey(context.Background(), MailServerPassword)
+func createRichCriteria(keys keysManager, options protocol.SubscribeOptions) (whisper.Criteria, error) {
+	criteria := whisper.Criteria{
+		MinPow:   0,    // TODO: set it to proper value
+		AllowP2P: true, // messages from mail server are direct p2p messages
+	}
+
+	topic, err := topicForSubscribeOptions(options)
 	if err != nil {
-		return req, err
+		return criteria, err
 	}
 
-	req = shhextRequestMessagesParam{
-		MailServerPeer: enode,
-		From:           params.From,
-		To:             params.To,
-		Limit:          params.Limit,
-		SymKeyID:       mailSymKeyID,
-	}
+	criteria.Topics = append(criteria.Topics, topic)
 
-	if params.Recipient != nil {
-		topic, err := PrivateChatTopic()
+	if options.Identity != nil {
+		keyID, err := keys.AddOrGetKeyPair(options.Identity)
 		if err != nil {
-			return req, err
+			return criteria, err
 		}
-		req.Topics = append(req.Topics, topic)
+		criteria.PrivateKeyID = keyID
 	}
 
-	if params.ChatName != "" {
-		topic, err := PublicChatTopic(params.ChatName)
+	if options.ChatName != "" {
+		symKeyID, err := keys.AddOrGetSymKeyFromPassword(options.ChatName)
 		if err != nil {
-			return req, err
+			return criteria, err
 		}
-		req.Topics = append(req.Topics, topic)
+		criteria.SymKeyID = symKeyID
 	}
 
-	return
-}
-
-func (a *WhisperClientAdapter) getOrAddSymKey(ctx context.Context, pass string) (string, error) {
-	a.mu.RLock()
-	symKeyID, ok := a.passSymKeyCache[pass]
-	a.mu.RUnlock()
-
-	if ok {
-		return symKeyID, nil
-	}
-
-	symKeyID, err := a.shhClient.GenerateSymmetricKeyFromPassword(ctx, pass)
-	if err != nil {
-		return "", err
-	}
-
-	a.mu.Lock()
-	a.passSymKeyCache[pass] = symKeyID
-	a.mu.Unlock()
-
-	return symKeyID, nil
+	return criteria, nil
 }

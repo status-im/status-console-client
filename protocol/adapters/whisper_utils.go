@@ -1,32 +1,24 @@
 package adapters
 
 import (
-	"math/rand"
-
-	whisper "github.com/status-im/whisper/whisperv6"
+	"github.com/status-im/status-console-client/protocol/v1"
+	"github.com/status-im/status-go/services/shhext"
 )
 
-// shhextRequestMessagesParam is used to remove dependency on shhext module.
-type shhextRequestMessagesParam struct {
-	MailServerPeer string              `json:"mailServerPeer"`
-	From           int64               `json:"from"`
-	To             int64               `json:"to"`
-	Limit          int                 `json:"limit"`
-	SymKeyID       string              `json:"symKeyID"`
-	Topics         []whisper.TopicType `json:"topics"`
-}
-
-func createWhisperNewMessage(data []byte, sigKey string) whisper.NewMessage {
-	return whisper.NewMessage{
-		TTL:       60,
-		Payload:   data,
-		PowTarget: 2.0,
-		PowTime:   5,
-		Sig:       sigKey,
+func createShhextRequestMessagesParam(enode, mailSymKeyID string, options protocol.RequestOptions) (shhext.MessagesRequest, error) {
+	req := shhext.MessagesRequest{
+		MailServerPeer: enode,
+		From:           uint32(options.From),  // TODO: change to int in status-go
+		To:             uint32(options.To),    // TODO: change to int in status-go
+		Limit:          uint32(options.Limit), // TODO: change to int in status-go
+		SymKeyID:       mailSymKeyID,
 	}
-}
 
-func randomItem(items []string) string {
-	l := len(items)
-	return items[rand.Intn(l)]
+	topic, err := topicForRequestOptions(options)
+	if err != nil {
+		return req, err
+	}
+	req.Topics = append(req.Topics, topic)
+
+	return req, nil
 }

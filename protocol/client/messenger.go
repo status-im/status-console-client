@@ -13,7 +13,7 @@ import (
 type Messenger struct {
 	sync.RWMutex
 
-	proto    protocol.Chat
+	proto    protocol.Protocol
 	identity *ecdsa.PrivateKey
 	db       *Database
 
@@ -24,7 +24,7 @@ type Messenger struct {
 }
 
 // NewMessenger returns a new Messanger.
-func NewMessenger(proto protocol.Chat, identity *ecdsa.PrivateKey, db *Database) *Messenger {
+func NewMessenger(proto protocol.Protocol, identity *ecdsa.PrivateKey, db *Database) *Messenger {
 	return &Messenger{
 		proto:        proto,
 		identity:     identity,

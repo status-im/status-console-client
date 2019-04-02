@@ -18,7 +18,7 @@ import (
 type Chat struct {
 	sync.RWMutex
 
-	proto protocol.Chat
+	proto protocol.Protocol
 
 	// Identity and Contact between the conversation happens.
 	identity *ecdsa.PrivateKey
@@ -42,7 +42,7 @@ type Chat struct {
 }
 
 // NewChat returns a new Chat instance.
-func NewChat(proto protocol.Chat, identity *ecdsa.PrivateKey, contact Contact, db *Database) *Chat {
+func NewChat(proto protocol.Protocol, identity *ecdsa.PrivateKey, contact Contact, db *Database) *Chat {
 	c := Chat{
 		proto:          proto,
 		identity:       identity,
