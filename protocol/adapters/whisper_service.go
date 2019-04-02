@@ -2,10 +2,12 @@ package adapters
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"log"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/status-im/status-go/node"
@@ -13,29 +15,64 @@ import (
 
 	"github.com/status-im/status-console-client/protocol/v1"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p"
 
 	whisper "github.com/status-im/whisper/whisperv6"
 )
 
+type whisperServiceKeysManager struct {
+	shh *whisper.Whisper
+
+	passToSymMutex    sync.RWMutex
+	passToSymKeyCache map[string]string
+}
+
+func (m *whisperServiceKeysManager) AddOrGetKeyPair(priv *ecdsa.PrivateKey) (string, error) {
+	// caching is handled in Whisper
+	return m.shh.AddKeyPair(priv)
+}
+
+func (m *whisperServiceKeysManager) AddOrGetSymKeyFromPassword(password string) (string, error) {
+	m.passToSymMutex.Lock()
+	defer m.passToSymMutex.Unlock()
+
+	if val, ok := m.passToSymKeyCache[password]; ok {
+		return val, nil
+	}
+
+	id, err := m.shh.AddSymKeyFromPassword(password)
+	if err != nil {
+		return id, err
+	}
+
+	m.passToSymKeyCache[password] = id
+
+	return id, nil
+}
+
+func (m *whisperServiceKeysManager) GetRawSymKey(id string) ([]byte, error) {
+	return m.shh.GetSymKey(id)
+}
+
 // WhisperServiceAdapter is an adapter for Whisper service
-// the implements Chat interface.
+// the implements Protocol interface.
 type WhisperServiceAdapter struct {
-	node *node.StatusNode
-	shh  *whisper.Whisper
+	node        *node.StatusNode
+	shh         *whisper.Whisper
+	keysManager *whisperServiceKeysManager
 
 	selectedMailServerEnode string
 }
 
-// WhisperServiceAdapter must implement Chat interface.
-var _ protocol.Chat = (*WhisperServiceAdapter)(nil)
+// WhisperServiceAdapter must implement Protocol interface.
+var _ protocol.Protocol = (*WhisperServiceAdapter)(nil)
 
 // NewWhisperServiceAdapter returns a new WhisperServiceAdapter.
 func NewWhisperServiceAdapter(node *node.StatusNode, shh *whisper.Whisper) *WhisperServiceAdapter {
 	return &WhisperServiceAdapter{
-		node: node,
-		shh:  shh,
+		node:        node,
+		shh:         shh,
+		keysManager: &whisperServiceKeysManager{shh: shh},
 	}
 }
 
@@ -49,7 +86,7 @@ func (a *WhisperServiceAdapter) Subscribe(
 		return nil, err
 	}
 
-	filter, err := a.createFilter(options)
+	filter, err := createRichFilter(a.keysManager, options)
 	if err != nil {
 		return nil, err
 	}
@@ -93,43 +130,6 @@ func (a *WhisperServiceAdapter) Subscribe(
 	return sub, nil
 }
 
-func (a *WhisperServiceAdapter) createFilter(opts protocol.SubscribeOptions) (*whisper.Filter, error) {
-	filter := whisper.Filter{
-		PoW:      0,
-		AllowP2P: true,
-	}
-
-	if opts.Identity != nil {
-		filter.KeyAsym = opts.Identity
-
-		topic, err := PrivateChatTopic()
-		if err != nil {
-			return nil, err
-		}
-		filter.Topics = append(filter.Topics, topic[:])
-	}
-
-	if opts.ChatName != "" {
-		symKeyID, err := a.shh.AddSymKeyFromPassword(opts.ChatName)
-		if err != nil {
-			return nil, err
-		}
-		symKey, err := a.shh.GetSymKey(symKeyID)
-		if err != nil {
-			return nil, err
-		}
-		filter.KeySym = symKey
-
-		topic, err := PublicChatTopic(opts.ChatName)
-		if err != nil {
-			return nil, err
-		}
-		filter.Topics = append(filter.Topics, topic[:])
-	}
-
-	return &filter, nil
-}
-
 // Send sends a new message using the Whisper service.
 func (a *WhisperServiceAdapter) Send(
 	ctx context.Context,
@@ -140,50 +140,14 @@ func (a *WhisperServiceAdapter) Send(
 		return nil, err
 	}
 
-	newMessage, err := a.createNewMessage(data, options)
+	messag, err := createRichWhisperNewMessage(a.keysManager, data, options)
 	if err != nil {
 		return nil, err
 	}
 
 	// Only public Whisper API implements logic to send messages.
 	shhAPI := whisper.NewPublicWhisperAPI(a.shh)
-	return shhAPI.Post(ctx, newMessage)
-}
-
-func (a *WhisperServiceAdapter) createNewMessage(data []byte, options protocol.SendOptions) (message whisper.NewMessage, err error) {
-	// TODO: add cache
-	keyID, err := a.shh.AddKeyPair(options.Identity)
-	if err != nil {
-		return
-	}
-
-	message = createWhisperNewMessage(data, keyID)
-
-	if options.Recipient != nil {
-		message.PublicKey = crypto.FromECDSAPub(options.Recipient)
-
-		topic, err := PrivateChatTopic()
-		if err != nil {
-			return message, err
-		}
-		message.Topic = topic
-	}
-
-	if options.ChatName != "" {
-		symKeyID, err := a.shh.AddSymKeyFromPassword(options.ChatName)
-		if err != nil {
-			return message, err
-		}
-		message.SymKeyID = symKeyID
-
-		topic, err := PublicChatTopic(options.ChatName)
-		if err != nil {
-			return message, err
-		}
-		message.Topic = topic
-	}
-
-	return
+	return shhAPI.Post(ctx, messag)
 }
 
 // Request requests messages from mail servers.
@@ -198,7 +162,12 @@ func (a *WhisperServiceAdapter) Request(ctx context.Context, options protocol.Re
 		return err
 	}
 
-	req, err := a.createMessagesRequest(enode, options)
+	keyID, err := a.keysManager.AddOrGetSymKeyFromPassword(MailServerPassword)
+	if err != nil {
+		return err
+	}
+
+	req, err := createShhextRequestMessagesParam(enode, keyID, options)
 	if err != nil {
 		return err
 	}
@@ -273,42 +242,6 @@ func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, req shhext.
 	return a.requestMessages(ctx, req, true)
 }
 
-func (a *WhisperServiceAdapter) createMessagesRequest(
-	enode string,
-	params protocol.RequestOptions,
-) (req shhext.MessagesRequest, err error) {
-	mailSymKeyID, err := a.shh.AddSymKeyFromPassword(MailServerPassword)
-	if err != nil {
-		return req, err
-	}
-
-	req = shhext.MessagesRequest{
-		MailServerPeer: enode,
-		From:           uint32(params.From),  // TODO: change to int in status-go
-		To:             uint32(params.To),    // TODO: change to int in status-go
-		Limit:          uint32(params.Limit), // TODO: change to int in status-go
-		SymKeyID:       mailSymKeyID,
-	}
-
-	if params.Recipient != nil {
-		topic, err := PrivateChatTopic()
-		if err != nil {
-			return req, err
-		}
-		req.Topics = append(req.Topics, topic)
-	}
-
-	if params.ChatName != "" {
-		topic, err := PublicChatTopic(params.ChatName)
-		if err != nil {
-			return req, err
-		}
-		req.Topics = append(req.Topics, topic)
-	}
-
-	return
-}
-
 // whisperSubscription encapsulates a Whisper filter.
 type whisperSubscription struct {
 	shh      *whisper.Whisper
@@ -354,4 +287,35 @@ func (s whisperSubscription) Messages() ([]*protocol.Message, error) {
 // Unsubscribe removes the subscription.
 func (s whisperSubscription) Unsubscribe() error {
 	return s.shh.Unsubscribe(s.filterID)
+}
+
+func createRichFilter(keys keysManager, options protocol.SubscribeOptions) (*whisper.Filter, error) {
+	filter := whisper.Filter{
+		PoW:      0,
+		AllowP2P: true,
+	}
+
+	topic, err := topicForSubscribeOptions(options)
+	if err != nil {
+		return nil, err
+	}
+	filter.Topics = append(filter.Topics, topic[:])
+
+	if options.Identity != nil {
+		filter.KeyAsym = options.Identity
+	}
+
+	if options.ChatName != "" {
+		symKeyID, err := keys.AddOrGetSymKeyFromPassword(options.ChatName)
+		if err != nil {
+			return nil, err
+		}
+		symKey, err := keys.GetRawSymKey(symKeyID)
+		if err != nil {
+			return nil, err
+		}
+		filter.KeySym = symKey
+	}
+
+	return &filter, nil
 }

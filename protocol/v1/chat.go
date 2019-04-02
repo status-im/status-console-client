@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// Chat is an interface defining basic methods to receive and send messages.
-type Chat interface {
+// Protocol is an interface defining basic methods to receive and send messages.
+type Protocol interface {
 	// Subscribe listens to new messages.
 	Subscribe(ctx context.Context, messages chan<- *Message, options SubscribeOptions) (*Subscription, error)
 

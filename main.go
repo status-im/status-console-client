@@ -75,7 +75,7 @@ func main() {
 	}
 
 	// initialize chat
-	var chatAdapter protocol.Chat
+	var chatAdapter protocol.Protocol
 
 	if *providerURI != "" {
 		rpc, err := rpc.Dial(*providerURI)
