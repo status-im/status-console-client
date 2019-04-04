@@ -120,7 +120,7 @@ func main() {
 		whisperService := adapters.NewWhisperServiceAdapter(statusNode, shhService)
 
 		if *pfsEnabled {
-			if err := whisperService.InitPFS(privateKey); err != nil {
+			if err := whisperService.InitPFS(filepath.Join(*dataDir, "databases"), privateKey); err != nil {
 				exitErr(errors.Wrap(err, "initialize PFS"))
 			}
 
