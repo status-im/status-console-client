@@ -3,20 +3,19 @@ package adapters
 import (
 	"context"
 	"crypto/ecdsa"
-	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/pkg/errors"
+	"github.com/status-im/status-console-client/protocol/v1"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/services/shhext"
-
-	"github.com/status-im/status-console-client/protocol/v1"
-
-	"github.com/ethereum/go-ethereum/p2p"
-
+	"github.com/status-im/status-go/services/shhext/chat"
 	whisper "github.com/status-im/whisper/whisperv6"
 )
 
@@ -61,6 +60,11 @@ type WhisperServiceAdapter struct {
 	shh         *whisper.Whisper
 	keysManager *whisperServiceKeysManager
 
+	// PFS supports only one private key which should be provided
+	// during PFS initialization.
+	pfsPrivateKey *ecdsa.PrivateKey
+	pfs           *chat.ProtocolService
+
 	selectedMailServerEnode string
 }
 
@@ -70,10 +74,44 @@ var _ protocol.Protocol = (*WhisperServiceAdapter)(nil)
 // NewWhisperServiceAdapter returns a new WhisperServiceAdapter.
 func NewWhisperServiceAdapter(node *node.StatusNode, shh *whisper.Whisper) *WhisperServiceAdapter {
 	return &WhisperServiceAdapter{
-		node:        node,
-		shh:         shh,
-		keysManager: &whisperServiceKeysManager{shh: shh},
+		node: node,
+		shh:  shh,
+		keysManager: &whisperServiceKeysManager{
+			shh:               shh,
+			passToSymKeyCache: make(map[string]string),
+		},
 	}
+}
+
+// InitPFS adds support for PFS messages.
+func (a *WhisperServiceAdapter) InitPFS(baseDir string, privateKey *ecdsa.PrivateKey) error {
+	addBundlesHandler := func(addedBundles []chat.IdentityAndIDPair) {
+		log.Printf("added bundles: %v", addedBundles)
+	}
+
+	const (
+		// TODO: manage these values properly
+		dbPath        = "pfs_v1.db"
+		sqlSecretKey  = "enc-key-abc"
+		instalationID = "instalation-1"
+	)
+
+	dir := filepath.Join(baseDir, dbPath)
+	persistence, err := chat.NewSQLLitePersistence(dir, sqlSecretKey)
+	if err != nil {
+		return err
+	}
+
+	a.pfsPrivateKey = privateKey
+	a.pfs = chat.NewProtocolService(
+		chat.NewEncryptionService(
+			persistence,
+			chat.DefaultEncryptionServiceConfig(instalationID),
+		),
+		addBundlesHandler,
+	)
+
+	return nil
 }
 
 // Subscribe subscribes to a public chat using the Whisper service.
@@ -96,7 +134,7 @@ func (a *WhisperServiceAdapter) Subscribe(
 		return nil, err
 	}
 
-	subWhisper := newWhisperSubscription(a.shh, filterID)
+	subWhisper := newWhisperSubscription(a.shh, a.pfs, a.pfsPrivateKey, filterID)
 	sub := protocol.NewSubscription()
 
 	go func() {
@@ -108,16 +146,13 @@ func (a *WhisperServiceAdapter) Subscribe(
 		for {
 			select {
 			case <-t.C:
-				messages, err := subWhisper.Messages()
+				received, err := subWhisper.Messages()
 				if err != nil {
 					sub.Cancel(err)
 					return
 				}
 
-				sort.Slice(messages, func(i, j int) bool {
-					return messages[i].Decoded.Clock < messages[j].Decoded.Clock
-				})
-
+				messages := a.handleMessages(received)
 				for _, m := range messages {
 					in <- m
 				}
@@ -130,6 +165,51 @@ func (a *WhisperServiceAdapter) Subscribe(
 	return sub, nil
 }
 
+func (a *WhisperServiceAdapter) handleMessages(received []*whisper.ReceivedMessage) []*protocol.Message {
+	var messages []*protocol.Message
+
+	for _, item := range received {
+		message, err := a.decodeMessage(item)
+		if err != nil {
+			log.Printf("failed to decode message %#+x: %v", item.EnvelopeHash.Bytes(), err)
+			continue
+		}
+		messages = append(messages, message)
+	}
+
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].Decoded.Clock < messages[j].Decoded.Clock
+	})
+
+	return messages
+}
+
+func (a *WhisperServiceAdapter) decodeMessage(message *whisper.ReceivedMessage) (*protocol.Message, error) {
+	payload := message.Payload
+	publicKey := message.SigToPubKey()
+	hash := message.EnvelopeHash.Bytes()
+
+	if a.pfs != nil {
+		decryptedPayload, err := a.pfs.HandleMessage(a.pfsPrivateKey, publicKey, payload, hash)
+		if err != nil {
+			log.Printf("failed to handle message %#+x by PFS: %v", hash, err)
+		} else {
+			payload = decryptedPayload
+		}
+	}
+
+	decoded, err := protocol.DecodeMessage(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	return &protocol.Message{
+		Decoded:   decoded,
+		Hash:      hash,
+		SigPubKey: publicKey,
+	}, nil
+}
+
 // Send sends a new message using the Whisper service.
 func (a *WhisperServiceAdapter) Send(
 	ctx context.Context,
@@ -140,14 +220,22 @@ func (a *WhisperServiceAdapter) Send(
 		return nil, err
 	}
 
-	messag, err := createRichWhisperNewMessage(a.keysManager, data, options)
+	if a.pfs != nil {
+		encryptedPayload, err := a.pfs.BuildDirectMessage(a.pfsPrivateKey, options.Recipient, data)
+		if err != nil {
+			return nil, err
+		}
+		data = encryptedPayload
+	}
+
+	message, err := createRichWhisperNewMessage(a.keysManager, data, options)
 	if err != nil {
 		return nil, err
 	}
 
 	// Only public Whisper API implements logic to send messages.
 	shhAPI := whisper.NewPublicWhisperAPI(a.shh)
-	return shhAPI.Post(ctx, messag)
+	return shhAPI.Post(ctx, message)
 }
 
 // Request requests messages from mail servers.
@@ -244,44 +332,30 @@ func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, req shhext.
 
 // whisperSubscription encapsulates a Whisper filter.
 type whisperSubscription struct {
-	shh      *whisper.Whisper
-	filterID string
+	shh          *whisper.Whisper
+	pfs          *chat.ProtocolService
+	myPrivateKey *ecdsa.PrivateKey
+	filterID     string
 }
 
 // newWhisperSubscription returns a new whisperSubscription.
-func newWhisperSubscription(shh *whisper.Whisper, filterID string) *whisperSubscription {
-	return &whisperSubscription{shh, filterID}
+func newWhisperSubscription(shh *whisper.Whisper, pfs *chat.ProtocolService, pk *ecdsa.PrivateKey, filterID string) *whisperSubscription {
+	return &whisperSubscription{
+		shh:          shh,
+		pfs:          pfs,
+		myPrivateKey: pk,
+		filterID:     filterID,
+	}
 }
 
 // Messages retrieves a list of messages for a given filter.
-func (s whisperSubscription) Messages() ([]*protocol.Message, error) {
+func (s whisperSubscription) Messages() ([]*whisper.ReceivedMessage, error) {
 	f := s.shh.GetFilter(s.filterID)
 	if f == nil {
 		return nil, errors.New("filter does not exist")
 	}
-
-	items := f.Retrieve()
-	result := make([]*protocol.Message, 0, len(items))
-
-	for _, item := range items {
-		decoded, err := protocol.DecodeMessage(item.Payload)
-		if err != nil {
-			log.Printf("failed to decode message: %v", err)
-			continue
-		}
-
-		result = append(result, &protocol.Message{
-			Decoded:   decoded,
-			Hash:      item.EnvelopeHash.Bytes(),
-			SigPubKey: item.SigToPubKey(),
-		})
-	}
-
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Decoded.Clock < result[j].Decoded.Clock
-	})
-
-	return result, nil
+	messages := f.Retrieve()
+	return messages, nil
 }
 
 // Unsubscribe removes the subscription.
