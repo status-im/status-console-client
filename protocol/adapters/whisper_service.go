@@ -187,8 +187,7 @@ func (a *WhisperServiceAdapter) decodeMessage(message *whisper.ReceivedMessage) 
 	publicKey := message.SigToPubKey()
 	hash := message.EnvelopeHash.Bytes()
 
-	// TODO: better detection for PFS messages?
-	if a.privateKey != nil {
+	if a.pfs != nil {
 		decryptedPayload, err := a.pfs.HandleMessage(a.privateKey, publicKey, payload, hash)
 		if err != nil {
 			log.Printf("failed to handle message %#+x by PFS: %v", hash, err)
@@ -219,14 +218,22 @@ func (a *WhisperServiceAdapter) Send(
 		return nil, err
 	}
 
-	messag, err := createRichWhisperNewMessage(a.keysManager, data, options)
+	if a.pfs != nil {
+		encryptedPayload, err := a.pfs.BuildDirectMessage(a.privateKey, options.Recipient, data)
+		if err != nil {
+			return nil, err
+		}
+		data = encryptedPayload
+	}
+
+	message, err := createRichWhisperNewMessage(a.keysManager, data, options)
 	if err != nil {
 		return nil, err
 	}
 
 	// Only public Whisper API implements logic to send messages.
 	shhAPI := whisper.NewPublicWhisperAPI(a.shh)
-	return shhAPI.Post(ctx, messag)
+	return shhAPI.Post(ctx, message)
 }
 
 // Request requests messages from mail servers.

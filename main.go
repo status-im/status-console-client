@@ -120,7 +120,13 @@ func main() {
 		whisperService := adapters.NewWhisperServiceAdapter(statusNode, shhService)
 
 		if *pfsEnabled {
-			if err := whisperService.InitPFS(filepath.Join(*dataDir, "databases"), privateKey); err != nil {
+			databasesDir := filepath.Join(*dataDir, "databases")
+
+			if err := os.MkdirAll(databasesDir, 0755); err != nil {
+				exitErr(errors.Wrap(err, "failed to create databases dir"))
+			}
+
+			if err := whisperService.InitPFS(databasesDir, privateKey); err != nil {
 				exitErr(errors.Wrap(err, "initialize PFS"))
 			}
 
