@@ -52,8 +52,10 @@ func (c *ChatViewController) readEventsLoop() {
 	c.done = make(chan struct{})
 	defer close(c.done)
 
-	var buffer []interface{}
+	// buckets with events indexed by contacts
+	buffer := make(map[client.Contact][]interface{})
 
+	// We use a ticker in order to buffer storm of received events.
 	t := time.NewTicker(time.Second)
 	defer t.Stop()
 
@@ -66,16 +68,16 @@ func (c *ChatViewController) readEventsLoop() {
 				break
 			}
 
-			redraw := requiresRedraw(buffer)
+			needsRedraw := requiresRedraw(buffer[c.contact])
 
-			if redraw {
+			if needsRedraw {
 				messages := chat.Messages()
 
 				log.Printf("[ChatViewController::readEventsLoops] retrieved %d messages", len(messages))
 
 				c.printMessages(true, messages...)
 			} else {
-				for _, event := range buffer {
+				for _, event := range buffer[c.contact] {
 					switch ev := event.(type) {
 					case client.EventMessage:
 						c.printMessages(false, ev.Message())
@@ -83,15 +85,15 @@ func (c *ChatViewController) readEventsLoop() {
 				}
 			}
 
-			buffer = nil
+			buffer = make(map[client.Contact][]interface{})
 		case event := <-c.messenger.Events():
 			log.Printf("[ChatViewController::readEventsLoops] received an event: %+v", event)
 
 			switch ev := event.(type) {
 			case client.EventError:
 				c.onError(ev.Error())
-			default:
-				buffer = append(buffer, event)
+			case client.Event:
+				buffer[ev.Contact()] = append(buffer[ev.Contact()], ev)
 			}
 		case <-c.cancel:
 			return
