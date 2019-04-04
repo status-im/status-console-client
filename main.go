@@ -40,6 +40,7 @@ func main() {
 		dataDir    = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
 		fleet      = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
 		configFile = fs.String("node-config", "", "a JSON file with node config")
+		pfsEnabled = fs.Bool("pfs", false, "enable PFS")
 
 		// flags for external node
 		providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -116,7 +117,17 @@ func main() {
 			exitErr(errors.Wrap(err, "failed to get Whisper service"))
 		}
 
-		chatAdapter = adapters.NewWhisperServiceAdapter(statusNode, shhService)
+		whisperService := adapters.NewWhisperServiceAdapter(statusNode, shhService)
+
+		if *pfsEnabled {
+			if err := whisperService.InitPFS(privateKey); err != nil {
+				exitErr(errors.Wrap(err, "initialize PFS"))
+			}
+
+			log.Printf("PFS has been initialized")
+		}
+
+		chatAdapter = whisperService
 	}
 
 	var err error
