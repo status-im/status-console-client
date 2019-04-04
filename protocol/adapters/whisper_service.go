@@ -60,8 +60,10 @@ type WhisperServiceAdapter struct {
 	shh         *whisper.Whisper
 	keysManager *whisperServiceKeysManager
 
-	privateKey *ecdsa.PrivateKey
-	pfs        *chat.ProtocolService
+	// PFS supports only one private key which should be provided
+	// during PFS initialization.
+	pfsPrivateKey *ecdsa.PrivateKey
+	pfs           *chat.ProtocolService
 
 	selectedMailServerEnode string
 }
@@ -100,7 +102,7 @@ func (a *WhisperServiceAdapter) InitPFS(baseDir string, privateKey *ecdsa.Privat
 		return err
 	}
 
-	a.privateKey = privateKey
+	a.pfsPrivateKey = privateKey
 	a.pfs = chat.NewProtocolService(
 		chat.NewEncryptionService(
 			persistence,
@@ -132,7 +134,7 @@ func (a *WhisperServiceAdapter) Subscribe(
 		return nil, err
 	}
 
-	subWhisper := newWhisperSubscription(a.shh, a.pfs, a.privateKey, filterID)
+	subWhisper := newWhisperSubscription(a.shh, a.pfs, a.pfsPrivateKey, filterID)
 	sub := protocol.NewSubscription()
 
 	go func() {
@@ -188,7 +190,7 @@ func (a *WhisperServiceAdapter) decodeMessage(message *whisper.ReceivedMessage) 
 	hash := message.EnvelopeHash.Bytes()
 
 	if a.pfs != nil {
-		decryptedPayload, err := a.pfs.HandleMessage(a.privateKey, publicKey, payload, hash)
+		decryptedPayload, err := a.pfs.HandleMessage(a.pfsPrivateKey, publicKey, payload, hash)
 		if err != nil {
 			log.Printf("failed to handle message %#+x by PFS: %v", hash, err)
 		} else {
@@ -219,7 +221,7 @@ func (a *WhisperServiceAdapter) Send(
 	}
 
 	if a.pfs != nil {
-		encryptedPayload, err := a.pfs.BuildDirectMessage(a.privateKey, options.Recipient, data)
+		encryptedPayload, err := a.pfs.BuildDirectMessage(a.pfsPrivateKey, options.Recipient, data)
 		if err != nil {
 			return nil, err
 		}
