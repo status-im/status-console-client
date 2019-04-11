@@ -62,6 +62,8 @@ func (d *Database) Messages(c Contact, from, to int64) (result []*protocol.Messa
 	limit := d.keyFromContact(c, to+1, nil) // because iter is right-exclusive
 
 	iter := d.db.NewIterator(&util.Range{Start: start, Limit: limit}, nil)
+	defer iter.Release()
+
 	for iter.Next() {
 		value := iter.Value()
 		buf := bytes.NewBuffer(value)
@@ -77,7 +79,6 @@ func (d *Database) Messages(c Contact, from, to int64) (result []*protocol.Messa
 		result = append(result, &m)
 	}
 
-	iter.Release()
 	err = iter.Error()
 
 	return
@@ -98,14 +99,16 @@ func (d *Database) SaveMessages(c Contact, messages []*protocol.Message) error {
 		}
 
 		data := buf.Bytes()
+
+		// Data from the buffer needs to be copied to another slice
+		// because a slice returned from Buffer.Bytes() is valid
+		// only until another write.
+		// As we batch writes and wait untill the loop is finished,
+		// slices with encoded messages must be available later.
 		value := make([]byte, len(data))
 		copy(value, data)
-		// The read value needs to be copied to another slice
-		// because a slice returned by Bytes() is valid only until
-		// another write.
-		// As we batch writes and wait untill the loop is finished,
-		// slices must be available later.
 		batch.Put(key, value)
+
 		buf.Reset()
 	}
 

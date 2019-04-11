@@ -22,7 +22,7 @@ import (
 type whisperServiceKeysManager struct {
 	shh *whisper.Whisper
 
-	passToSymMutex    sync.RWMutex
+	passToSymKeyMutex sync.RWMutex
 	passToSymKeyCache map[string]string
 }
 
@@ -32,8 +32,8 @@ func (m *whisperServiceKeysManager) AddOrGetKeyPair(priv *ecdsa.PrivateKey) (str
 }
 
 func (m *whisperServiceKeysManager) AddOrGetSymKeyFromPassword(password string) (string, error) {
-	m.passToSymMutex.Lock()
-	defer m.passToSymMutex.Unlock()
+	m.passToSymKeyMutex.Lock()
+	defer m.passToSymKeyMutex.Unlock()
 
 	if val, ok := m.passToSymKeyCache[password]; ok {
 		return val, nil
