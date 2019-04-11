@@ -12,7 +12,7 @@ run: build
 .PHONY: run
 
 test:
-	go test -a ./...
+	go test ./...
 .PHONY: test
 
 test-race:
