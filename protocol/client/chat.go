@@ -35,8 +35,7 @@ type Chat struct {
 	lastClock int64
 
 	ownMessages chan *protocol.Message // my private messages channel
-	// TODO: make it a ring buffer. It will require loading newer messages
-	// from the cache as well.
+	// TODO: make it a ring buffer. It will require loading messages from the database.
 	messages       []*protocol.Message          // all messages ordered by Clock
 	messagesByHash map[string]*protocol.Message // quick access to messages by hash
 }
