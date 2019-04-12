@@ -21,10 +21,15 @@ import (
 )
 
 type whisperClientKeysManager struct {
-	client *shhclient.Client
+	client     *shhclient.Client
+	privateKey *ecdsa.PrivateKey
 
 	passToSymMutex    sync.RWMutex
 	passToSymKeyCache map[string]string
+}
+
+func (m *whisperClientKeysManager) PrivateKey() *ecdsa.PrivateKey {
+	return m.privateKey
 }
 
 func (m *whisperClientKeysManager) AddOrGetKeyPair(priv *ecdsa.PrivateKey) (string, error) {
@@ -70,14 +75,17 @@ type WhisperClientAdapter struct {
 var _ protocol.Protocol = (*WhisperClientAdapter)(nil)
 
 // NewWhisperClientAdapter returns a new WhisperClientAdapter.
-func NewWhisperClientAdapter(c *rpc.Client, mailServers []string) *WhisperClientAdapter {
+func NewWhisperClientAdapter(c *rpc.Client, privateKey *ecdsa.PrivateKey, mailServers []string) *WhisperClientAdapter {
 	client := shhclient.NewClient(c)
 
 	return &WhisperClientAdapter{
 		rpcClient:        c,
 		shhClient:        client,
 		mailServerEnodes: mailServers,
-		keysManager:      &whisperClientKeysManager{client: client},
+		keysManager: &whisperClientKeysManager{
+			client:     client,
+			privateKey: privateKey,
+		},
 	}
 }
 
@@ -92,12 +100,12 @@ func (a *WhisperClientAdapter) Subscribe(
 		return nil, err
 	}
 
-	criteria, err := createRichCriteria(a.keysManager, options)
-	if err != nil {
+	criteria := newCriteria(a.keysManager)
+	if err := updateCriteriaFromSubscribeOptions(criteria, options); err != nil {
 		return nil, err
 	}
 
-	return a.subscribeMessages(ctx, criteria, in)
+	return a.subscribeMessages(ctx, criteria.ToWhisper(), in)
 }
 
 func (a *WhisperClientAdapter) subscribeMessages(
@@ -159,12 +167,15 @@ func (a *WhisperClientAdapter) Send(
 		return nil, err
 	}
 
-	message, err := createRichWhisperNewMessage(a.keysManager, data, options)
+	newMessage, err := newNewMessage(a.keysManager, data)
 	if err != nil {
 		return nil, err
 	}
+	if err := updateNewMessageFromSendOptions(newMessage, options); err != nil {
+		return nil, err
+	}
 
-	hash, err := a.shhClient.Post(ctx, message)
+	hash, err := a.shhClient.Post(ctx, newMessage.ToWhisper())
 	if err != nil {
 		return nil, err
 	}
@@ -231,34 +242,63 @@ func (a *WhisperClientAdapter) requestMessages(ctx context.Context, enode string
 	return a.rpcClient.CallContext(ctx, nil, "shhext_requestMessages", arg)
 }
 
-func createRichCriteria(keys keysManager, options protocol.SubscribeOptions) (whisper.Criteria, error) {
-	criteria := whisper.Criteria{
-		MinPow:   0,    // TODO: set it to proper value
-		AllowP2P: true, // messages from mail server are direct p2p messages
-	}
+type criteria struct {
+	whisper.Criteria
+	keys keysManager
+}
 
-	topic, err := topicForSubscribeOptions(options)
+func newCriteria(keys keysManager) *criteria {
+	return &criteria{
+		Criteria: whisper.Criteria{
+			MinPow:   WhisperPoW,
+			AllowP2P: true, // messages from mail server are direct p2p messages
+		},
+		keys: keys,
+	}
+}
+
+func (c *criteria) ToWhisper() whisper.Criteria {
+	return c.Criteria
+}
+
+func (c *criteria) updateForPublicGroup(name string) error {
+	topic, err := PublicChatTopic(name)
 	if err != nil {
-		return criteria, err
+		return err
 	}
+	c.Topics = append(c.Topics, topic)
 
-	criteria.Topics = append(criteria.Topics, topic)
-
-	if options.Identity != nil {
-		keyID, err := keys.AddOrGetKeyPair(options.Identity)
-		if err != nil {
-			return criteria, err
-		}
-		criteria.PrivateKeyID = keyID
+	symKeyID, err := c.keys.AddOrGetSymKeyFromPassword(name)
+	if err != nil {
+		return err
 	}
+	c.SymKeyID = symKeyID
 
-	if options.ChatName != "" {
-		symKeyID, err := keys.AddOrGetSymKeyFromPassword(options.ChatName)
-		if err != nil {
-			return criteria, err
-		}
-		criteria.SymKeyID = symKeyID
+	return nil
+}
+
+func (c *criteria) updateForPrivate(recipient *ecdsa.PublicKey) error {
+	topic, err := PrivateChatTopic()
+	if err != nil {
+		return err
 	}
+	c.Topics = append(c.Topics, topic)
 
-	return criteria, nil
+	keyID, err := c.keys.AddOrGetKeyPair(c.keys.PrivateKey())
+	if err != nil {
+		return err
+	}
+	c.PrivateKeyID = keyID
+
+	return nil
+}
+
+func updateCriteriaFromSubscribeOptions(c *criteria, options protocol.SubscribeOptions) error {
+	if options.Recipient != nil {
+		return c.updateForPrivate(options.Recipient)
+	} else if options.ChatName != "" {
+		return c.updateForPublicGroup(options.ChatName)
+	} else {
+		return errors.New("unrecognized options")
+	}
 }

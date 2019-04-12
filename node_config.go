@@ -2,18 +2,10 @@ package main
 
 import (
 	"fmt"
-	stdlog "log"
 	"os"
 
-	"github.com/status-im/status-go/logutils"
 	"github.com/status-im/status-go/params"
 )
-
-func init() {
-	if err := logutils.OverrideRootLog(true, "INFO", logutils.FileOptions{}, false); err != nil {
-		stdlog.Fatalf("failed to override root log: %v\n", err)
-	}
-}
 
 func generateStatusNodeConfig(dataDir, fleet, configFile string) (*params.NodeConfig, error) {
 	if err := os.MkdirAll(dataDir, os.ModeDir|0755); err != nil {
@@ -25,10 +17,17 @@ func generateStatusNodeConfig(dataDir, fleet, configFile string) (*params.NodeCo
 		configFiles = append(configFiles, configFile)
 	}
 
-	return params.NewNodeConfigWithDefaultsAndFiles(
+	config, err := params.NewNodeConfigWithDefaultsAndFiles(
 		dataDir,
 		params.MainNetworkID,
 		[]params.Option{params.WithFleet(fleet)},
 		configFiles,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	config.IPCEnabled = true
+
+	return config, nil
 }

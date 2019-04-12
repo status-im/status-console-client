@@ -11,13 +11,16 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	gethnode "github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
 	"github.com/status-im/status-console-client/protocol/adapters"
 	"github.com/status-im/status-console-client/protocol/client"
+	"github.com/status-im/status-console-client/protocol/gethservice"
 	"github.com/status-im/status-console-client/protocol/v1"
+	"github.com/status-im/status-go/logutils"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/signal"
@@ -25,31 +28,35 @@ import (
 
 var g *gocui.Gui
 
-func init() {
-	log.SetOutput(os.Stderr)
-}
+var (
+	fs       = flag.NewFlagSet("status-term-client", flag.ExitOnError)
+	logLevel = fs.String("log-level", "INFO", "log level")
+
+	// flags acting like commands
+	createKeyPair = fs.Bool("create-key-pair", false, "creates and prints a key pair instead of running")
+
+	// flags for in-proc node
+	dataDir    = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
+	fleet      = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
+	configFile = fs.String("node-config", "", "a JSON file with node config")
+	pfsEnabled = fs.Bool("pfs", false, "enable PFS")
+
+	// flags for external node
+	providerURI = fs.String("provider", "", "an URI pointing at a provider")
+
+	keyHex = fs.String("keyhex", "", "pass a private key in hex")
+)
 
 func main() {
-	fs := flag.NewFlagSet("status-term-client", flag.ExitOnError)
-
-	var (
-		// flags acting like commands
-		createKeyPair = fs.Bool("create-key-pair", false, "creates and prints a key pair instead of running")
-
-		// flags for in-proc node
-		dataDir    = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
-		fleet      = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
-		configFile = fs.String("node-config", "", "a JSON file with node config")
-		pfsEnabled = fs.Bool("pfs", false, "enable PFS")
-
-		// flags for external node
-		providerURI = fs.String("provider", "", "an URI pointing at a provider")
-
-		keyHex = fs.String("keyhex", "", "pass a private key in hex")
-	)
+	log.SetOutput(os.Stderr)
 
 	if err := ff.Parse(fs, os.Args[1:]); err != nil {
 		exitErr(errors.Wrap(err, "failed to parse flags"))
+	}
+
+	err := logutils.OverrideRootLog(true, *logLevel, logutils.FileOptions{}, false)
+	if err != nil {
+		log.Fatalf("failed to override root log: %v\n", err)
 	}
 
 	if *createKeyPair {
@@ -75,8 +82,8 @@ func main() {
 		exitErr(errors.New("private key is required"))
 	}
 
-	// initialize chat
-	var chatAdapter protocol.Protocol
+	// initialize protocol
+	var proto protocol.Protocol
 
 	if *providerURI != "" {
 		rpc, err := rpc.Dial(*providerURI)
@@ -90,7 +97,11 @@ func main() {
 			exitErr(errors.Wrap(err, "failed to generate node config"))
 		}
 
-		chatAdapter = adapters.NewWhisperClientAdapter(rpc, nodeConfig.ClusterConfig.TrustedMailServers)
+		proto = adapters.NewWhisperClientAdapter(
+			rpc,
+			privateKey,
+			nodeConfig.ClusterConfig.TrustedMailServers,
+		)
 	} else {
 		// collect mail server request signals
 		signalsForwarder := newSignalForwarder()
@@ -108,7 +119,19 @@ func main() {
 		}
 
 		statusNode := node.New()
-		if err := statusNode.Start(nodeConfig); err != nil {
+
+		protocolGethService := gethservice.New(
+			statusNode,
+			&keysGetter{privateKey: privateKey},
+		)
+
+		services := []gethnode.ServiceConstructor{
+			func(ctx *gethnode.ServiceContext) (gethnode.Service, error) {
+				return protocolGethService, nil
+			},
+		}
+
+		if err := statusNode.Start(nodeConfig, services...); err != nil {
 			exitErr(errors.Wrap(err, "failed to start node"))
 		}
 
@@ -117,8 +140,11 @@ func main() {
 			exitErr(errors.Wrap(err, "failed to get Whisper service"))
 		}
 
-		whisperService := adapters.NewWhisperServiceAdapter(statusNode, shhService)
+		adapter := adapters.NewWhisperServiceAdapter(statusNode, shhService, privateKey)
 
+		protocolGethService.SetProtocol(adapter)
+
+		// TODO: should be removed from StatusNode
 		if *pfsEnabled {
 			databasesDir := filepath.Join(*dataDir, "databases")
 
@@ -126,17 +152,15 @@ func main() {
 				exitErr(errors.Wrap(err, "failed to create databases dir"))
 			}
 
-			if err := whisperService.InitPFS(databasesDir, privateKey); err != nil {
+			if err := adapter.InitPFS(databasesDir); err != nil {
 				exitErr(errors.Wrap(err, "initialize PFS"))
 			}
 
 			log.Printf("PFS has been initialized")
 		}
 
-		chatAdapter = whisperService
+		proto = adapter
 	}
-
-	var err error
 
 	g, err = gocui.NewGui(gocui.Output256)
 	if err != nil {
@@ -156,7 +180,7 @@ func main() {
 
 	notifications := NewNotificationViewController(&ViewController{vm, g, ViewNotification})
 
-	messenger := client.NewMessenger(chatAdapter, privateKey, db)
+	messenger := client.NewMessenger(proto, privateKey, db)
 
 	chat := NewChatViewController(
 		&ViewController{vm, g, ViewChat},
@@ -393,4 +417,12 @@ func exitErr(err error) {
 
 	fmt.Println(err)
 	os.Exit(1)
+}
+
+type keysGetter struct {
+	privateKey *ecdsa.PrivateKey
+}
+
+func (k keysGetter) PrivateKey() (*ecdsa.PrivateKey, error) {
+	return k.privateKey, nil
 }

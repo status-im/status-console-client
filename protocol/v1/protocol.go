@@ -25,9 +25,9 @@ type Protocol interface {
 // and some additional fields that we learnt
 // about the message.
 type Message struct {
-	Decoded   StatusMessage
-	SigPubKey *ecdsa.PublicKey
-	Hash      []byte
+	Decoded   StatusMessage    `json:"message"`
+	SigPubKey *ecdsa.PublicKey `json:"-"`
+	Hash      []byte           `json:"hash"`
 }
 
 // RequestOptions is a list of params required
@@ -67,8 +67,8 @@ func DefaultRequestOptions() RequestOptions {
 
 // SubscribeOptions are options for Chat.Subscribe method.
 type SubscribeOptions struct {
-	Identity *ecdsa.PrivateKey // for private chats
-	ChatName string            // for public chats
+	Recipient *ecdsa.PublicKey // for private chats
+	ChatName  string           // for public chats
 }
 
 // Validate vierifies that the given options are valid.
@@ -76,7 +76,7 @@ func (o SubscribeOptions) Validate() error {
 	if o == (SubscribeOptions{}) {
 		return errors.New("empty options")
 	}
-	if o.Identity != nil && o.ChatName != "" {
+	if o.Recipient != nil && o.ChatName != "" {
 		return errors.New("fields Identity and ChatName both set")
 	}
 	return nil
@@ -84,17 +84,12 @@ func (o SubscribeOptions) Validate() error {
 
 // SendOptions are options for Chat.Send.
 type SendOptions struct {
-	Identity *ecdsa.PrivateKey
-
 	ChatName  string           // for public chats
 	Recipient *ecdsa.PublicKey // for private chats
 }
 
 // Validate verifies that the given options are valid.
 func (o SendOptions) Validate() error {
-	if o.Identity == nil {
-		return errors.New("field Identity is required")
-	}
 	if o.ChatName == "" && o.Recipient == nil {
 		return errors.New("field ChatName or Recipient is required")
 	}

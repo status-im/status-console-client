@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"crypto/ecdsa"
 	"errors"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -8,47 +9,60 @@ import (
 	whisper "github.com/status-im/whisper/whisperv6"
 )
 
-func createWhisperNewMessage(data []byte, sigKey string) whisper.NewMessage {
-	return whisper.NewMessage{
-		TTL:       WhisperTTL,
-		Payload:   data,
-		PowTarget: WhisperPoW,
-		PowTime:   WhisperPoWTime,
-		Sig:       sigKey,
-	}
+type newMessage struct {
+	whisper.NewMessage
+	keys keysManager
 }
 
-func setEncryptionKeyForNewMessage(message *whisper.NewMessage, keys keysManager, options protocol.SendOptions) (err error) {
-	if options.Recipient != nil {
-		message.PublicKey = crypto.FromECDSAPub(options.Recipient)
+func newNewMessage(keys keysManager, data []byte) (*newMessage, error) {
+	sigKey, err := keys.AddOrGetKeyPair(keys.PrivateKey())
+	if err != nil {
+		return nil, err
+	}
+
+	return &newMessage{
+		NewMessage: whisper.NewMessage{
+			TTL:       WhisperTTL,
+			Payload:   data,
+			PowTarget: WhisperPoW,
+			PowTime:   WhisperPoWTime,
+			Sig:       sigKey,
+		},
+		keys: keys,
+	}, nil
+}
+
+func (m *newMessage) ToWhisper() whisper.NewMessage {
+	return m.NewMessage
+}
+
+func (m *newMessage) updateForPrivate(recipient *ecdsa.PublicKey) (err error) {
+	m.Topic, err = PrivateChatTopic()
+	if err != nil {
 		return
 	}
 
-	if options.ChatName != "" {
-		message.SymKeyID, err = keys.AddOrGetSymKeyFromPassword(options.ChatName)
-		if err != nil {
-			return
-		}
-	}
+	m.PublicKey = crypto.FromECDSAPub(recipient)
 
-	return errors.New("failed to set an encryption key")
+	return
 }
 
-func createRichWhisperNewMessage(keys keysManager, data []byte, options protocol.SendOptions) (whisper.NewMessage, error) {
-	var message whisper.NewMessage
-
-	sigKey, err := keys.AddOrGetKeyPair(options.Identity)
+func (m *newMessage) updateForPublicGroup(name string) (err error) {
+	m.Topic, err = PublicChatTopic(name)
 	if err != nil {
-		return message, err
+		return
 	}
 
-	message = createWhisperNewMessage(data, sigKey)
+	m.SymKeyID, err = m.keys.AddOrGetSymKeyFromPassword(name)
+	return
+}
 
-	message.Topic, err = topicForSendOptions(options)
-	if err != nil {
-		return message, err
+func updateNewMessageFromSendOptions(m *newMessage, options protocol.SendOptions) error {
+	if options.Recipient != nil {
+		return m.updateForPrivate(options.Recipient)
+	} else if options.ChatName != "" {
+		return m.updateForPublicGroup(options.ChatName)
+	} else {
+		return errors.New("unrecognized options")
 	}
-
-	err = setEncryptionKeyForNewMessage(&message, keys, options)
-	return message, err
 }

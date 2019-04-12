@@ -21,9 +21,11 @@ matrix:
     env: GOFLAGS=-mod=vendor
     script:
     - make lint
-    - make test
+    # fails without -a
+    - go test -a ./... # make test
   - go: "1.12.x"
     env: GOFLAGS=-mod=vendor
     script:
     - make lint
-    - make test
+    # fails without -a
+    - go test -a ./... # make test

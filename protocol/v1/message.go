@@ -14,8 +14,8 @@ const (
 
 // Message types.
 const (
-	MessageTypePublicGroupUserMessage = "public-group-user-message"
-	MessageTypePrivateUserMessage     = "user-message"
+	MessageTypePublicGroup = "public-group-user-message"
+	MessageTypePrivate     = "user-message"
 )
 
 var (
@@ -26,18 +26,18 @@ var (
 
 // StatusMessageContent contains the chat ID and the actual text of a message.
 type StatusMessageContent struct {
-	ChatID string
-	Text   string
+	ChatID string `json:"chat_id"`
+	Text   string `json:"text"`
 }
 
 // StatusMessage contains all message details.
 type StatusMessage struct {
-	Text      string // TODO: why is this duplicated?
-	ContentT  string
-	MessageT  string
-	Clock     int64 // in milliseconds; see CalcMessageClock for more details
-	Timestamp int64 // in milliseconds
-	Content   StatusMessageContent
+	Text      string               `json:"text"` // TODO: why is this duplicated?
+	ContentT  string               `json:"content_type"`
+	MessageT  string               `json:"message_type"`
+	Clock     int64                `json:"clock"`     // in milliseconds; see CalcMessageClock for more details
+	Timestamp int64                `json:"timestamp"` // in milliseconds
+	Content   StatusMessageContent `json:"content"`
 }
 
 // CreateTextStatusMessage creates a StatusMessage.
@@ -58,12 +58,12 @@ func CreateTextStatusMessage(data []byte, lastClock int64, chatID, messageType s
 
 // CreatePublicTextMessage creates a public text StatusMessage.
 func CreatePublicTextMessage(data []byte, lastClock int64, chatID string) StatusMessage {
-	return CreateTextStatusMessage(data, lastClock, chatID, MessageTypePublicGroupUserMessage)
+	return CreateTextStatusMessage(data, lastClock, chatID, MessageTypePublicGroup)
 }
 
 // CreatePrivateTextMessage creates a public text StatusMessage.
 func CreatePrivateTextMessage(data []byte, lastClock int64, chatID string) StatusMessage {
-	return CreateTextStatusMessage(data, lastClock, chatID, MessageTypePrivateUserMessage)
+	return CreateTextStatusMessage(data, lastClock, chatID, MessageTypePrivate)
 }
 
 // DecodeMessage decodes a raw payload to StatusMessage struct.

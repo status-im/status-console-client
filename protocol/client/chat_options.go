@@ -10,38 +10,38 @@ var (
 	errUnsupportedContactType = fmt.Errorf("unsupported contact type")
 )
 
-func extendSubscribeOptions(opts protocol.SubscribeOptions, c *Chat) (protocol.SubscribeOptions, error) {
-	switch c.contact.Type {
+func createSubscribeOptions(c Contact) (opts protocol.SubscribeOptions, err error) {
+	switch c.Type {
 	case ContactPublicChat:
-		opts.ChatName = c.contact.Name
+		opts.ChatName = c.Name
 	case ContactPrivateChat:
-		opts.Identity = c.identity
+		opts.Recipient = c.PublicKey
 	default:
-		return opts, errUnsupportedContactType
+		err = errUnsupportedContactType
 	}
-	return opts, nil
+	return
 }
 
-func extendRequestOptions(opts protocol.RequestOptions, c *Chat) (protocol.RequestOptions, error) {
-	switch c.contact.Type {
+func createRequestOptions(c Contact) (opts protocol.RequestOptions, err error) {
+	switch c.Type {
 	case ContactPublicChat:
-		opts.ChatName = c.contact.Name
+		opts.ChatName = c.Name
 	case ContactPrivateChat:
-		opts.Recipient = c.contact.PublicKey
+		opts.Recipient = c.PublicKey
 	default:
-		return opts, errUnsupportedContactType
+		err = errUnsupportedContactType
 	}
-	return opts, nil
+	return
 }
 
-func extendSendOptions(opts protocol.SendOptions, c *Chat) (protocol.SendOptions, error) {
-	switch c.contact.Type {
+func createSendOptions(c Contact) (opts protocol.SendOptions, err error) {
+	switch c.Type {
 	case ContactPublicChat:
-		opts.ChatName = c.contact.Name
+		opts.ChatName = c.Name
 	case ContactPrivateChat:
-		opts.Recipient = c.contact.PublicKey
+		opts.Recipient = c.PublicKey
 	default:
-		return opts, errUnsupportedContactType
+		err = errUnsupportedContactType
 	}
-	return opts, nil
+	return
 }

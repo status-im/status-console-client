@@ -33,9 +33,11 @@ func (s *Subscription) Cancel(err error) {
 func (s *Subscription) Unsubscribe() {
 	s.Lock()
 	defer s.Unlock()
+
 	if s.done == nil {
 		return
 	}
+
 	close(s.done)
 	s.done = nil
 }
