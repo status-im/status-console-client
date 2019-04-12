@@ -36,7 +36,7 @@ func topicForSendOptions(options protocol.SendOptions) (whisper.TopicType, error
 }
 
 func topicForSubscribeOptions(options protocol.SubscribeOptions) (whisper.TopicType, error) {
-	if options.Identity != nil {
+	if options.Recipient != nil {
 		return PrivateChatTopic()
 	}
 

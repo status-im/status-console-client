@@ -11,12 +11,14 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	gethnode "github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
 	"github.com/status-im/status-console-client/protocol/adapters"
 	"github.com/status-im/status-console-client/protocol/client"
+	"github.com/status-im/status-console-client/protocol/gethservice"
 	"github.com/status-im/status-console-client/protocol/v1"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
@@ -90,7 +92,11 @@ func main() {
 			exitErr(errors.Wrap(err, "failed to generate node config"))
 		}
 
-		chatAdapter = adapters.NewWhisperClientAdapter(rpc, nodeConfig.ClusterConfig.TrustedMailServers)
+		chatAdapter = adapters.NewWhisperClientAdapter(
+			rpc,
+			privateKey,
+			nodeConfig.ClusterConfig.TrustedMailServers,
+		)
 	} else {
 		// collect mail server request signals
 		signalsForwarder := newSignalForwarder()
@@ -108,7 +114,19 @@ func main() {
 		}
 
 		statusNode := node.New()
-		if err := statusNode.Start(nodeConfig); err != nil {
+
+		protocolGethService := gethservice.New(
+			statusNode,
+			&keysGetter{privateKey: privateKey},
+		)
+
+		services := []gethnode.ServiceConstructor{
+			func(ctx *gethnode.ServiceContext) (gethnode.Service, error) {
+				return protocolGethService, nil
+			},
+		}
+
+		if err := statusNode.Start(nodeConfig, services...); err != nil {
 			exitErr(errors.Wrap(err, "failed to start node"))
 		}
 
@@ -117,7 +135,9 @@ func main() {
 			exitErr(errors.Wrap(err, "failed to get Whisper service"))
 		}
 
-		whisperService := adapters.NewWhisperServiceAdapter(statusNode, shhService)
+		whisperService := adapters.NewWhisperServiceAdapter(statusNode, shhService, privateKey)
+
+		protocolGethService.SetProtocol(whisperService)
 
 		if *pfsEnabled {
 			databasesDir := filepath.Join(*dataDir, "databases")
@@ -393,4 +413,12 @@ func exitErr(err error) {
 
 	fmt.Println(err)
 	os.Exit(1)
+}
+
+type keysGetter struct {
+	privateKey *ecdsa.PrivateKey
+}
+
+func (k keysGetter) PrivateKey() (*ecdsa.PrivateKey, error) {
+	return k.privateKey, nil
 }

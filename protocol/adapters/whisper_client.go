@@ -21,10 +21,15 @@ import (
 )
 
 type whisperClientKeysManager struct {
-	client *shhclient.Client
+	client     *shhclient.Client
+	privateKey *ecdsa.PrivateKey
 
 	passToSymMutex    sync.RWMutex
 	passToSymKeyCache map[string]string
+}
+
+func (m *whisperClientKeysManager) PrivateKey() *ecdsa.PrivateKey {
+	return m.privateKey
 }
 
 func (m *whisperClientKeysManager) AddOrGetKeyPair(priv *ecdsa.PrivateKey) (string, error) {
@@ -70,14 +75,17 @@ type WhisperClientAdapter struct {
 var _ protocol.Protocol = (*WhisperClientAdapter)(nil)
 
 // NewWhisperClientAdapter returns a new WhisperClientAdapter.
-func NewWhisperClientAdapter(c *rpc.Client, mailServers []string) *WhisperClientAdapter {
+func NewWhisperClientAdapter(c *rpc.Client, privateKey *ecdsa.PrivateKey, mailServers []string) *WhisperClientAdapter {
 	client := shhclient.NewClient(c)
 
 	return &WhisperClientAdapter{
 		rpcClient:        c,
 		shhClient:        client,
 		mailServerEnodes: mailServers,
-		keysManager:      &whisperClientKeysManager{client: client},
+		keysManager: &whisperClientKeysManager{
+			client:     client,
+			privateKey: privateKey,
+		},
 	}
 }
 
@@ -135,8 +143,9 @@ func (a *WhisperClientAdapter) subscribeMessages(
 					Decoded:   m,
 					SigPubKey: sigPubKey,
 				}
-			case err := <-shhSub.Err():
-				sub.Cancel(err)
+			case _ = <-shhSub.Err():
+				// TODO: handle err
+				sub.Unsubscribe()
 				return
 			case <-sub.Done():
 				return
@@ -159,12 +168,15 @@ func (a *WhisperClientAdapter) Send(
 		return nil, err
 	}
 
-	message, err := createRichWhisperNewMessage(a.keysManager, data, options)
+	newMessage, err := newNewMessage(a.keysManager, data)
 	if err != nil {
 		return nil, err
 	}
+	if err := updateNewMessageFromSendOptions(newMessage, options); err != nil {
+		return nil, err
+	}
 
-	hash, err := a.shhClient.Post(ctx, message)
+	hash, err := a.shhClient.Post(ctx, newMessage.ToWhisper())
 	if err != nil {
 		return nil, err
 	}
@@ -244,8 +256,8 @@ func createRichCriteria(keys keysManager, options protocol.SubscribeOptions) (wh
 
 	criteria.Topics = append(criteria.Topics, topic)
 
-	if options.Identity != nil {
-		keyID, err := keys.AddOrGetKeyPair(options.Identity)
+	if options.Recipient != nil {
+		keyID, err := keys.AddOrGetKeyPair(keys.PrivateKey())
 		if err != nil {
 			return criteria, err
 		}

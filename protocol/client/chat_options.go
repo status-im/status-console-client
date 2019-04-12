@@ -15,7 +15,7 @@ func extendSubscribeOptions(opts protocol.SubscribeOptions, c *Chat) (protocol.S
 	case ContactPublicChat:
 		opts.ChatName = c.contact.Name
 	case ContactPrivateChat:
-		opts.Identity = c.identity
+		opts.Recipient = c.contact.PublicKey
 	default:
 		return opts, errUnsupportedContactType
 	}

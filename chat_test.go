@@ -71,7 +71,7 @@ func TestSendMessage(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, payload, statusMessage.Text)
 	require.Equal(t, protocol.ContentTypeTextPlain, statusMessage.ContentT)
-	require.Equal(t, protocol.MessageTypePublicGroupUserMessage, statusMessage.MessageT)
+	require.Equal(t, protocol.MessageTypePublicGroup, statusMessage.MessageT)
 	require.Equal(t,
 		protocol.StatusMessageContent{ChatID: chatName, Text: string(payload)},
 		statusMessage.Content)

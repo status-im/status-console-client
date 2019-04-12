@@ -17,7 +17,7 @@ func NewSubscription() *Subscription {
 	}
 }
 
-func (s *Subscription) Cancel(err error) {
+func (s *Subscription) cancel(err error) {
 	s.Lock()
 	defer s.Unlock()
 

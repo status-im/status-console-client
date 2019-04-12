@@ -213,7 +213,7 @@ func (c *Chat) Send(data []byte) error {
 	c.updateLastClock(message.Clock)
 	c.Unlock()
 
-	opts, err := extendSendOptions(protocol.SendOptions{Identity: c.identity}, c)
+	opts, err := extendSendOptions(protocol.SendOptions{}, c)
 	if err != nil {
 		return errors.Wrap(err, "failed to prepare send options")
 	}

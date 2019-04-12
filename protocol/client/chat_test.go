@@ -121,7 +121,7 @@ func TestHandleMessageFromProtocol(t *testing.T) {
 		Decoded: protocol.StatusMessage{
 			Text:      "some",
 			ContentT:  protocol.ContentTypeTextPlain,
-			MessageT:  protocol.MessageTypePublicGroupUserMessage,
+			MessageT:  protocol.MessageTypePublicGroup,
 			Timestamp: now * 1000,
 			Clock:     now * 1000,
 		},
