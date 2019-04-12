@@ -26,7 +26,7 @@ func (api *PublicAPI) Messages(ctx context.Context, params SubscribeParams) (*rp
 	}
 
 	adapterOptions := protocol.SubscribeOptions{
-		ChatName: params.PubChatName,
+		ChatName: params.PubChatName, // no transformation required
 	}
 
 	if len(params.RecipientPubKey) > 0 {
@@ -34,7 +34,6 @@ func (api *PublicAPI) Messages(ctx context.Context, params SubscribeParams) (*rp
 		if err != nil {
 			return nil, err
 		}
-
 		adapterOptions.Recipient = publicKey
 	}
 
@@ -91,7 +90,6 @@ func (api *PublicAPI) Send(ctx context.Context, data hexutil.Bytes, params SendP
 		if err != nil {
 			return nil, err
 		}
-
 		adapterOptions.Recipient = publicKey
 	}
 

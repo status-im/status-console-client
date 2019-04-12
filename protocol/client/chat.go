@@ -115,7 +115,7 @@ func (c *Chat) Subscribe(params protocol.RequestOptions) (err error) {
 		return errors.New("already subscribed")
 	}
 
-	opts, err := extendSubscribeOptions(protocol.SubscribeOptions{}, c)
+	opts, err := createSubscribeOptions(c.contact)
 	if err != nil {
 		return errors.Wrap(err, "failed to subscribe")
 	}
@@ -165,7 +165,7 @@ func (c *Chat) load(options protocol.RequestOptions) error {
 }
 
 func (c *Chat) request(options protocol.RequestOptions) error {
-	opts, err := extendRequestOptions(options, c)
+	opts, err := createRequestOptions(c.contact)
 	if err != nil {
 		return err
 	}
@@ -213,7 +213,7 @@ func (c *Chat) Send(data []byte) error {
 	c.updateLastClock(message.Clock)
 	c.Unlock()
 
-	opts, err := extendSendOptions(protocol.SendOptions{}, c)
+	opts, err := createSendOptions(c.contact)
 	if err != nil {
 		return errors.Wrap(err, "failed to prepare send options")
 	}
@@ -224,6 +224,7 @@ func (c *Chat) Send(data []byte) error {
 	if c.contact.Type == ContactPrivateChat {
 		log.Printf("[Chat::Send] sent a private message")
 
+		// TODO: this should be created by c.proto
 		c.ownMessages <- &protocol.Message{
 			Decoded:   message,
 			SigPubKey: &c.identity.PublicKey,

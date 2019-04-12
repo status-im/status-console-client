@@ -91,7 +91,7 @@ func NewWhisperServiceAdapter(node *node.StatusNode, shh *whisper.Whisper, priva
 }
 
 // InitPFS adds support for PFS messages.
-func (a *WhisperServiceAdapter) InitPFS(baseDir string, privateKey *ecdsa.PrivateKey) error {
+func (a *WhisperServiceAdapter) InitPFS(baseDir string) error {
 	addBundlesHandler := func(addedBundles []chat.IdentityAndIDPair) {
 		log.Printf("added bundles: %v", addedBundles)
 	}
@@ -117,21 +117,14 @@ func (a *WhisperServiceAdapter) InitPFS(baseDir string, privateKey *ecdsa.Privat
 		addBundlesHandler,
 	)
 
-	return a.SetPFS(pfs, privateKey)
+	a.SetPFS(pfs)
+
+	return nil
 }
 
 // SetPFS sets the PFS service and a private key.
-func (a *WhisperServiceAdapter) SetPFS(pfs *chat.ProtocolService, privateKey *ecdsa.PrivateKey) error {
-	pk := a.keysManager.PrivateKey()
-
-	// verify the same private key is used
-	if pk == nil || privateKey.X.Cmp(pk.X) != 0 || privateKey.Y.Cmp(pk.Y) != 0 {
-		return errors.New("provided PFS private key is different from the currently set")
-	}
-
+func (a *WhisperServiceAdapter) SetPFS(pfs *chat.ProtocolService) {
 	a.pfs = pfs
-
-	return nil
 }
 
 // Subscribe subscribes to a public chat using the Whisper service.
