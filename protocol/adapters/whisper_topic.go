@@ -23,30 +23,6 @@ func PrivateChatTopic() (whisper.TopicType, error) {
 	return PublicChatTopic(TopicDiscovery)
 }
 
-func topicForSendOptions(options protocol.SendOptions) (whisper.TopicType, error) {
-	if options.Recipient != nil {
-		return PrivateChatTopic()
-	}
-
-	if options.ChatName != "" {
-		return PublicChatTopic(options.ChatName)
-	}
-
-	return whisper.TopicType{}, errors.New("invalid options")
-}
-
-func topicForSubscribeOptions(options protocol.SubscribeOptions) (whisper.TopicType, error) {
-	if options.Recipient != nil {
-		return PrivateChatTopic()
-	}
-
-	if options.ChatName != "" {
-		return PublicChatTopic(options.ChatName)
-	}
-
-	return whisper.TopicType{}, errors.New("invalid options")
-}
-
 func topicForRequestOptions(options protocol.RequestOptions) (whisper.TopicType, error) {
 	if options.Recipient != nil {
 		return PrivateChatTopic()

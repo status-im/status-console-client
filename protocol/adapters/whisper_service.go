@@ -161,8 +161,7 @@ func (a *WhisperServiceAdapter) Subscribe(
 			case <-t.C:
 				received, err := subWhisper.Messages()
 				if err != nil {
-					// TODO: handle err
-					sub.Unsubscribe()
+					sub.Cancel(err)
 					return
 				}
 

@@ -154,7 +154,7 @@ func main() {
 				exitErr(errors.Wrap(err, "failed to create databases dir"))
 			}
 
-			if err := adapter.InitPFS(databasesDir, privateKey); err != nil {
+			if err := adapter.InitPFS(databasesDir); err != nil {
 				exitErr(errors.Wrap(err, "initialize PFS"))
 			}
 

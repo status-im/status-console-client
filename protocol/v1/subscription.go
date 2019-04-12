@@ -17,7 +17,7 @@ func NewSubscription() *Subscription {
 	}
 }
 
-func (s *Subscription) cancel(err error) {
+func (s *Subscription) Cancel(err error) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -33,9 +33,11 @@ func (s *Subscription) cancel(err error) {
 func (s *Subscription) Unsubscribe() {
 	s.Lock()
 	defer s.Unlock()
+
 	if s.done == nil {
 		return
 	}
+
 	close(s.done)
 	s.done = nil
 }
