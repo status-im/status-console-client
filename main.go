@@ -47,7 +47,7 @@ var (
 	keyHex = fs.String("keyhex", "", "pass a private key in hex")
 )
 
-func init() {
+func main() {
 	log.SetOutput(os.Stderr)
 
 	if err := ff.Parse(fs, os.Args[1:]); err != nil {
@@ -58,9 +58,7 @@ func init() {
 	if err != nil {
 		log.Fatalf("failed to override root log: %v\n", err)
 	}
-}
 
-func main() {
 	if *createKeyPair {
 		key, err := crypto.GenerateKey()
 		if err != nil {
@@ -163,8 +161,6 @@ func main() {
 
 		proto = adapter
 	}
-
-	var err error
 
 	g, err = gocui.NewGui(gocui.Output256)
 	if err != nil {
