@@ -14,16 +14,20 @@ import (
 
 var _ gethnode.Service = (*Service)(nil)
 
+// KeysGetter is an interface that specifies what kind of keys
+// should an implementation provide.
 type KeysGetter interface {
 	PrivateKey() (*ecdsa.PrivateKey, error)
 }
 
+// Service is a wrapper around Protocol.
 type Service struct {
 	node     *node.StatusNode
 	keys     KeysGetter
 	protocol protocol.Protocol
 }
 
+// New creates a new Service.
 func New(node *node.StatusNode, keys KeysGetter) *Service {
 	return &Service{
 		node: node,
@@ -31,17 +35,19 @@ func New(node *node.StatusNode, keys KeysGetter) *Service {
 	}
 }
 
+// SetProtocol sets a given Protocol implementation.
 func (s *Service) SetProtocol(proto protocol.Protocol) {
 	s.protocol = proto
 }
 
 // gethnode.Service interface implementation
 
+// Protocols list a list of p2p protocols defined by this service.s
 func (s *Service) Protocols() []p2p.Protocol {
 	return nil
 }
 
-// APIs retrieves the list of RPC descriptors the service provides
+// APIs retrieves the list of RPC descriptors the service provides.
 func (s *Service) APIs() []rpc.API {
 	return []rpc.API{
 		{

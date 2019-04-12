@@ -250,7 +250,7 @@ type criteria struct {
 func newCriteria(keys keysManager) *criteria {
 	return &criteria{
 		Criteria: whisper.Criteria{
-			MinPow:   0,    // TODO: set it to proper value
+			MinPow:   WhisperPoW,
 			AllowP2P: true, // messages from mail server are direct p2p messages
 		},
 		keys: keys,

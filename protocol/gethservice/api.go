@@ -2,6 +2,7 @@ package gethservice
 
 import (
 	"context"
+	"errors"
 	"log"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -10,19 +11,33 @@ import (
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
+var (
+	// ErrProtocolNotSet tells that the protocol was not set in the Service.
+	ErrProtocolNotSet = errors.New("protocol is not set")
+)
+
+// PublicAPI provides an JSON-RPC API to interact with
+// the Status Messaging Protocol through a geth node.
 type PublicAPI struct {
 	service *Service
 }
 
-type SubscribeParams struct {
+// MessagesParams is an object with JSON-serializable parameters
+// for Messages method.
+type MessagesParams struct {
 	RecipientPubKey hexutil.Bytes `json:"recipientPubKey"` // public key hex-encoded
 	PubChatName     string        `json:"pubChatName"`
 }
 
-func (api *PublicAPI) Messages(ctx context.Context, params SubscribeParams) (*rpc.Subscription, error) {
+// Messages creates an RPC subscription which delivers received messages.
+func (api *PublicAPI) Messages(ctx context.Context, params MessagesParams) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
 	if !supported {
 		return nil, rpc.ErrNotificationsUnsupported
+	}
+
+	if api.service.protocol == nil {
+		return nil, ErrProtocolNotSet
 	}
 
 	adapterOptions := protocol.SubscribeOptions{
@@ -75,12 +90,19 @@ func (api *PublicAPI) Messages(ctx context.Context, params SubscribeParams) (*rp
 	return rpcSub, nil
 }
 
+// SendParams is an object with JSON-serializable parameters
+// for Send method.
 type SendParams struct {
 	RecipientPubKey hexutil.Bytes `json:"recipientPubKey"` // public key hex-encoded
 	PubChatName     string        `json:"pubChatName"`
 }
 
+// Send sends a message to the network.
 func (api *PublicAPI) Send(ctx context.Context, data hexutil.Bytes, params SendParams) (hexutil.Bytes, error) {
+	if api.service.protocol == nil {
+		return nil, ErrProtocolNotSet
+	}
+
 	adapterOptions := protocol.SendOptions{
 		ChatName: params.PubChatName, // no transformation required
 	}
