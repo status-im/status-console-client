@@ -18,7 +18,7 @@ require (
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/gogo/protobuf v1.2.0 // indirect
 	github.com/golang-migrate/migrate v3.5.4+incompatible // indirect
-	github.com/golang/mock v1.2.0 // indirect
+	github.com/golang/mock v1.2.0
 	github.com/golang/protobuf v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20190109223431-e84dfd68c163 // indirect
 	github.com/google/uuid v1.1.0 // indirect

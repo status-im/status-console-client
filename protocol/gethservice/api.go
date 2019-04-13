@@ -2,6 +2,7 @@ package gethservice
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"log"
 
@@ -22,11 +23,16 @@ type PublicAPI struct {
 	service *Service
 }
 
+// ChatParams are chat specific options.
+type ChatParams struct {
+	RecipientPubKey hexutil.Bytes `json:"recipientPubKey"` // public key hex-encoded
+	PubChatName     string        `json:"pubChatName"`
+}
+
 // MessagesParams is an object with JSON-serializable parameters
 // for Messages method.
 type MessagesParams struct {
-	RecipientPubKey hexutil.Bytes `json:"recipientPubKey"` // public key hex-encoded
-	PubChatName     string        `json:"pubChatName"`
+	ChatParams
 }
 
 // Messages creates an RPC subscription which delivers received messages.
@@ -40,16 +46,17 @@ func (api *PublicAPI) Messages(ctx context.Context, params MessagesParams) (*rpc
 		return nil, ErrProtocolNotSet
 	}
 
+	var err error
+
 	adapterOptions := protocol.SubscribeOptions{
-		ChatName: params.PubChatName, // no transformation required
+		ChatOptions: protocol.ChatOptions{
+			ChatName: params.PubChatName, // no transformation required
+		},
 	}
 
-	if len(params.RecipientPubKey) > 0 {
-		publicKey, err := crypto.UnmarshalPubkey(params.RecipientPubKey)
-		if err != nil {
-			return nil, err
-		}
-		adapterOptions.Recipient = publicKey
+	adapterOptions.Recipient, err = unmarshalPubKey(params.RecipientPubKey)
+	if err != nil {
+		return nil, err
 	}
 
 	messages := make(chan *protocol.Message, 100)
@@ -90,11 +97,9 @@ func (api *PublicAPI) Messages(ctx context.Context, params MessagesParams) (*rpc
 	return rpcSub, nil
 }
 
-// SendParams is an object with JSON-serializable parameters
-// for Send method.
+// SendParams is an object with JSON-serializable parameters for Send method.
 type SendParams struct {
-	RecipientPubKey hexutil.Bytes `json:"recipientPubKey"` // public key hex-encoded
-	PubChatName     string        `json:"pubChatName"`
+	ChatParams
 }
 
 // Send sends a message to the network.
@@ -103,18 +108,56 @@ func (api *PublicAPI) Send(ctx context.Context, data hexutil.Bytes, params SendP
 		return nil, ErrProtocolNotSet
 	}
 
+	var err error
+
 	adapterOptions := protocol.SendOptions{
-		ChatName: params.PubChatName, // no transformation required
+		ChatOptions: protocol.ChatOptions{
+			ChatName: params.PubChatName, // no transformation required
+		},
 	}
 
-	if len(params.RecipientPubKey) > 0 {
-		publicKey, err := crypto.UnmarshalPubkey(params.RecipientPubKey)
-		if err != nil {
-			return nil, err
-		}
-		adapterOptions.Recipient = publicKey
+	adapterOptions.Recipient, err = unmarshalPubKey(params.RecipientPubKey)
+	if err != nil {
+		return nil, err
 	}
 
-	hash, err := api.service.protocol.Send(ctx, data, adapterOptions)
-	return hexutil.Bytes(hash), err
+	return api.service.protocol.Send(ctx, data, adapterOptions)
+}
+
+// RequestParams is an object with JSON-serializable parameters for Request method.
+type RequestParams struct {
+	ChatParams
+	Limit int   `json:"limit"`
+	From  int64 `json:"from"`
+	To    int64 `json:"to"`
+}
+
+// Request send a request for historic messages matching the provided RequestParams.
+func (api *PublicAPI) Request(ctx context.Context, params RequestParams) (err error) {
+	if api.service.protocol == nil {
+		return ErrProtocolNotSet
+	}
+
+	adapterOptions := protocol.RequestOptions{
+		ChatOptions: protocol.ChatOptions{
+			ChatName: params.PubChatName, // no transformation required
+		},
+		Limit: params.Limit,
+		From:  params.From,
+		To:    params.To,
+	}
+
+	adapterOptions.Recipient, err = unmarshalPubKey(params.RecipientPubKey)
+	if err != nil {
+		return
+	}
+
+	return api.service.protocol.Request(ctx, adapterOptions)
+}
+
+func unmarshalPubKey(b hexutil.Bytes) (*ecdsa.PublicKey, error) {
+	if len(b) == 0 {
+		return nil, nil
+	}
+	return crypto.UnmarshalPubkey(b)
 }
