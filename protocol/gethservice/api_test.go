@@ -25,7 +25,7 @@ func TestPublicAPISend(t *testing.T) {
 
 	client, aNode, err := setupRPCClient(proto)
 	require.NoError(t, err)
-	defer func() { go aNode.Stop() }() // Stop() is slow so do it in a goroutine
+	defer func() { go discardStop(aNode) }() // Stop() is slow so do it in a goroutine
 
 	data := []byte("some payload")
 	params := SendParams{
@@ -60,7 +60,7 @@ func TestPublicAPIRequest(t *testing.T) {
 
 	client, aNode, err := setupRPCClient(proto)
 	require.NoError(t, err)
-	defer func() { go aNode.Stop() }() // Stop() is slow so do it in a goroutine
+	defer func() { go discardStop(aNode) }() // Stop() is slow so do it in a goroutine
 
 	now := time.Now().Unix()
 	params := RequestParams{
@@ -98,7 +98,7 @@ func TestPublicAPIMessages(t *testing.T) {
 
 	client, aNode, err := setupRPCClient(proto)
 	require.NoError(t, err)
-	defer func() { go aNode.Stop() }() // Stop() is slow so do it in a goroutine
+	defer func() { go discardStop(aNode) }() // Stop() is slow so do it in a goroutine
 
 	messages := make(chan protocol.StatusMessage)
 	params := MessagesParams{
@@ -145,6 +145,10 @@ func createAndStartNode(privateKey *ecdsa.PrivateKey) (*node.StatusNode, *Servic
 		&params.NodeConfig{APIModules: "protos"},
 		services...,
 	)
+}
+
+func discardStop(n *node.StatusNode) {
+	_ = n.Stop()
 }
 
 func setupRPCClient(proto protocol.Protocol) (*rpc.Client, *node.StatusNode, error) {
