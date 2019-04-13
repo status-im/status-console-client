@@ -39,5 +39,14 @@ install-linter:
 
 install-dev:
 	# a tool to vendor non-go files
-	go get github.com/goware/modvendor
+	go get -u github.com/goware/modvendor
+	go get -u github.com/golang/mock/gomock
+	go install github.com/golang/mock/mockgen
 .PHONY: install-dev
+
+mock:
+	mockgen \
+		-destination ./protocol/v1/mock/protocol_mock.go \
+		-package protocol_mock \
+		github.com/status-im/status-console-client/protocol/v1 Protocol
+.PHONY: mock

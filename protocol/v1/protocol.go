@@ -30,15 +30,19 @@ type Message struct {
 	Hash      []byte           `json:"hash"`
 }
 
+// ChatOptions are chat specific options, usually related to the recipient/destination.
+type ChatOptions struct {
+	ChatName  string           // for public chats
+	Recipient *ecdsa.PublicKey // for private chats
+}
+
 // RequestOptions is a list of params required
 // to request for historic messages.
 type RequestOptions struct {
+	ChatOptions
 	Limit int
 	From  int64
 	To    int64
-
-	ChatName  string           // for public chats
-	Recipient *ecdsa.PublicKey // for private chats
 }
 
 // Validate verifies that the given request options are valid.
@@ -67,8 +71,7 @@ func DefaultRequestOptions() RequestOptions {
 
 // SubscribeOptions are options for Chat.Subscribe method.
 type SubscribeOptions struct {
-	Recipient *ecdsa.PublicKey // for private chats
-	ChatName  string           // for public chats
+	ChatOptions
 }
 
 // Validate vierifies that the given options are valid.
@@ -84,8 +87,7 @@ func (o SubscribeOptions) Validate() error {
 
 // SendOptions are options for Chat.Send.
 type SendOptions struct {
-	ChatName  string           // for public chats
-	Recipient *ecdsa.PublicKey // for private chats
+	ChatOptions
 }
 
 // Validate verifies that the given options are valid.
