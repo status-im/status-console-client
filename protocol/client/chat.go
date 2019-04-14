@@ -97,9 +97,15 @@ func (c *Chat) HasMessage(m *protocol.Message) bool {
 }
 
 func (c *Chat) hasMessage(m *protocol.Message) bool {
-	hash := messageIDStr(m)
+	hash := hex.EncodeToString(m.ID)
 	_, ok := c.messagesByHash[hash]
 	return ok
+}
+
+func (c *Chat) hasMessageWithHash(m *protocol.Message) (string, bool) {
+	hash := hex.EncodeToString(m.ID)
+	_, ok := c.messagesByHash[hash]
+	return hash, ok
 }
 
 // Subscribe reads messages from the network.
@@ -141,8 +147,8 @@ func (c *Chat) load(options protocol.RequestOptions) error {
 	// Get already cached messages from the database.
 	cachedMessages, err := c.db.Messages(
 		c.contact,
-		options.From,
-		options.To,
+		options.FromTime(),
+		options.ToTime(),
 	)
 	if err != nil {
 		return errors.Wrap(err, "db failed to get messages")
@@ -210,7 +216,7 @@ func (c *Chat) Send(data []byte) error {
 	}
 
 	c.Lock()
-	c.updateLastClock(message.Clock)
+	c.updateLastClock(int64(message.Clock))
 	c.Unlock()
 
 	opts, err := createSendOptions(c.contact)
@@ -303,18 +309,16 @@ func (c *Chat) handleMessages(messages ...*protocol.Message) (rearranged bool) {
 	c.Lock()
 	defer c.Unlock()
 
-	for _, message := range messages {
-		c.updateLastClock(message.Clock)
+	for _, m := range messages {
+		c.updateLastClock(int64(m.Clock))
 
-		hash := messageIDStr(message)
-
-		// TODO: remove from here
-		if _, ok := c.messagesByHash[hash]; ok {
+		hash, exists := c.hasMessageWithHash(m)
+		if exists {
 			continue
 		}
 
-		c.messagesByHash[hash] = message
-		c.messages = append(c.messages, message)
+		c.messagesByHash[hash] = m
+		c.messages = append(c.messages, m)
 
 		sorted := sort.SliceIsSorted(c.messages, c.lessFn)
 		log.Printf("[Chat::handleMessages] sorted = %t", sorted)
@@ -355,8 +359,4 @@ func (c *Chat) updateLastClock(clock int64) {
 	if clock > c.lastClock {
 		c.lastClock = clock
 	}
-}
-
-func messageIDStr(m *protocol.Message) string {
-	return hex.EncodeToString(m.ID)
 }

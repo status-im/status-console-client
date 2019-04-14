@@ -47,7 +47,11 @@ func statusMessageHandler(d transit.Decoder, value interface{}) (interface{}, er
 		case 3:
 			sm.Clock, ok = v.(int64)
 		case 4:
-			sm.Timestamp, ok = v.(int64)
+			var timestamp int64
+			timestamp, ok = v.(int64)
+			if ok {
+				sm.Timestamp = TimestampInMs(timestamp)
+			}
 		case 5:
 			var content map[interface{}]interface{}
 			content, ok = v.(map[interface{}]interface{})

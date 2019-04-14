@@ -144,10 +144,10 @@ func (c *ChatViewController) RequestOptions(newest bool) protocol.RequestOptions
 	params := protocol.DefaultRequestOptions()
 
 	if newest && c.lastRequest != (protocol.RequestOptions{}) {
-		params.From = c.lastRequest.To
+		params.From = c.lastRequest.From
 	} else if c.firstRequest != (protocol.RequestOptions{}) {
 		params.From = c.firstRequest.From - defaultRequestOptionsFrom
-		params.To = c.firstRequest.From
+		params.To = c.firstRequest.To
 	}
 
 	return params
@@ -211,8 +211,8 @@ func (c *ChatViewController) writeMessage(message *protocol.Message) error {
 	line := formatMessageLine(
 		pubKey,
 		message.ID,
-		message.Clock,
-		time.Unix(message.Timestamp/1000, 0),
+		int64(message.Clock),
+		message.Timestamp.Time(),
 		message.Text,
 	)
 

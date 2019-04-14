@@ -31,24 +31,39 @@ type Content struct {
 	Text   string `json:"text"`
 }
 
+// TimestampInMs is a timestamp in milliseconds.
+type TimestampInMs int64
+
+// Time returns a time.Time instance.
+func (t TimestampInMs) Time() time.Time {
+	ts := int64(t)
+	seconds := ts / 1000
+	return time.Unix(seconds, (ts%1000)*int64(time.Millisecond))
+}
+
+// TimestampInMsFromTime returns a TimestampInMs from a time.Time instance.
+func TimestampInMsFromTime(t time.Time) TimestampInMs {
+	return TimestampInMs(time.Now().Unix() * 1000)
+}
+
 // Message contains all message details.
 type Message struct {
-	Text      string  `json:"text"` // TODO: why is this duplicated?
-	ContentT  string  `json:"content_type"`
-	MessageT  string  `json:"message_type"`
-	Clock     int64   `json:"clock"`     // in milliseconds; see CalcMessageClock for more details
-	Timestamp int64   `json:"timestamp"` // in milliseconds
-	Content   Content `json:"content"`
+	Text      string        `json:"text"` // TODO: why is this duplicated?
+	ContentT  string        `json:"content_type"`
+	MessageT  string        `json:"message_type"`
+	Clock     int64         `json:"clock"` // lamport timestamp; see CalcMessageClock for more details
+	Timestamp TimestampInMs `json:"timestamp"`
+	Content   Content       `json:"content"`
 
 	// not protocol defined fields
 	ID        []byte           `json:"id"`
 	SigPubKey *ecdsa.PublicKey `json:"-"`
 }
 
-// CreateTextMessage creates a Message.
-func CreateTextMessage(data []byte, lastClock int64, chatID, messageType string) Message {
+// createTextMessage creates a Message.
+func createTextMessage(data []byte, lastClock int64, chatID, messageType string) Message {
 	text := strings.TrimSpace(string(data))
-	ts := time.Now().Unix() * 1000
+	ts := TimestampInMsFromTime(time.Now())
 	clock := CalcMessageClock(lastClock, ts)
 
 	return Message{
@@ -63,12 +78,12 @@ func CreateTextMessage(data []byte, lastClock int64, chatID, messageType string)
 
 // CreatePublicTextMessage creates a public text Message.
 func CreatePublicTextMessage(data []byte, lastClock int64, chatID string) Message {
-	return CreateTextMessage(data, lastClock, chatID, MessageTypePublicGroup)
+	return createTextMessage(data, lastClock, chatID, MessageTypePublicGroup)
 }
 
 // CreatePrivateTextMessage creates a public text Message.
 func CreatePrivateTextMessage(data []byte, lastClock int64, chatID string) Message {
-	return CreateTextMessage(data, lastClock, chatID, MessageTypePrivate)
+	return createTextMessage(data, lastClock, chatID, MessageTypePrivate)
 }
 
 // DecodeMessage decodes a raw payload to Message struct.

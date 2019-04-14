@@ -93,7 +93,7 @@ func TestSendPrivateMessage(t *testing.T) {
 	require.Len(t, chat.Messages(), 1)
 
 	// the message should be also saved in the database
-	result, err := db.Messages(contact, 0, time.Now().Unix())
+	result, err := db.Messages(contact, time.Unix(0, 0), time.Now())
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 
@@ -116,14 +116,15 @@ func TestHandleMessageFromProtocol(t *testing.T) {
 	err = chat.Subscribe(params)
 	require.NoError(t, err)
 
-	now := time.Now().Unix()
+	now := time.Now()
+	ts := protocol.TimestampInMsFromTime(now)
 	message := &protocol.Message{
 		ID:        []byte{0x01, 0x02, 0x03},
 		Text:      "some",
 		ContentT:  protocol.ContentTypeTextPlain,
 		MessageT:  protocol.MessageTypePublicGroup,
-		Timestamp: now * 1000,
-		Clock:     now * 1000,
+		Timestamp: ts,
+		Clock:     int64(ts),
 	}
 	proto.input <- message
 
@@ -133,12 +134,12 @@ func TestHandleMessageFromProtocol(t *testing.T) {
 	require.True(t, chat.HasMessage(message))
 
 	// the message should be also saved in the database
-	result, err := db.Messages(contact, 0, now)
+	result, err := db.Messages(contact, time.Unix(0, 0), now)
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 
 	// clock should be updated
-	require.Equal(t, now*1000, chat.lastClock)
+	require.Equal(t, int64(ts), chat.lastClock)
 }
 
 func waitForEventTypeMessage(t *testing.T, chat *Chat) {

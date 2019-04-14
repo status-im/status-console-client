@@ -32,8 +32,18 @@ type ChatOptions struct {
 type RequestOptions struct {
 	ChatOptions
 	Limit int
-	From  int64
-	To    int64
+	From  int64 // in seconds
+	To    int64 // in seconds
+}
+
+// FromTime converts int64 (timestamp in seconds) to time.Time.
+func (o RequestOptions) FromTime() time.Time {
+	return time.Unix(o.From, 0)
+}
+
+// ToTime converts int64 (timestamp in seconds) to time.Time.
+func (o RequestOptions) ToTime() time.Time {
+	return time.Unix(o.To, 0)
 }
 
 // Validate verifies that the given request options are valid.
