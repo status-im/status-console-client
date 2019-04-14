@@ -147,8 +147,8 @@ func (c *Chat) load(options protocol.RequestOptions) error {
 	// Get already cached messages from the database.
 	cachedMessages, err := c.db.Messages(
 		c.contact,
-		options.FromTime(),
-		options.ToTime(),
+		options.FromAsTime(),
+		options.ToAsTime(),
 	)
 	if err != nil {
 		return errors.Wrap(err, "db failed to get messages")

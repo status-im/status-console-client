@@ -36,13 +36,13 @@ type RequestOptions struct {
 	To    int64 // in seconds
 }
 
-// FromTime converts int64 (timestamp in seconds) to time.Time.
-func (o RequestOptions) FromTime() time.Time {
+// FromAsTime converts int64 (timestamp in seconds) to time.Time.
+func (o RequestOptions) FromAsTime() time.Time {
 	return time.Unix(o.From, 0)
 }
 
-// ToTime converts int64 (timestamp in seconds) to time.Time.
-func (o RequestOptions) ToTime() time.Time {
+// ToAsTime converts int64 (timestamp in seconds) to time.Time.
+func (o RequestOptions) ToAsTime() time.Time {
 	return time.Unix(o.To, 0)
 }
 

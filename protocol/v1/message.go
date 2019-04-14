@@ -43,7 +43,7 @@ func (t TimestampInMs) Time() time.Time {
 
 // TimestampInMsFromTime returns a TimestampInMs from a time.Time instance.
 func TimestampInMsFromTime(t time.Time) TimestampInMs {
-	return TimestampInMs(time.Now().Unix() * 1000)
+	return TimestampInMs(t.UnixNano() / int64(time.Millisecond))
 }
 
 // Message contains all message details.
