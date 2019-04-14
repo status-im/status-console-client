@@ -15,6 +15,10 @@ const (
 	testPubKey = "0x047d036c25b97a377df74ca4f1780369b1f5475cb58b95d8683cce7f7cfd832271072c18ebf75d09b1c04ae066efcf46b10e14bda83fc220b39ae3dece38f91993"
 )
 
+var (
+	timeZero = time.Unix(0, 0)
+)
+
 type message struct {
 	chat string
 	dest *ecdsa.PublicKey
@@ -93,7 +97,7 @@ func TestSendPrivateMessage(t *testing.T) {
 	require.Len(t, chat.Messages(), 1)
 
 	// the message should be also saved in the database
-	result, err := db.Messages(contact, time.Unix(0, 0), time.Now())
+	result, err := db.Messages(contact, timeZero, time.Now())
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 
@@ -134,7 +138,7 @@ func TestHandleMessageFromProtocol(t *testing.T) {
 	require.True(t, chat.HasMessage(message))
 
 	// the message should be also saved in the database
-	result, err := db.Messages(contact, time.Unix(0, 0), now)
+	result, err := db.Messages(contact, timeZero, now)
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 
