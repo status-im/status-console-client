@@ -8,18 +8,16 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-type ContactType int
-
 // Types of contacts.
 const (
-	ContactPublicChat ContactType = iota + 1
+	ContactPublicChat int = iota + 1
 	ContactPrivateChat
 )
 
 // Contact is a single contact which has a type and name.
 type Contact struct {
 	Name      string
-	Type      ContactType
+	Type      int
 	PublicKey *ecdsa.PublicKey
 }
 

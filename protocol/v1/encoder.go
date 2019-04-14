@@ -8,27 +8,27 @@ import (
 )
 
 // NewMessageEncoder returns a new Transit encoder
-// that can encode StatusMessage values.
+// that can encode Message values.
 // More about Transit: https://github.com/cognitect/transit-format
 func NewMessageEncoder(w io.Writer) *transit.Encoder {
 	encoder := transit.NewEncoder(w, false)
-	encoder.AddHandler(statusMessageType, defaultStatusMessageValueEncoder)
+	encoder.AddHandler(messageType, defaultMessageValueEncoder)
 	return encoder
 }
 
 var (
-	statusMessageType                = reflect.TypeOf(StatusMessage{})
-	defaultStatusMessageValueEncoder = &statusMessageValueEncoder{}
+	messageType                = reflect.TypeOf(Message{})
+	defaultMessageValueEncoder = &messageValueEncoder{}
 )
 
-type statusMessageValueEncoder struct{}
+type messageValueEncoder struct{}
 
-func (statusMessageValueEncoder) IsStringable(reflect.Value) bool {
+func (messageValueEncoder) IsStringable(reflect.Value) bool {
 	return false
 }
 
-func (statusMessageValueEncoder) Encode(e transit.Encoder, value reflect.Value, asString bool) error {
-	message := value.Interface().(StatusMessage)
+func (messageValueEncoder) Encode(e transit.Encoder, value reflect.Value, asString bool) error {
+	message := value.Interface().(Message)
 	taggedValue := transit.TaggedValue{
 		Tag: statusMessageTag,
 		Value: []interface{}{

@@ -21,15 +21,6 @@ type Protocol interface {
 	Request(ctx context.Context, params RequestOptions) error
 }
 
-// Message contains a decoded message payload
-// and some additional fields that we learnt
-// about the message.
-type Message struct {
-	Decoded   StatusMessage    `json:"message"`
-	SigPubKey *ecdsa.PublicKey `json:"-"`
-	Hash      []byte           `json:"hash"`
-}
-
 // ChatOptions are chat specific options, usually related to the recipient/destination.
 type ChatOptions struct {
 	ChatName  string           // for public chats

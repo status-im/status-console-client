@@ -74,7 +74,7 @@ func (api *PublicAPI) Messages(ctx context.Context, params MessagesParams) (*rpc
 		for {
 			select {
 			case m := <-messages:
-				if err := notifier.Notify(rpcSub.ID, m.Decoded); err != nil {
+				if err := notifier.Notify(rpcSub.ID, m); err != nil {
 					log.Printf("failed to notify %s about new message", rpcSub.ID)
 				}
 			case <-sub.Done():

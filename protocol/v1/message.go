@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"errors"
 	"strings"
 	"time"
@@ -24,50 +25,54 @@ var (
 	ErrInvalidDecodedValue = errors.New("invalid decoded value type")
 )
 
-// StatusMessageContent contains the chat ID and the actual text of a message.
-type StatusMessageContent struct {
+// Content contains the chat ID and the actual text of a message.
+type Content struct {
 	ChatID string `json:"chat_id"`
 	Text   string `json:"text"`
 }
 
-// StatusMessage contains all message details.
-type StatusMessage struct {
-	Text      string               `json:"text"` // TODO: why is this duplicated?
-	ContentT  string               `json:"content_type"`
-	MessageT  string               `json:"message_type"`
-	Clock     int64                `json:"clock"`     // in milliseconds; see CalcMessageClock for more details
-	Timestamp int64                `json:"timestamp"` // in milliseconds
-	Content   StatusMessageContent `json:"content"`
+// Message contains all message details.
+type Message struct {
+	Text      string  `json:"text"` // TODO: why is this duplicated?
+	ContentT  string  `json:"content_type"`
+	MessageT  string  `json:"message_type"`
+	Clock     int64   `json:"clock"`     // in milliseconds; see CalcMessageClock for more details
+	Timestamp int64   `json:"timestamp"` // in milliseconds
+	Content   Content `json:"content"`
+
+	// not protocol defined fields
+	ID        []byte           `json:"id"`
+	SigPubKey *ecdsa.PublicKey `json:"-"`
 }
 
-// CreateTextStatusMessage creates a StatusMessage.
-func CreateTextStatusMessage(data []byte, lastClock int64, chatID, messageType string) StatusMessage {
+// CreateTextMessage creates a Message.
+func CreateTextMessage(data []byte, lastClock int64, chatID, messageType string) Message {
 	text := strings.TrimSpace(string(data))
 	ts := time.Now().Unix() * 1000
 	clock := CalcMessageClock(lastClock, ts)
 
-	return StatusMessage{
+	return Message{
 		Text:      text,
 		ContentT:  ContentTypeTextPlain,
 		MessageT:  messageType,
 		Clock:     clock,
 		Timestamp: ts,
-		Content:   StatusMessageContent{ChatID: chatID, Text: text},
+		Content:   Content{ChatID: chatID, Text: text},
 	}
 }
 
-// CreatePublicTextMessage creates a public text StatusMessage.
-func CreatePublicTextMessage(data []byte, lastClock int64, chatID string) StatusMessage {
-	return CreateTextStatusMessage(data, lastClock, chatID, MessageTypePublicGroup)
+// CreatePublicTextMessage creates a public text Message.
+func CreatePublicTextMessage(data []byte, lastClock int64, chatID string) Message {
+	return CreateTextMessage(data, lastClock, chatID, MessageTypePublicGroup)
 }
 
-// CreatePrivateTextMessage creates a public text StatusMessage.
-func CreatePrivateTextMessage(data []byte, lastClock int64, chatID string) StatusMessage {
-	return CreateTextStatusMessage(data, lastClock, chatID, MessageTypePrivate)
+// CreatePrivateTextMessage creates a public text Message.
+func CreatePrivateTextMessage(data []byte, lastClock int64, chatID string) Message {
+	return CreateTextMessage(data, lastClock, chatID, MessageTypePrivate)
 }
 
-// DecodeMessage decodes a raw payload to StatusMessage struct.
-func DecodeMessage(data []byte) (message StatusMessage, err error) {
+// DecodeMessage decodes a raw payload to Message struct.
+func DecodeMessage(data []byte) (message Message, err error) {
 	buf := bytes.NewBuffer(data)
 	decoder := NewMessageDecoder(buf)
 	value, err := decoder.Decode()
@@ -75,15 +80,15 @@ func DecodeMessage(data []byte) (message StatusMessage, err error) {
 		return
 	}
 
-	message, ok := value.(StatusMessage)
+	message, ok := value.(Message)
 	if !ok {
 		return message, ErrInvalidDecodedValue
 	}
 	return
 }
 
-// EncodeMessage encodes a StatusMessage using Transit serialization.
-func EncodeMessage(value StatusMessage) ([]byte, error) {
+// EncodeMessage encodes a Message using Transit serialization.
+func EncodeMessage(value Message) ([]byte, error) {
 	var buf bytes.Buffer
 	encoder := NewMessageEncoder(&buf)
 	if err := encoder.Encode(value); err != nil {

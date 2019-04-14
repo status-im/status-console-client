@@ -92,7 +92,7 @@ func (d *Database) SaveMessages(c Contact, messages []*protocol.Message) error {
 	batch := new(leveldb.Batch)
 	for _, m := range messages {
 		// TODO(adam): incoming Timestamp is in ms
-		key := d.keyFromContact(c, m.Decoded.Timestamp/1000, m.Hash)
+		key := d.keyFromContact(c, m.Timestamp/1000, m.ID)
 
 		if err := enc.Encode(m); err != nil {
 			return err

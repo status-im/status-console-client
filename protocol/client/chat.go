@@ -97,7 +97,7 @@ func (c *Chat) HasMessage(m *protocol.Message) bool {
 }
 
 func (c *Chat) hasMessage(m *protocol.Message) bool {
-	hash := messageHashStr(m)
+	hash := messageIDStr(m)
 	_, ok := c.messagesByHash[hash]
 	return ok
 }
@@ -193,7 +193,7 @@ func (c *Chat) Send(data []byte) error {
 	default:
 	}
 
-	var message protocol.StatusMessage
+	var message protocol.Message
 
 	switch c.contact.Type {
 	case ContactPublicChat:
@@ -225,11 +225,9 @@ func (c *Chat) Send(data []byte) error {
 		log.Printf("[Chat::Send] sent a private message")
 
 		// TODO: this should be created by c.proto
-		c.ownMessages <- &protocol.Message{
-			Decoded:   message,
-			SigPubKey: &c.identity.PublicKey,
-			Hash:      hash,
-		}
+		message.SigPubKey = &c.identity.PublicKey
+		message.ID = hash
+		c.ownMessages <- &message
 	}
 
 	return err
@@ -306,9 +304,9 @@ func (c *Chat) handleMessages(messages ...*protocol.Message) (rearranged bool) {
 	defer c.Unlock()
 
 	for _, message := range messages {
-		c.updateLastClock(message.Decoded.Clock)
+		c.updateLastClock(message.Clock)
 
-		hash := messageHashStr(message)
+		hash := messageIDStr(message)
 
 		// TODO: remove from here
 		if _, ok := c.messagesByHash[hash]; ok {
@@ -330,7 +328,7 @@ func (c *Chat) handleMessages(messages ...*protocol.Message) (rearranged bool) {
 }
 
 func (c *Chat) lessFn(i, j int) bool {
-	return c.messages[i].Decoded.Clock < c.messages[j].Decoded.Clock
+	return c.messages[i].Clock < c.messages[j].Clock
 }
 
 func (c *Chat) onMessagesRearrange() {
@@ -359,6 +357,6 @@ func (c *Chat) updateLastClock(clock int64) {
 	}
 }
 
-func messageHashStr(m *protocol.Message) string {
-	return hex.EncodeToString(m.Hash)
+func messageIDStr(m *protocol.Message) string {
+	return hex.EncodeToString(m.ID)
 }

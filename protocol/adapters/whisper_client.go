@@ -139,10 +139,8 @@ func (a *WhisperClientAdapter) subscribeMessages(
 					break
 				}
 
-				in <- &protocol.Message{
-					Decoded:   m,
-					SigPubKey: sigPubKey,
-				}
+				m.SigPubKey = sigPubKey
+				in <- &m
 			case err := <-shhSub.Err():
 				sub.Cancel(err)
 				return

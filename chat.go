@@ -16,6 +16,10 @@ import (
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
+const (
+	defaultRequestOptionsFrom = 60 * 60 * 24
+)
+
 // ChatViewController manages chat view.
 type ChatViewController struct {
 	*ViewController
@@ -134,19 +138,22 @@ func (c *ChatViewController) Select(contact client.Contact) error {
 	return err
 }
 
-func (c *ChatViewController) RequestOptions(older bool) protocol.RequestOptions {
+// RequestOptions returns the RequestOptions for the next request call.
+// Newest param when true means that we are interested in the most recent messages.
+func (c *ChatViewController) RequestOptions(newest bool) protocol.RequestOptions {
 	params := protocol.DefaultRequestOptions()
 
-	if older && c.firstRequest != (protocol.RequestOptions{}) {
-		params.From = c.firstRequest.From - 60*60*24
-		params.To = c.firstRequest.From
-	} else if c.lastRequest != (protocol.RequestOptions{}) {
+	if newest && c.lastRequest != (protocol.RequestOptions{}) {
 		params.From = c.lastRequest.To
+	} else if c.firstRequest != (protocol.RequestOptions{}) {
+		params.From = c.firstRequest.From - defaultRequestOptionsFrom
+		params.To = c.firstRequest.From
 	}
 
 	return params
 }
 
+// RequestMessages sends a request fro historical messages.
 func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) error {
 	chat := c.messenger.Chat(c.contact)
 	if chat == nil {
@@ -169,6 +176,7 @@ func (c *ChatViewController) updateRequests(params protocol.RequestOptions) {
 	}
 }
 
+// Send sends a payload as a message.
 func (c *ChatViewController) Send(data []byte) error {
 	chat := c.messenger.Chat(c.contact)
 	if chat == nil {
@@ -202,10 +210,10 @@ func (c *ChatViewController) writeMessage(message *protocol.Message) error {
 
 	line := formatMessageLine(
 		pubKey,
-		message.Hash,
-		message.Decoded.Clock,
-		time.Unix(message.Decoded.Timestamp/1000, 0),
-		message.Decoded.Text,
+		message.ID,
+		message.Clock,
+		time.Unix(message.Timestamp/1000, 0),
+		message.Text,
 	)
 
 	println := fmt.Fprintln

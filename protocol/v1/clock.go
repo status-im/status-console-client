@@ -2,7 +2,7 @@ package protocol
 
 import "time"
 
-// CalcMessageClock calculates a new clock value for StatusMessage.
+// CalcMessageClock calculates a new clock value for Message.
 // It is used to properly sort messages and accomodate the fact
 // that time might be different on each device.
 func CalcMessageClock(lastObservedValue, timeInMs int64) int64 {

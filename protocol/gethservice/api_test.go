@@ -100,7 +100,7 @@ func TestPublicAPIMessages(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { go discardStop(aNode) }() // Stop() is slow so do it in a goroutine
 
-	messages := make(chan protocol.StatusMessage)
+	messages := make(chan protocol.Message)
 	params := MessagesParams{
 		ChatParams: ChatParams{
 			PubChatName: "test-chat",

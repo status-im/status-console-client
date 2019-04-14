@@ -118,14 +118,12 @@ func TestHandleMessageFromProtocol(t *testing.T) {
 
 	now := time.Now().Unix()
 	message := &protocol.Message{
-		Decoded: protocol.StatusMessage{
-			Text:      "some",
-			ContentT:  protocol.ContentTypeTextPlain,
-			MessageT:  protocol.MessageTypePublicGroup,
-			Timestamp: now * 1000,
-			Clock:     now * 1000,
-		},
-		Hash: []byte{0x01, 0x02, 0x03},
+		ID:        []byte{0x01, 0x02, 0x03},
+		Text:      "some",
+		ContentT:  protocol.ContentTypeTextPlain,
+		MessageT:  protocol.MessageTypePublicGroup,
+		Timestamp: now * 1000,
+		Clock:     now * 1000,
 	}
 	proto.input <- message
 
