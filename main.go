@@ -297,7 +297,7 @@ func main() {
 					Key: gocui.KeyHome,
 					Mod: gocui.ModNone,
 					Handler: func(g *gocui.Gui, v *gocui.View) error {
-						params := chat.RequestOptions(true)
+						params := chat.RequestOptions(false)
 
 						if err := notifications.Debug("Messages request", fmt.Sprintf("%v", params)); err != nil {
 							return err
