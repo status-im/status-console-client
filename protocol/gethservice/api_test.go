@@ -3,6 +3,7 @@ package gethservice
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"testing"
 	"time"
 
@@ -48,7 +49,7 @@ func TestPublicAPISend(t *testing.T) {
 		Return(result, nil)
 
 	var hash hexutil.Bytes
-	err = client.Call(&hash, "protos_send", hexutil.Encode(data), params)
+	err = client.Call(&hash, createRPCMethod("send"), hexutil.Encode(data), params)
 	require.NoError(t, err)
 	require.Equal(t, result, hash)
 }
@@ -87,7 +88,7 @@ func TestPublicAPIRequest(t *testing.T) {
 		Return(nil)
 
 	// nil skips the result... because there is no result
-	err = client.Call(nil, "protos_request", params)
+	err = client.Call(nil, createRPCMethod("request"), params)
 	require.NoError(t, err)
 }
 
@@ -120,7 +121,7 @@ func TestPublicAPIMessages(t *testing.T) {
 		Return(protocol.NewSubscription(), nil)
 
 	// The first argument is a name of the method to use for subscription.
-	_, err = client.Subscribe(context.Background(), "protos", messages, "messages", params)
+	_, err = client.Subscribe(context.Background(), ServiceProtosAPIName, messages, "messages", params)
 	require.NoError(t, err)
 }
 
@@ -142,7 +143,7 @@ func createAndStartNode(privateKey *ecdsa.PrivateKey) (*node.StatusNode, *Servic
 	}
 
 	return n, service, n.Start(
-		&params.NodeConfig{APIModules: "protos"},
+		&params.NodeConfig{APIModules: ServiceProtosAPIName},
 		services...,
 	)
 }
@@ -163,6 +164,10 @@ func setupRPCClient(proto protocol.Protocol) (*rpc.Client, *node.StatusNode, err
 
 	client, err := n.GethNode().Attach()
 	return client, n, err
+}
+
+func createRPCMethod(name string) string {
+	return fmt.Sprintf("%s_%s", ServiceProtosAPIName, name)
 }
 
 type keysGetter struct {

@@ -41,6 +41,10 @@ type Chat struct {
 }
 
 // NewChat returns a new Chat instance.
+// Instances should not be reused after
+// leaving but instead a new instance
+// should be created and replace the
+// previous one.
 func NewChat(proto protocol.Protocol, identity *ecdsa.PrivateKey, contact Contact, db *Database) *Chat {
 	c := Chat{
 		proto:          proto,
@@ -75,6 +79,13 @@ func (c *Chat) Events() <-chan interface{} {
 	return c.events
 }
 
+// Done informs when the Chat finished processing messages.
+func (c *Chat) Done() <-chan struct{} {
+	c.RLock()
+	defer c.RUnlock()
+	return c.cancel
+}
+
 // Err returns a cached error.
 func (c *Chat) Err() error {
 	c.RLock()
@@ -92,13 +103,8 @@ func (c *Chat) Messages() []*protocol.Message {
 // HasMessage returns true if a given message is already cached.
 func (c *Chat) HasMessage(m *protocol.Message) bool {
 	c.RLock()
-	defer c.RUnlock()
-	return c.hasMessage(m)
-}
-
-func (c *Chat) hasMessage(m *protocol.Message) bool {
-	hash := hex.EncodeToString(m.ID)
-	_, ok := c.messagesByHash[hash]
+	_, ok := c.hasMessageWithHash(m)
+	c.RUnlock()
 	return ok
 }
 
@@ -112,8 +118,9 @@ func (c *Chat) hasMessageWithHash(m *protocol.Message) (string, bool) {
 //
 // TODO: consider removing getting data from this method.
 // Instead, getting data should be a separate call.
-func (c *Chat) Subscribe(params protocol.RequestOptions) (err error) {
+func (c *Chat) Subscribe(params protocol.RequestOptions) error {
 	c.RLock()
+	cancel := c.cancel
 	sub := c.sub
 	c.RUnlock()
 
@@ -137,7 +144,7 @@ func (c *Chat) Subscribe(params protocol.RequestOptions) (err error) {
 	c.sub = sub
 	c.Unlock()
 
-	go c.readLoop(messages, sub, c.cancel)
+	go c.readLoop(messages, sub, cancel)
 
 	return c.load(params)
 }
@@ -255,7 +262,6 @@ func (c *Chat) readLoop(messages <-chan *protocol.Message, sub *protocol.Subscri
 				c.Unlock()
 
 				close(cancel)
-
 				return
 			}
 

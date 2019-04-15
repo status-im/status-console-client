@@ -75,6 +75,9 @@ LOOP:
 		case ev := <-chat.Events():
 			log.Printf("[Messenger::Join] received an event: %+v", ev)
 			m.events <- ev
+		case <-chat.Done():
+			log.Printf("[Messenger::Join] chat was left")
+			break LOOP
 		case <-cancel:
 			break LOOP
 		}
