@@ -12,6 +12,12 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+const (
+	// ServiceProtosAPIName is a name of the API namespace
+	// with the protocol specific methods.
+	ServiceProtosAPIName = "protos"
+)
+
 var _ gethnode.Service = (*Service)(nil)
 
 // KeysGetter is an interface that specifies what kind of keys
@@ -51,7 +57,7 @@ func (s *Service) Protocols() []p2p.Protocol {
 func (s *Service) APIs() []rpc.API {
 	return []rpc.API{
 		{
-			Namespace: "protos",
+			Namespace: ServiceProtosAPIName,
 			Version:   "1.0",
 			Service:   &PublicAPI{service: s},
 			Public:    true,

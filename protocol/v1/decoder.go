@@ -9,7 +9,7 @@ import (
 )
 
 // NewMessageDecoder returns a new Transit decoder
-// that can deserialize StatusMessage structs.
+// that can deserialize Message structs.
 // More about Transit: https://github.com/cognitect/transit-format
 func NewMessageDecoder(r io.Reader) *transit.Decoder {
 	decoder := transit.NewDecoder(r)
@@ -29,7 +29,7 @@ func statusMessageHandler(d transit.Decoder, value interface{}) (interface{}, er
 		return nil, errors.New("tagged value does not contain values")
 	}
 
-	sm := StatusMessage{}
+	sm := Message{}
 	for idx, v := range values {
 		var ok bool
 
@@ -47,7 +47,11 @@ func statusMessageHandler(d transit.Decoder, value interface{}) (interface{}, er
 		case 3:
 			sm.Clock, ok = v.(int64)
 		case 4:
-			sm.Timestamp, ok = v.(int64)
+			var timestamp int64
+			timestamp, ok = v.(int64)
+			if ok {
+				sm.Timestamp = TimestampInMs(timestamp)
+			}
 		case 5:
 			var content map[interface{}]interface{}
 			content, ok = v.(map[interface{}]interface{})

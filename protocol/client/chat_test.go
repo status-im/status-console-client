@@ -15,6 +15,10 @@ const (
 	testPubKey = "0x047d036c25b97a377df74ca4f1780369b1f5475cb58b95d8683cce7f7cfd832271072c18ebf75d09b1c04ae066efcf46b10e14bda83fc220b39ae3dece38f91993"
 )
 
+var (
+	timeZero = time.Unix(0, 0)
+)
+
 type message struct {
 	chat string
 	dest *ecdsa.PublicKey
@@ -93,7 +97,7 @@ func TestSendPrivateMessage(t *testing.T) {
 	require.Len(t, chat.Messages(), 1)
 
 	// the message should be also saved in the database
-	result, err := db.Messages(contact, 0, time.Now().Unix())
+	result, err := db.Messages(contact, timeZero, time.Now())
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 
@@ -116,16 +120,15 @@ func TestHandleMessageFromProtocol(t *testing.T) {
 	err = chat.Subscribe(params)
 	require.NoError(t, err)
 
-	now := time.Now().Unix()
+	now := time.Now()
+	ts := protocol.TimestampInMsFromTime(now)
 	message := &protocol.Message{
-		Decoded: protocol.StatusMessage{
-			Text:      "some",
-			ContentT:  protocol.ContentTypeTextPlain,
-			MessageT:  protocol.MessageTypePublicGroup,
-			Timestamp: now * 1000,
-			Clock:     now * 1000,
-		},
-		Hash: []byte{0x01, 0x02, 0x03},
+		ID:        []byte{0x01, 0x02, 0x03},
+		Text:      "some",
+		ContentT:  protocol.ContentTypeTextPlain,
+		MessageT:  protocol.MessageTypePublicGroup,
+		Timestamp: ts,
+		Clock:     int64(ts),
 	}
 	proto.input <- message
 
@@ -135,12 +138,12 @@ func TestHandleMessageFromProtocol(t *testing.T) {
 	require.True(t, chat.HasMessage(message))
 
 	// the message should be also saved in the database
-	result, err := db.Messages(contact, 0, now)
+	result, err := db.Messages(contact, timeZero, now)
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 
 	// clock should be updated
-	require.Equal(t, now*1000, chat.lastClock)
+	require.Equal(t, int64(ts), chat.lastClock)
 }
 
 func waitForEventTypeMessage(t *testing.T, chat *Chat) {

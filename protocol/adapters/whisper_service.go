@@ -191,7 +191,7 @@ func (a *WhisperServiceAdapter) handleMessages(received []*whisper.ReceivedMessa
 	}
 
 	sort.Slice(messages, func(i, j int) bool {
-		return messages[i].Decoded.Clock < messages[j].Decoded.Clock
+		return messages[i].Clock < messages[j].Clock
 	})
 
 	return messages
@@ -220,12 +220,10 @@ func (a *WhisperServiceAdapter) decodeMessage(message *whisper.ReceivedMessage) 
 	if err != nil {
 		return nil, err
 	}
+	decoded.ID = hash
+	decoded.SigPubKey = publicKey
 
-	return &protocol.Message{
-		Decoded:   decoded,
-		Hash:      hash,
-		SigPubKey: publicKey,
-	}, nil
+	return &decoded, nil
 }
 
 // Send sends a new message using the Whisper service.

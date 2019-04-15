@@ -7,6 +7,7 @@ import (
 	"encoding/gob"
 	"io"
 	"strconv"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -51,15 +52,16 @@ func NewDatabase(path string) (*Database, error) {
 	return &Database{db: db}, nil
 }
 
+// Close closes the database.
 func (d *Database) Close() error {
 	return d.db.Close()
 }
 
 // Messages returns all messages for a given contact
 // and between from and to timestamps.
-func (d *Database) Messages(c Contact, from, to int64) (result []*protocol.Message, err error) {
+func (d *Database) Messages(c Contact, from, to time.Time) (result []*protocol.Message, err error) {
 	start := d.keyFromContact(c, from, nil)
-	limit := d.keyFromContact(c, to+1, nil) // because iter is right-exclusive
+	limit := d.keyFromContact(c, to.Add(time.Second), nil) // add 1s because iter is right-exclusive
 
 	iter := d.db.NewIterator(&util.Range{Start: start, Limit: limit}, nil)
 	defer iter.Release()
@@ -91,15 +93,12 @@ func (d *Database) SaveMessages(c Contact, messages []*protocol.Message) error {
 
 	batch := new(leveldb.Batch)
 	for _, m := range messages {
-		// TODO(adam): incoming Timestamp is in ms
-		key := d.keyFromContact(c, m.Decoded.Timestamp/1000, m.Hash)
-
 		if err := enc.Encode(m); err != nil {
 			return err
 		}
 
+		key := d.keyFromContact(c, m.Timestamp.Time(), m.ID)
 		data := buf.Bytes()
-
 		// Data from the buffer needs to be copied to another slice
 		// because a slice returned from Buffer.Bytes() is valid
 		// only until another write.
@@ -161,11 +160,11 @@ func (d *Database) prefixFromContact(c Contact) []byte {
 	return h.Sum(nil)
 }
 
-func (d *Database) keyFromContact(c Contact, t int64, hash []byte) []byte {
+func (d *Database) keyFromContact(c Contact, t time.Time, hash []byte) []byte {
 	var key [keyFromContactLength]byte
 
 	copy(key[:], d.prefixFromContact(c))
-	binary.BigEndian.PutUint64(key[contactPrefixLength:], uint64(t))
+	binary.BigEndian.PutUint64(key[contactPrefixLength:], uint64(t.Unix()))
 
 	if hash != nil {
 		copy(key[contactPrefixLength+timeLength:], hash)

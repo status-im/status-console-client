@@ -21,15 +21,6 @@ type Protocol interface {
 	Request(ctx context.Context, params RequestOptions) error
 }
 
-// Message contains a decoded message payload
-// and some additional fields that we learnt
-// about the message.
-type Message struct {
-	Decoded   StatusMessage    `json:"message"`
-	SigPubKey *ecdsa.PublicKey `json:"-"`
-	Hash      []byte           `json:"hash"`
-}
-
 // ChatOptions are chat specific options, usually related to the recipient/destination.
 type ChatOptions struct {
 	ChatName  string           // for public chats
@@ -41,8 +32,18 @@ type ChatOptions struct {
 type RequestOptions struct {
 	ChatOptions
 	Limit int
-	From  int64
-	To    int64
+	From  int64 // in seconds
+	To    int64 // in seconds
+}
+
+// FromAsTime converts int64 (timestamp in seconds) to time.Time.
+func (o RequestOptions) FromAsTime() time.Time {
+	return time.Unix(o.From, 0)
+}
+
+// ToAsTime converts int64 (timestamp in seconds) to time.Time.
+func (o RequestOptions) ToAsTime() time.Time {
+	return time.Unix(o.To, 0)
 }
 
 // Validate verifies that the given request options are valid.

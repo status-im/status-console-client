@@ -138,11 +138,9 @@ func (a *WhisperClientAdapter) subscribeMessages(
 					log.Printf("failed to get a signature: %v", err)
 					break
 				}
+				m.SigPubKey = sigPubKey
 
-				in <- &protocol.Message{
-					Decoded:   m,
-					SigPubKey: sigPubKey,
-				}
+				in <- &m
 			case err := <-shhSub.Err():
 				sub.Cancel(err)
 				return
