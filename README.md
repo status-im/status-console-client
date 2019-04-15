@@ -11,7 +11,7 @@ At the same time, it's more powerful than relying on [Status Node](https://statu
 
 ```bash
 # build a binary
-$ go build -o ./bin/status-term-client .
+$ make build
 
 # generate a private key
 $ ./bin/status-term-client -create-key-pair

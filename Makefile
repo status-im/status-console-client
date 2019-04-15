@@ -2,8 +2,9 @@ SHELL := /bin/bash
 
 GO111MODULE = on
 
+build: GOFLAGS ?= "-mod=vendor"
 build:
-	go build -o ./bin/status-term-client .
+	GOFLAGS=$(GOFLAGS) go build -o ./bin/status-term-client .
 .PHONY: build
 
 run: ARGS ?=
