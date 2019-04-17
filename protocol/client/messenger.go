@@ -42,6 +42,7 @@ func (m *Messenger) Events() <-chan interface{} {
 	return m.events
 }
 
+// Chat returns a chat for a given Contact.
 func (m *Messenger) Chat(c Contact) *Chat {
 	m.RLock()
 	defer m.RUnlock()
@@ -65,7 +66,7 @@ func (m *Messenger) Join(contact Contact, params protocol.RequestOptions) error 
 
 	go m.chatEventsLoop(chat, contact, cancel)
 
-	return chat.Subscribe(params)
+	return chat.subscribe(params)
 }
 
 func (m *Messenger) chatEventsLoop(chat *Chat, contact Contact, cancel chan struct{}) {
@@ -112,10 +113,12 @@ func (m *Messenger) Leave(contact Contact) error {
 	return nil
 }
 
+// Contacts returns a list of contacts.
 func (m *Messenger) Contacts() ([]Contact, error) {
 	return m.db.Contacts()
 }
 
+// AddContact adds a new Contact. It detects duplicate entries.
 func (m *Messenger) AddContact(c Contact) error {
 	contacts, err := m.db.Contacts()
 	if err != nil {
@@ -130,6 +133,7 @@ func (m *Messenger) AddContact(c Contact) error {
 	return m.db.SaveContacts(contacts)
 }
 
+// RemoveContact removes a contact from the list.
 func (m *Messenger) RemoveContact(c Contact) error {
 	contacts, err := m.db.Contacts()
 	if err != nil {

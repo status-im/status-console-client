@@ -62,16 +62,6 @@ func NewChat(proto protocol.Protocol, identity *ecdsa.PrivateKey, contact Contac
 	return &c
 }
 
-func (c *Chat) leave() {
-	c.Lock()
-	if c.sub != nil {
-		c.sub.Unsubscribe()
-	} else {
-		close(c.cancel)
-	}
-	c.Unlock()
-}
-
 // Events returns a channel with Chat events.
 func (c *Chat) Events() <-chan interface{} {
 	c.RLock()
@@ -93,6 +83,12 @@ func (c *Chat) Err() error {
 	return c.err
 }
 
+func (c *Chat) updateLastClock(clock int64) {
+	if clock > c.lastClock {
+		c.lastClock = clock
+	}
+}
+
 // Messages return a list of currently cached messages.
 func (c *Chat) Messages() []*protocol.Message {
 	c.RLock()
@@ -112,82 +108,6 @@ func (c *Chat) hasMessageWithHash(m *protocol.Message) (string, bool) {
 	hash := hex.EncodeToString(m.ID)
 	_, ok := c.messagesByHash[hash]
 	return hash, ok
-}
-
-// Subscribe reads messages from the network.
-//
-// TODO: consider removing getting data from this method.
-// Instead, getting data should be a separate call.
-func (c *Chat) Subscribe(params protocol.RequestOptions) error {
-	c.RLock()
-	cancel := c.cancel
-	sub := c.sub
-	c.RUnlock()
-
-	if sub != nil {
-		return errors.New("already subscribed")
-	}
-
-	opts, err := createSubscribeOptions(c.contact)
-	if err != nil {
-		return errors.Wrap(err, "failed to subscribe")
-	}
-
-	messages := make(chan *protocol.Message)
-
-	sub, err = c.proto.Subscribe(context.Background(), messages, opts)
-	if err != nil {
-		return errors.Wrap(err, "failed to subscribe")
-	}
-
-	c.Lock()
-	c.sub = sub
-	c.Unlock()
-
-	go c.readLoop(messages, sub, cancel)
-
-	return c.load(params)
-}
-
-// Load loads messages from the database cache and the network.
-func (c *Chat) load(options protocol.RequestOptions) error {
-	// Get already cached messages from the database.
-	cachedMessages, err := c.db.Messages(
-		c.contact,
-		options.FromAsTime(),
-		options.ToAsTime(),
-	)
-	if err != nil {
-		return errors.Wrap(err, "db failed to get messages")
-	}
-
-	c.handleMessages(cachedMessages...)
-
-	go func() {
-		log.Printf("[Chat::Subscribe] sending EventTypeInit")
-		c.events <- baseEvent{contact: c.contact, typ: EventTypeInit}
-		log.Printf("[Chat::Subscribe] sent EventTypeInit")
-	}()
-
-	// Request historic messages from the network.
-	if err := c.request(options); err != nil {
-		return errors.Wrap(err, "failed to request for messages")
-	}
-
-	return nil
-}
-
-func (c *Chat) request(options protocol.RequestOptions) error {
-	opts, err := createRequestOptions(c.contact)
-	if err != nil {
-		return err
-	}
-	return c.proto.Request(context.Background(), opts)
-}
-
-// Request historic messages.
-func (c *Chat) Request(options protocol.RequestOptions) error {
-	return c.request(options)
 }
 
 // Send sends a message into the network.
@@ -244,6 +164,94 @@ func (c *Chat) Send(data []byte) error {
 	}
 
 	return err
+}
+
+// Request historic messages.
+func (c *Chat) Request(options protocol.RequestOptions) error {
+	return c.request(options)
+}
+
+func (c *Chat) request(options protocol.RequestOptions) error {
+	opts, err := createRequestOptions(c.contact)
+	if err != nil {
+		return err
+	}
+	return c.proto.Request(context.Background(), opts)
+}
+
+// subscribe reads messages from the network.
+func (c *Chat) subscribe(params protocol.RequestOptions) error {
+	c.RLock()
+	cancel := c.cancel
+	sub := c.sub
+	c.RUnlock()
+
+	if sub != nil {
+		return errors.New("already subscribed")
+	}
+
+	opts, err := createSubscribeOptions(c.contact)
+	if err != nil {
+		return errors.Wrap(err, "failed to subscribe")
+	}
+
+	messages := make(chan *protocol.Message)
+
+	sub, err = c.proto.Subscribe(context.Background(), messages, opts)
+	if err != nil {
+		return errors.Wrap(err, "failed to subscribe")
+	}
+
+	c.Lock()
+	c.sub = sub
+	c.Unlock()
+
+	go c.readLoop(messages, sub, cancel)
+
+	// Request messages from the cache.
+	if err := c.load(params); err != nil {
+		return errors.Wrap(err, "failed to load cached messages")
+	}
+
+	// Request historic messages from the network.
+	if err := c.request(params); err != nil {
+		return errors.Wrap(err, "failed to request for messages")
+	}
+
+	return nil
+}
+
+func (c *Chat) leave() {
+	c.Lock()
+	if c.sub != nil {
+		c.sub.Unsubscribe()
+	} else {
+		close(c.cancel)
+	}
+	c.Unlock()
+}
+
+// load loads messages from the database cache and then the network.
+func (c *Chat) load(options protocol.RequestOptions) error {
+	// Get already cached messages from the database.
+	cachedMessages, err := c.db.Messages(
+		c.contact,
+		options.FromAsTime(),
+		options.ToAsTime(),
+	)
+	if err != nil {
+		return errors.Wrap(err, "db failed to get messages")
+	}
+
+	c.handleMessages(cachedMessages...)
+
+	go func() {
+		log.Printf("[Chat::load] sending EventTypeInit")
+		c.events <- baseEvent{contact: c.contact, typ: EventTypeInit}
+		log.Printf("[Chat::load] sent EventTypeInit")
+	}()
+
+	return nil
 }
 
 func (c *Chat) readLoop(messages <-chan *protocol.Message, sub *protocol.Subscription, cancel chan struct{}) {
@@ -337,6 +345,10 @@ func (c *Chat) handleMessages(messages ...*protocol.Message) (rearranged bool) {
 	return
 }
 
+func (c *Chat) saveMessages(messages ...*protocol.Message) error {
+	return c.db.SaveMessages(c.contact, messages)
+}
+
 func (c *Chat) lessFn(i, j int) bool {
 	return c.messages[i].Clock < c.messages[j].Clock
 }
@@ -354,15 +366,5 @@ func (c *Chat) onNewMessage(m *protocol.Message) {
 			typ:     EventTypeMessage,
 		},
 		message: m,
-	}
-}
-
-func (c *Chat) saveMessages(messages ...*protocol.Message) error {
-	return c.db.SaveMessages(c.contact, messages)
-}
-
-func (c *Chat) updateLastClock(clock int64) {
-	if clock > c.lastClock {
-		c.lastClock = clock
 	}
 }
