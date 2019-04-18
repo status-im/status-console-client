@@ -68,10 +68,10 @@ func TestSubscribe(t *testing.T) {
 	chat := NewChat(&proto, nil, contact, db)
 	params := protocol.DefaultRequestOptions()
 
-	err = chat.Subscribe(params)
+	err = chat.subscribe(params)
 	require.NoError(t, err)
 	// Subscribe to already subscribed chat.
-	err = chat.Subscribe(params)
+	err = chat.subscribe(params)
 	require.EqualError(t, err, "already subscribed")
 }
 
@@ -117,7 +117,7 @@ func TestHandleMessageFromProtocol(t *testing.T) {
 	params := protocol.DefaultRequestOptions()
 
 	// act
-	err = chat.Subscribe(params)
+	err = chat.subscribe(params)
 	require.NoError(t, err)
 
 	now := time.Now()
