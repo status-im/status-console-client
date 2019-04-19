@@ -177,6 +177,7 @@ func (m *ViewManager) Layout(g *gocui.Gui) error {
 	return nil
 }
 
+// DeleteView removes a view and its bindings.
 func (m *ViewManager) DeleteView(name string) error {
 	if err := m.g.DeleteView(name); err != nil {
 		return err
@@ -191,6 +192,7 @@ func (m *ViewManager) setCurrentView(name string) (*gocui.View, error) {
 	return m.g.SetCurrentView(name)
 }
 
+// EnableView makes the view enable and selects it immediately.
 func (m *ViewManager) EnableView(name string) error {
 	log.Printf("[ViewManager::EnableView] enabling '%s'", name)
 
@@ -209,6 +211,7 @@ func (m *ViewManager) EnableView(name string) error {
 	return errors.Wrap(err, "failed to enable view")
 }
 
+// DisableView disables the view and selects the previous active one.
 func (m *ViewManager) DisableView(name string) error {
 	log.Printf("[ViewManager::DisableView] disabling '%s'", name)
 

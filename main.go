@@ -209,7 +209,7 @@ func main() {
 	}
 
 	contacts := NewContactsViewController(&ViewController{vm, g, ViewContacts}, messenger)
-	if err := contacts.Load(); err != nil {
+	if err := contacts.LoadAndRefresh(); err != nil {
 		exitErr(err)
 	}
 
@@ -401,9 +401,6 @@ func main() {
 	if err := vm.SetGlobalKeybindings(bindings); err != nil {
 		exitErr(err)
 	}
-
-	// Put contacts into the view.
-	contacts.Refresh()
 
 	if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
 		exitErr(err)

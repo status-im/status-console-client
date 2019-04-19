@@ -94,7 +94,7 @@ func ContactCmdFactory(c *ContactsViewController) CmdHandler {
 			if err := c.Add(contact); err != nil {
 				return err
 			}
-			c.Refresh()
+			// TODO: fix removing contacts
 			// case "remove":
 			// 	if len(args) == 2 {
 			// 		if err := c.Remove(args[1]); err != nil {

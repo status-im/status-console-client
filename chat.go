@@ -75,12 +75,16 @@ func (c *ChatViewController) readEventsLoop() {
 			needsRedraw := requiresRedraw(buffer[c.contact])
 
 			if needsRedraw {
+				// Get all available messages and
+				// rewrite the buffer completely.
 				messages := chat.Messages()
 
 				log.Printf("[ChatViewController::readEventsLoops] retrieved %d messages", len(messages))
 
 				c.printMessages(true, messages...)
 			} else {
+				// Messages arrived in order so we can safely put them
+				// at the end of the buffer.
 				for _, event := range buffer[c.contact] {
 					switch ev := event.(type) {
 					case client.EventMessage:
@@ -105,6 +109,10 @@ func (c *ChatViewController) readEventsLoop() {
 	}
 }
 
+// requiresRedraw checks if in the list of events, there are any which
+// require to redraw the whole view. This is an optimization as usually
+// messages arrive in order so they can simply be appended to the buffer,
+// however, if the message is our of order the whole buffer needs to be changed.
 func requiresRedraw(events []interface{}) bool {
 	for _, event := range events {
 		switch ev := event.(type) {

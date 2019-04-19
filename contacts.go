@@ -7,8 +7,8 @@ import (
 	"github.com/status-im/status-console-client/protocol/client"
 )
 
-// String returns a string representation.
-func ContactString(c client.Contact) string {
+// contactToString returns a string representation.
+func contactToString(c client.Contact) string {
 	switch c.Type {
 	case client.ContactPublicChat:
 		return fmt.Sprintf("#%s", c.Name)
@@ -31,23 +31,15 @@ func NewContactsViewController(vm *ViewController, m *client.Messenger) *Contact
 	return &ContactsViewController{ViewController: vm, messenger: m}
 }
 
-// ContactByIdx allows to retrieve a contact for a given index.
-func (c *ContactsViewController) ContactByIdx(idx int) (client.Contact, bool) {
-	if idx > -1 && idx < len(c.contacts) {
-		return c.contacts[idx], true
-	}
-	return client.Contact{}, false
-}
-
-// Refresh repaints the current list of contacts.
-func (c *ContactsViewController) Refresh() {
+// refresh repaints the current list of contacts.
+func (c *ContactsViewController) refresh() {
 	c.g.Update(func(*gocui.Gui) error {
 		if err := c.Clear(); err != nil {
 			return err
 		}
 
 		for _, contact := range c.contacts {
-			if _, err := fmt.Fprintln(c.ViewController, ContactString(contact)); err != nil {
+			if _, err := fmt.Fprintln(c.ViewController, contactToString(contact)); err != nil {
 				return err
 			}
 		}
@@ -55,7 +47,8 @@ func (c *ContactsViewController) Refresh() {
 	})
 }
 
-func (c *ContactsViewController) Load() error {
+// load loads contacts from the storage.
+func (c *ContactsViewController) load() error {
 	contacts, err := c.messenger.Contacts()
 	if err != nil {
 		return err
@@ -66,11 +59,35 @@ func (c *ContactsViewController) Load() error {
 	return nil
 }
 
-func (c *ContactsViewController) Add(contact client.Contact) error {
-	c.contacts = append(c.contacts, contact)
-	return c.messenger.AddContact(contact)
+// LoadAndRefresh loads contacts from the storage and refreshes the view.
+func (c *ContactsViewController) LoadAndRefresh() error {
+	if err := c.load(); err != nil {
+		return err
+	}
+	c.refresh()
+	return nil
 }
 
+// ContactByIdx allows to retrieve a contact for a given index.
+func (c *ContactsViewController) ContactByIdx(idx int) (client.Contact, bool) {
+	if idx > -1 && idx < len(c.contacts) {
+		return c.contacts[idx], true
+	}
+	return client.Contact{}, false
+}
+
+// Add adds a new contact to the list.
+func (c *ContactsViewController) Add(contact client.Contact) error {
+	if err := c.messenger.AddContact(contact); err != nil {
+		return err
+	}
+	return c.LoadAndRefresh()
+}
+
+// Remove removes a contact from the list.
 func (c *ContactsViewController) Remove(contact client.Contact) error {
-	return c.messenger.RemoveContact(contact)
+	if err := c.messenger.RemoveContact(contact); err != nil {
+		return err
+	}
+	return c.LoadAndRefresh()
 }
