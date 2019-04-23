@@ -33,11 +33,14 @@ type Chat struct {
 	cancel chan struct{} // can be closed by any goroutine and closes all others
 
 	lastClock int64
+	requester requester
 
 	ownMessages chan *protocol.Message // my private messages channel
 	// TODO: make it a ring buffer. It will require loading messages from the database.
-	messages       []*protocol.Message          // all messages ordered by Clock
-	messagesByHash map[string]*protocol.Message // quick access to messages by hash
+	// Try to use a data structure so that lookup is O(1)
+	// so that we can get rid of messagesByHash.
+	messages       []*protocol.Message // all messages ordered by Clock
+	messagesByHash map[string]struct{} // quick check for message existance
 }
 
 // NewChat returns a new Chat instance.
@@ -53,8 +56,9 @@ func NewChat(proto protocol.Protocol, identity *ecdsa.PrivateKey, contact Contac
 		db:             db,
 		events:         make(chan interface{}),
 		cancel:         make(chan struct{}),
+		requester:      requester{},
 		ownMessages:    make(chan *protocol.Message),
-		messagesByHash: make(map[string]*protocol.Message),
+		messagesByHash: make(map[string]struct{}),
 	}
 
 	go c.readOwnMessagesLoop(c.ownMessages, c.cancel)
@@ -129,9 +133,9 @@ func (c *Chat) Send(data []byte) error {
 	var message protocol.Message
 
 	switch c.contact.Type {
-	case ContactPublicChat:
+	case ContactPublicRoom:
 		message = protocol.CreatePublicTextMessage(data, c.lastClock, c.contact.Name)
-	case ContactPrivateChat:
+	case ContactPublicKey:
 		message = protocol.CreatePrivateTextMessage(data, c.lastClock, c.contact.Name)
 	default:
 		return fmt.Errorf("failed to send message: unsupported contact type")
@@ -154,7 +158,7 @@ func (c *Chat) Send(data []byte) error {
 	hash, err := c.proto.Send(context.Background(), encodedMessage, opts)
 
 	// Own messages need to be pushed manually to the pipeline.
-	if c.contact.Type == ContactPrivateChat {
+	if c.contact.Type == ContactPublicKey {
 		log.Printf("[Chat::Send] sent a private message")
 
 		// TODO: this should be created by c.proto
@@ -172,15 +176,55 @@ func (c *Chat) Request(options protocol.RequestOptions) error {
 }
 
 func (c *Chat) request(options protocol.RequestOptions) error {
-	opts, err := createRequestOptions(c.contact)
+	err := enhanceRequestOptions(c.contact, &options)
 	if err != nil {
 		return err
 	}
-	return c.proto.Request(context.Background(), opts)
+
+	c.requester.update(options)
+
+	return c.proto.Request(context.Background(), options)
+}
+
+func (c *Chat) RequestOptions(newest bool) (protocol.RequestOptions, error) {
+	options := c.requester.options(newest)
+	err := enhanceRequestOptions(c.contact, &options)
+	return options, err
+}
+
+// load loads messages from the database cache and then the network.
+func (c *Chat) load(options protocol.RequestOptions) error {
+	// Get already cached messages from the database.
+	cachedMessages, err := c.db.Messages(
+		c.contact,
+		options.FromAsTime(),
+		options.ToAsTime(),
+	)
+	if err != nil {
+		return errors.Wrap(err, "db failed to get messages")
+	}
+
+	c.handleMessages(cachedMessages...)
+
+	return nil
+}
+
+func (c *Chat) loadAndRequest(params protocol.RequestOptions) error {
+	// Request messages from the cache.
+	if err := c.load(params); err != nil {
+		return errors.Wrap(err, "failed to load cached messages")
+	}
+
+	// Request historic messages from the network.
+	if err := c.request(params); err != nil {
+		return errors.Wrap(err, "failed to request for messages")
+	}
+
+	return nil
 }
 
 // subscribe reads messages from the network.
-func (c *Chat) subscribe(params protocol.RequestOptions) error {
+func (c *Chat) subscribe() error {
 	c.RLock()
 	cancel := c.cancel
 	sub := c.sub
@@ -206,17 +250,10 @@ func (c *Chat) subscribe(params protocol.RequestOptions) error {
 	c.sub = sub
 	c.Unlock()
 
-	go c.readLoop(messages, sub, cancel)
-
-	// Request messages from the cache.
-	if err := c.load(params); err != nil {
-		return errors.Wrap(err, "failed to load cached messages")
-	}
-
-	// Request historic messages from the network.
-	if err := c.request(params); err != nil {
-		return errors.Wrap(err, "failed to request for messages")
-	}
+	go func() {
+		c.readLoop(messages, sub, cancel)
+		c.leave()
+	}()
 
 	return nil
 }
@@ -226,32 +263,14 @@ func (c *Chat) leave() {
 	if c.sub != nil {
 		c.sub.Unsubscribe()
 	} else {
-		close(c.cancel)
+		select {
+		case <-c.cancel:
+			// c.cancel already closed
+		default:
+			close(c.cancel)
+		}
 	}
 	c.Unlock()
-}
-
-// load loads messages from the database cache and then the network.
-func (c *Chat) load(options protocol.RequestOptions) error {
-	// Get already cached messages from the database.
-	cachedMessages, err := c.db.Messages(
-		c.contact,
-		options.FromAsTime(),
-		options.ToAsTime(),
-	)
-	if err != nil {
-		return errors.Wrap(err, "db failed to get messages")
-	}
-
-	c.handleMessages(cachedMessages...)
-
-	go func() {
-		log.Printf("[Chat::load] sending EventTypeInit")
-		c.events <- baseEvent{contact: c.contact, typ: EventTypeInit}
-		log.Printf("[Chat::load] sent EventTypeInit")
-	}()
-
-	return nil
 }
 
 func (c *Chat) readLoop(messages <-chan *protocol.Message, sub *protocol.Subscription, cancel chan struct{}) {
@@ -331,7 +350,7 @@ func (c *Chat) handleMessages(messages ...*protocol.Message) (rearranged bool) {
 			continue
 		}
 
-		c.messagesByHash[hash] = m
+		c.messagesByHash[hash] = struct{}{}
 		c.messages = append(c.messages, m)
 
 		sorted := sort.SliceIsSorted(c.messages, c.lessFn)

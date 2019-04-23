@@ -7,8 +7,10 @@ import (
 	"log"
 	"math"
 	"os"
+	ossignal "os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	gethnode "github.com/ethereum/go-ethereum/node"
@@ -19,7 +21,6 @@ import (
 	"github.com/status-im/status-console-client/protocol/adapters"
 	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/gethservice"
-	"github.com/status-im/status-console-client/protocol/v1"
 	"github.com/status-im/status-go/logutils"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
@@ -32,6 +33,9 @@ var (
 	fs       = flag.NewFlagSet("status-term-client", flag.ExitOnError)
 	logLevel = fs.String("log-level", "INFO", "log level")
 
+	keyHex = fs.String("keyhex", "", "pass a private key in hex")
+	noUI   = fs.Bool("no-ui", false, "disable UI")
+
 	// flags acting like commands
 	createKeyPair = fs.Bool("create-key-pair", false, "creates and prints a key pair instead of running")
 
@@ -43,8 +47,6 @@ var (
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
-
-	keyHex = fs.String("keyhex", "", "pass a private key in hex")
 )
 
 func main() {
@@ -82,105 +84,185 @@ func main() {
 		exitErr(errors.New("private key is required"))
 	}
 
-	// initialize protocol
-	var proto protocol.Protocol
-
-	if *providerURI != "" {
-		rpc, err := rpc.Dial(*providerURI)
-		if err != nil {
-			exitErr(errors.Wrap(err, "failed to dial"))
-		}
-
-		// TODO: provide Mail Servers in a different way.
-		nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
-		if err != nil {
-			exitErr(errors.Wrap(err, "failed to generate node config"))
-		}
-
-		proto = adapters.NewWhisperClientAdapter(
-			rpc,
-			privateKey,
-			nodeConfig.ClusterConfig.TrustedMailServers,
-		)
-	} else {
-		// collect mail server request signals
-		signalsForwarder := newSignalForwarder()
-		defer close(signalsForwarder.in)
-		go signalsForwarder.Start()
-
-		// setup signals handler
-		signal.SetDefaultNodeNotificationHandler(
-			filterMailTypesHandler(printHandler, signalsForwarder.in),
-		)
-
-		nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
-		if err != nil {
-			exitErr(errors.Wrap(err, "failed to generate node config"))
-		}
-
-		statusNode := node.New()
-
-		protocolGethService := gethservice.New(
-			statusNode,
-			&keysGetter{privateKey: privateKey},
-		)
-
-		services := []gethnode.ServiceConstructor{
-			func(ctx *gethnode.ServiceContext) (gethnode.Service, error) {
-				return protocolGethService, nil
-			},
-		}
-
-		if err := statusNode.Start(nodeConfig, services...); err != nil {
-			exitErr(errors.Wrap(err, "failed to start node"))
-		}
-
-		shhService, err := statusNode.WhisperService()
-		if err != nil {
-			exitErr(errors.Wrap(err, "failed to get Whisper service"))
-		}
-
-		adapter := adapters.NewWhisperServiceAdapter(statusNode, shhService, privateKey)
-
-		protocolGethService.SetProtocol(adapter)
-
-		// TODO: should be removed from StatusNode
-		if *pfsEnabled {
-			databasesDir := filepath.Join(*dataDir, "databases")
-
-			if err := os.MkdirAll(databasesDir, 0755); err != nil {
-				exitErr(errors.Wrap(err, "failed to create databases dir"))
-			}
-
-			if err := adapter.InitPFS(databasesDir); err != nil {
-				exitErr(errors.Wrap(err, "initialize PFS"))
-			}
-
-			log.Printf("PFS has been initialized")
-		}
-
-		proto = adapter
-	}
-
-	g, err = gocui.NewGui(gocui.Output256)
-	if err != nil {
-		exitErr(err)
-	}
-	defer g.Close()
-
-	// prepare views
-	vm := NewViewManager(nil, g)
-
+	// create database
 	dbPath := filepath.Join(*dataDir, "db")
 	db, err := client.NewDatabase(dbPath)
 	if err != nil {
 		exitErr(err)
 	}
-	// TODO: close the database properly
+	defer db.Close()
+
+	// initialize protocol
+	var (
+		messenger *client.Messenger
+	)
+
+	if *providerURI != "" {
+		messenger, err = createMessengerWithURI(*providerURI, privateKey, db)
+		if err != nil {
+			exitErr(err)
+		}
+	} else {
+		messenger, err = createMessengerInProc(privateKey, db)
+		if err != nil {
+			exitErr(err)
+		}
+	}
+
+	adambContact, err := client.ContactWithPublicKey("adamb", "0x0493ac727e70ea62c4428caddf4da301ca67b699577988d6a782898acfd813addf79b2a2ca2c411499f2e0a12b7de4d00574cbddb442bec85789aea36b10f46895")
+	if err != nil {
+		exitErr(err)
+	}
+
+	if contacts, err := db.Contacts(); len(contacts) == 0 || err != nil {
+		debugContacts := []client.Contact{
+			{Name: "status", Type: client.ContactPublicRoom},
+			{Name: "status-core", Type: client.ContactPublicRoom},
+			{Name: "testing-adamb", Type: client.ContactPublicRoom},
+			adambContact,
+		}
+		if err := db.SaveContacts(debugContacts); err != nil {
+			exitErr(err)
+		}
+	}
+
+	// TODO: use a flag
+	if !*noUI {
+		if err := setupGUI(privateKey, messenger); err != nil {
+			exitErr(err)
+		}
+
+		if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
+			exitErr(err)
+		}
+		g.Close()
+	} else {
+		sigs := make(chan os.Signal, 1)
+		done := make(chan bool, 1)
+
+		ossignal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+		go func() {
+			sig := <-sigs
+			log.Printf("received signal: %v", sig)
+			done <- true
+		}()
+
+		<-done
+	}
+}
+
+func exitErr(err error) {
+	if g != nil {
+		g.Close()
+	}
+
+	fmt.Println(err)
+	os.Exit(1)
+}
+
+type keysGetter struct {
+	privateKey *ecdsa.PrivateKey
+}
+
+func (k keysGetter) PrivateKey() (*ecdsa.PrivateKey, error) {
+	return k.privateKey, nil
+}
+
+func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db *client.Database) (*client.Messenger, error) {
+	rpc, err := rpc.Dial(*providerURI)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to dial")
+	}
+
+	// TODO: provide Mail Servers in a different way.
+	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to generate node config")
+	}
+	proto := adapters.NewWhisperClientAdapter(
+		rpc,
+		pk,
+		nodeConfig.ClusterConfig.TrustedMailServers,
+	)
+	messenger := client.NewMessenger(proto, pk, db)
+	return messenger, nil
+}
+
+func createMessengerInProc(pk *ecdsa.PrivateKey, db *client.Database) (*client.Messenger, error) {
+	// collect mail server request signals
+	signalsForwarder := newSignalForwarder()
+	go signalsForwarder.Start()
+
+	// setup signals handler
+	signal.SetDefaultNodeNotificationHandler(
+		filterMailTypesHandler(printHandler, signalsForwarder.in),
+	)
+
+	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
+	if err != nil {
+		exitErr(errors.Wrap(err, "failed to generate node config"))
+	}
+
+	statusNode := node.New()
+
+	protocolGethService := gethservice.New(
+		statusNode,
+		&keysGetter{privateKey: pk},
+	)
+
+	services := []gethnode.ServiceConstructor{
+		func(ctx *gethnode.ServiceContext) (gethnode.Service, error) {
+			return protocolGethService, nil
+		},
+	}
+
+	if err := statusNode.Start(nodeConfig, services...); err != nil {
+		return nil, errors.Wrap(err, "failed to start node")
+	}
+
+	shhService, err := statusNode.WhisperService()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get Whisper service")
+	}
+
+	adapter := adapters.NewWhisperServiceAdapter(statusNode, shhService, pk)
+	messenger := client.NewMessenger(adapter, pk, db)
+
+	protocolGethService.SetProtocol(adapter)
+	protocolGethService.SetMessenger(messenger)
+
+	// TODO: should be removed from StatusNode
+	if *pfsEnabled {
+		databasesDir := filepath.Join(*dataDir, "databases")
+
+		if err := os.MkdirAll(databasesDir, 0755); err != nil {
+			exitErr(errors.Wrap(err, "failed to create databases dir"))
+		}
+
+		if err := adapter.InitPFS(databasesDir); err != nil {
+			exitErr(errors.Wrap(err, "initialize PFS"))
+		}
+
+		log.Printf("PFS has been initialized")
+	}
+
+	return messenger, nil
+}
+
+func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
+	var err error
+
+	// global
+	g, err = gocui.NewGui(gocui.Output256)
+	if err != nil {
+		return err
+	}
+
+	// prepare views
+	vm := NewViewManager(nil, g)
 
 	notifications := NewNotificationViewController(&ViewController{vm, g, ViewNotification})
-
-	messenger := client.NewMessenger(proto, privateKey, db)
 
 	chat := NewChatViewController(
 		&ViewController{vm, g, ViewChat},
@@ -191,26 +273,9 @@ func main() {
 		},
 	)
 
-	adambContact, err := client.ContactWithPublicKey("adamb", "0x0493ac727e70ea62c4428caddf4da301ca67b699577988d6a782898acfd813addf79b2a2ca2c411499f2e0a12b7de4d00574cbddb442bec85789aea36b10f46895")
-	if err != nil {
-		exitErr(err)
-	}
-
-	if contacts, err := db.Contacts(); len(contacts) == 0 || err != nil {
-		debugContacts := []client.Contact{
-			{Name: "status", Type: client.ContactPublicChat},
-			{Name: "status-core", Type: client.ContactPublicChat},
-			{Name: "testing-adamb", Type: client.ContactPublicChat},
-			adambContact,
-		}
-		if err := db.SaveContacts(debugContacts); err != nil {
-			exitErr(err)
-		}
-	}
-
 	contacts := NewContactsViewController(&ViewController{vm, g, ViewContacts}, messenger)
 	if err := contacts.LoadAndRefresh(); err != nil {
-		exitErr(err)
+		return err
 	}
 
 	inputMultiplexer := NewInputMultiplexer()
@@ -297,7 +362,10 @@ func main() {
 					Key: gocui.KeyHome,
 					Mod: gocui.ModNone,
 					Handler: func(g *gocui.Gui, v *gocui.View) error {
-						params := chat.RequestOptions(false)
+						params, err := chat.RequestOptions(false)
+						if err != nil {
+							return err
+						}
 
 						if err := notifications.Debug("Messages request", fmt.Sprintf("%v", params)); err != nil {
 							return err
@@ -395,31 +463,12 @@ func main() {
 	}
 
 	if err := vm.SetViews(views); err != nil {
-		exitErr(err)
+		return err
 	}
 
 	if err := vm.SetGlobalKeybindings(bindings); err != nil {
-		exitErr(err)
+		return err
 	}
 
-	if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
-		exitErr(err)
-	}
-}
-
-func exitErr(err error) {
-	if g != nil {
-		g.Close()
-	}
-
-	fmt.Println(err)
-	os.Exit(1)
-}
-
-type keysGetter struct {
-	privateKey *ecdsa.PrivateKey
-}
-
-func (k keysGetter) PrivateKey() (*ecdsa.PrivateKey, error) {
-	return k.privateKey, nil
+	return nil
 }

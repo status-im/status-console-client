@@ -50,10 +50,12 @@ func (m *Messenger) Chat(c Contact) *Chat {
 }
 
 // Join creates a new chat and creates a subscription.
-func (m *Messenger) Join(contact Contact, params protocol.RequestOptions) error {
+func (m *Messenger) Join(contact Contact) (*Chat, error) {
+	requestParams := protocol.DefaultRequestOptions()
+
 	chat := m.Chat(contact)
 	if chat != nil {
-		return chat.load(params)
+		return chat, chat.loadAndRequest(requestParams)
 	}
 
 	chat = NewChat(m.proto, m.identity, contact, m.db)
@@ -66,7 +68,11 @@ func (m *Messenger) Join(contact Contact, params protocol.RequestOptions) error 
 
 	go m.chatEventsLoop(chat, contact, cancel)
 
-	return chat.subscribe(params)
+	if err := chat.subscribe(); err != nil {
+		return chat, err
+	}
+
+	return chat, chat.loadAndRequest(requestParams)
 }
 
 func (m *Messenger) chatEventsLoop(chat *Chat, contact Contact, cancel chan struct{}) {
@@ -90,6 +96,13 @@ LOOP:
 			err:       err,
 		}
 	}
+
+	chat.leave()
+
+	m.Lock()
+	delete(m.chats, contact)
+	delete(m.chatsCancels, contact)
+	m.Unlock()
 }
 
 // Leave unsubscribes from the chat.
@@ -108,9 +121,35 @@ func (m *Messenger) Leave(contact Contact) error {
 
 	m.Lock()
 	delete(m.chats, contact)
+	delete(m.chatsCancels, contact)
 	m.Unlock()
 
 	return nil
+}
+
+func (m *Messenger) RequestAll(newest bool) error {
+	var finalOpts protocol.RequestOptions
+
+	for _, chat := range m.chats {
+		opts, err := chat.RequestOptions(newest)
+		if err != nil {
+			return err
+		}
+
+		finalOpts.Chats = append(finalOpts.Chats, opts.Chats...)
+
+		if opts.Limit > finalOpts.Limit {
+			finalOpts.Limit = opts.Limit
+		}
+		if opts.From < finalOpts.From {
+			finalOpts.From = opts.From
+		}
+		if opts.To > finalOpts.To {
+			finalOpts.To = opts.To
+		}
+	}
+
+	return m.proto.Request(nil, finalOpts)
 }
 
 // Contacts returns a list of contacts.

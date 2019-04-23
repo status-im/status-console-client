@@ -9,19 +9,16 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
 var (
 	// ErrProtocolNotSet tells that the protocol was not set in the Service.
 	ErrProtocolNotSet = errors.New("protocol is not set")
+	// ErrMessengerNotSet tells that the messenger was not set in the Service.
+	ErrMessengerNotSet = errors.New("messenger is not set")
 )
-
-// PublicAPI provides an JSON-RPC API to interact with
-// the Status Messaging Protocol through a geth node.
-type PublicAPI struct {
-	service *Service
-}
 
 // ChatParams are chat specific options.
 type ChatParams struct {
@@ -33,6 +30,38 @@ type ChatParams struct {
 // for Messages method.
 type MessagesParams struct {
 	ChatParams
+}
+
+// SendParams is an object with JSON-serializable parameters for Send method.
+type SendParams struct {
+	ChatParams
+}
+
+// RequestParams is an object with JSON-serializable parameters for Request method.
+type RequestParams struct {
+	ChatParams
+	Limit int   `json:"limit"`
+	From  int64 `json:"from"`
+	To    int64 `json:"to"`
+}
+
+// Contact
+type Contact struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+// PublicAPI provides an JSON-RPC API to interact with
+// the Status Messaging Protocol through a geth node.
+type PublicAPI struct {
+	service     *Service
+	broadcaster *broadcaster
+}
+
+func NewPublicAPI(s *Service) *PublicAPI {
+	return &PublicAPI{
+		service: s,
+	}
 }
 
 // Messages creates an RPC subscription which delivers received messages.
@@ -97,11 +126,6 @@ func (api *PublicAPI) Messages(ctx context.Context, params MessagesParams) (*rpc
 	return rpcSub, nil
 }
 
-// SendParams is an object with JSON-serializable parameters for Send method.
-type SendParams struct {
-	ChatParams
-}
-
 // Send sends a message to the network.
 func (api *PublicAPI) Send(ctx context.Context, data hexutil.Bytes, params SendParams) (hexutil.Bytes, error) {
 	if api.service.protocol == nil {
@@ -124,35 +148,97 @@ func (api *PublicAPI) Send(ctx context.Context, data hexutil.Bytes, params SendP
 	return api.service.protocol.Send(ctx, data, adapterOptions)
 }
 
-// RequestParams is an object with JSON-serializable parameters for Request method.
-type RequestParams struct {
-	ChatParams
-	Limit int   `json:"limit"`
-	From  int64 `json:"from"`
-	To    int64 `json:"to"`
-}
-
-// Request send a request for historic messages matching the provided RequestParams.
+// Request sends a request for historic messages matching the provided RequestParams.
 func (api *PublicAPI) Request(ctx context.Context, params RequestParams) (err error) {
 	if api.service.protocol == nil {
 		return ErrProtocolNotSet
 	}
 
 	adapterOptions := protocol.RequestOptions{
-		ChatOptions: protocol.ChatOptions{
-			ChatName: params.PubChatName, // no transformation required
+		Chats: []protocol.ChatOptions{
+			protocol.ChatOptions{
+				ChatName: params.PubChatName, // no transformation required
+			},
 		},
 		Limit: params.Limit,
 		From:  params.From,
 		To:    params.To,
 	}
 
-	adapterOptions.Recipient, err = unmarshalPubKey(params.RecipientPubKey)
+	adapterOptions.Chats[0].Recipient, err = unmarshalPubKey(params.RecipientPubKey)
 	if err != nil {
 		return
 	}
 
 	return api.service.protocol.Request(ctx, adapterOptions)
+}
+
+// Chat is a high-level subscription-based RPC method.
+// It joins a chat for selected contact and streams
+// events for that chat.
+func (api *PublicAPI) Chat(ctx context.Context, contact client.Contact) (*rpc.Subscription, error) {
+	notifier, supported := rpc.NotifierFromContext(ctx)
+	if !supported {
+		return nil, rpc.ErrNotificationsUnsupported
+	}
+
+	if api.service.messenger == nil {
+		return nil, ErrMessengerNotSet
+	}
+
+	// Create a broadcaster instance.
+	// TODO: move it.
+	if api.broadcaster == nil {
+		api.broadcaster = newBroadcaster(api.service.messenger.Events())
+	}
+
+	// Subscription needs to be created
+	// before any events are delivered.
+	sub := api.broadcaster.Subscribe(contact)
+
+	chat, err := api.service.messenger.Join(contact)
+	if err != nil {
+		api.broadcaster.Unsubscribe(sub)
+		return nil, err
+	}
+
+	rpcSub := notifier.CreateSubscription()
+
+	go func() {
+		defer api.service.messenger.Leave(contact)
+		defer api.broadcaster.Unsubscribe(sub)
+
+		for {
+			select {
+			case e := <-sub:
+				if err := notifier.Notify(rpcSub.ID, e); err != nil {
+					log.Printf("failed to notify %s about new message", rpcSub.ID)
+				}
+			case <-chat.Done():
+				if err := chat.Err(); err != nil {
+					log.Printf("chat errored: %v", err)
+				}
+				return
+			case err := <-rpcSub.Err():
+				if err != nil {
+					log.Printf("RPC subscription errored: %v", err)
+				}
+				return
+			case <-notifier.Closed():
+				log.Printf("notifier closed")
+				return
+			}
+		}
+	}()
+
+	return rpcSub, nil
+}
+
+// RequestAll sends a request for messages for all subscribed chats.
+// If newest is set to true, it requests the most recent messages.
+// Otherwise, it requests older messages than already downloaded.
+func (api *PublicAPI) RequestAll(ctx context.Context, newest bool) error {
+	return api.service.messenger.RequestAll(newest)
 }
 
 func unmarshalPubKey(b hexutil.Bytes) (*ecdsa.PublicKey, error) {

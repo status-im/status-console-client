@@ -77,8 +77,10 @@ func TestPublicAPIRequest(t *testing.T) {
 		Request(
 			gomock.Any(),
 			gomock.Eq(protocol.RequestOptions{
-				ChatOptions: protocol.ChatOptions{
-					ChatName: params.PubChatName,
+				Chats: []protocol.ChatOptions{
+					protocol.ChatOptions{
+						ChatName: params.PubChatName,
+					},
 				},
 				Limit: 100,
 				From:  now,
@@ -121,7 +123,7 @@ func TestPublicAPIMessages(t *testing.T) {
 		Return(protocol.NewSubscription(), nil)
 
 	// The first argument is a name of the method to use for subscription.
-	_, err = client.Subscribe(context.Background(), ServiceProtosAPIName, messages, "messages", params)
+	_, err = client.Subscribe(context.Background(), StatusSecureMessagingProtocolAPIName, messages, "messages", params)
 	require.NoError(t, err)
 }
 
@@ -143,7 +145,7 @@ func createAndStartNode(privateKey *ecdsa.PrivateKey) (*node.StatusNode, *Servic
 	}
 
 	return n, service, n.Start(
-		&params.NodeConfig{APIModules: ServiceProtosAPIName},
+		&params.NodeConfig{APIModules: StatusSecureMessagingProtocolAPIName},
 		services...,
 	)
 }
@@ -167,7 +169,7 @@ func setupRPCClient(proto protocol.Protocol) (*rpc.Client, *node.StatusNode, err
 }
 
 func createRPCMethod(name string) string {
-	return fmt.Sprintf("%s_%s", ServiceProtosAPIName, name)
+	return fmt.Sprintf("%s_%s", StatusSecureMessagingProtocolAPIName, name)
 }
 
 type keysGetter struct {

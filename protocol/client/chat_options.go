@@ -12,21 +12,9 @@ var (
 
 func createSubscribeOptions(c Contact) (opts protocol.SubscribeOptions, err error) {
 	switch c.Type {
-	case ContactPublicChat:
+	case ContactPublicRoom:
 		opts.ChatName = c.Name
-	case ContactPrivateChat:
-		opts.Recipient = c.PublicKey
-	default:
-		err = errUnsupportedContactType
-	}
-	return
-}
-
-func createRequestOptions(c Contact) (opts protocol.RequestOptions, err error) {
-	switch c.Type {
-	case ContactPublicChat:
-		opts.ChatName = c.Name
-	case ContactPrivateChat:
+	case ContactPublicKey:
 		opts.Recipient = c.PublicKey
 	default:
 		err = errUnsupportedContactType
@@ -36,12 +24,29 @@ func createRequestOptions(c Contact) (opts protocol.RequestOptions, err error) {
 
 func createSendOptions(c Contact) (opts protocol.SendOptions, err error) {
 	switch c.Type {
-	case ContactPublicChat:
+	case ContactPublicRoom:
 		opts.ChatName = c.Name
-	case ContactPrivateChat:
+	case ContactPublicKey:
 		opts.Recipient = c.PublicKey
 	default:
 		err = errUnsupportedContactType
 	}
 	return
+}
+
+func enhanceRequestOptions(c Contact, opts *protocol.RequestOptions) error {
+	var chatOptions protocol.ChatOptions
+
+	switch c.Type {
+	case ContactPublicRoom:
+		chatOptions.ChatName = c.Name
+	case ContactPublicKey:
+		chatOptions.Recipient = c.PublicKey
+	default:
+		return errUnsupportedContactType
+	}
+
+	opts.Chats = append(opts.Chats, chatOptions)
+
+	return nil
 }

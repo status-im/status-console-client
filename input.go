@@ -69,7 +69,10 @@ func bytesToArgs(b []byte) []string {
 
 func contactAddCmdHandler(args []string) (c client.Contact, err error) {
 	if len(args) == 1 {
-		c = client.Contact{Name: args[0], Type: client.ContactPublicChat}
+		c = client.Contact{
+			Name: args[0],
+			Type: client.ContactPublicRoom,
+		}
 	} else if len(args) == 2 {
 		c, err = client.ContactWithPublicKey(args[1], args[0])
 	} else {

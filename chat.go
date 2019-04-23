@@ -138,27 +138,18 @@ func (c *ChatViewController) Select(contact client.Contact) error {
 
 	c.contact = contact
 
-	params := protocol.DefaultRequestOptions()
-	err := c.messenger.Join(contact, params)
-	if err == nil {
-		c.updateRequests(params)
-	}
+	_, err := c.messenger.Join(contact)
 	return err
 }
 
 // RequestOptions returns the RequestOptions for the next request call.
 // Newest param when true means that we are interested in the most recent messages.
-func (c *ChatViewController) RequestOptions(newest bool) protocol.RequestOptions {
-	params := protocol.DefaultRequestOptions()
-
-	if newest && c.lastRequest != (protocol.RequestOptions{}) {
-		params.From = c.lastRequest.From
-	} else if c.firstRequest != (protocol.RequestOptions{}) {
-		params.From = c.firstRequest.From - defaultRequestOptionsFrom
-		params.To = c.firstRequest.To
+func (c *ChatViewController) RequestOptions(newest bool) (protocol.RequestOptions, error) {
+	chat := c.messenger.Chat(c.contact)
+	if chat == nil {
+		return protocol.RequestOptions{}, fmt.Errorf("chat not found")
 	}
-
-	return params
+	return chat.RequestOptions(newest)
 }
 
 // RequestMessages sends a request fro historical messages.

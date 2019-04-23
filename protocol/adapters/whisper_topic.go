@@ -23,7 +23,7 @@ func PrivateChatTopic() (whisper.TopicType, error) {
 	return PublicChatTopic(TopicDiscovery)
 }
 
-func topicForRequestOptions(options protocol.RequestOptions) (whisper.TopicType, error) {
+func topicForRequestOptions(options protocol.ChatOptions) (whisper.TopicType, error) {
 	if options.Recipient != nil {
 		return PrivateChatTopic()
 	}

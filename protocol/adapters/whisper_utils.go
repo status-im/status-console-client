@@ -14,11 +14,13 @@ func createShhextRequestMessagesParam(enode, mailSymKeyID string, options protoc
 		SymKeyID:       mailSymKeyID,
 	}
 
-	topic, err := topicForRequestOptions(options)
-	if err != nil {
-		return req, err
+	for _, chatOpts := range options.Chats {
+		topic, err := topicForRequestOptions(chatOpts)
+		if err != nil {
+			return req, err
+		}
+		req.Topics = append(req.Topics, topic)
 	}
-	req.Topics = append(req.Topics, topic)
 
 	return req, nil
 }
