@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"fmt"
@@ -138,7 +139,7 @@ func (c *ChatViewController) Select(contact client.Contact) error {
 
 	c.contact = contact
 
-	_, err := c.messenger.Join(contact)
+	_, err := c.messenger.Join(context.TODO(), contact)
 	return err
 }
 
@@ -159,7 +160,7 @@ func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) err
 		return fmt.Errorf("chat not found")
 	}
 
-	err := chat.Request(params)
+	err := chat.Request(context.TODO(), params)
 	if err == nil {
 		c.updateRequests(params)
 	}

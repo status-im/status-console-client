@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"log"
 	"sync"
@@ -50,12 +51,12 @@ func (m *Messenger) Chat(c Contact) *Chat {
 }
 
 // Join creates a new chat and creates a subscription.
-func (m *Messenger) Join(contact Contact) (*Chat, error) {
+func (m *Messenger) Join(ctx context.Context, contact Contact) (*Chat, error) {
 	requestParams := protocol.DefaultRequestOptions()
 
 	chat := m.Chat(contact)
 	if chat != nil {
-		return chat, chat.loadAndRequest(requestParams)
+		return chat, chat.loadAndRequest(ctx, requestParams)
 	}
 
 	chat = NewChat(m.proto, m.identity, contact, m.db)
@@ -72,7 +73,7 @@ func (m *Messenger) Join(contact Contact) (*Chat, error) {
 		return chat, err
 	}
 
-	return chat, chat.loadAndRequest(requestParams)
+	return chat, chat.loadAndRequest(ctx, requestParams)
 }
 
 func (m *Messenger) chatEventsLoop(chat *Chat, contact Contact, cancel chan struct{}) {
@@ -127,7 +128,7 @@ func (m *Messenger) Leave(contact Contact) error {
 	return nil
 }
 
-func (m *Messenger) RequestAll(newest bool) error {
+func (m *Messenger) RequestAll(ctx context.Context, newest bool) error {
 	var finalOpts protocol.RequestOptions
 
 	for _, chat := range m.chats {
@@ -149,7 +150,7 @@ func (m *Messenger) RequestAll(newest bool) error {
 		}
 	}
 
-	return m.proto.Request(nil, finalOpts)
+	return m.proto.Request(ctx, finalOpts)
 }
 
 // Contacts returns a list of contacts.

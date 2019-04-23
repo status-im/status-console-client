@@ -171,11 +171,11 @@ func (c *Chat) Send(data []byte) error {
 }
 
 // Request historic messages.
-func (c *Chat) Request(options protocol.RequestOptions) error {
-	return c.request(options)
+func (c *Chat) Request(ctx context.Context, options protocol.RequestOptions) error {
+	return c.request(ctx, options)
 }
 
-func (c *Chat) request(options protocol.RequestOptions) error {
+func (c *Chat) request(ctx context.Context, options protocol.RequestOptions) error {
 	err := enhanceRequestOptions(c.contact, &options)
 	if err != nil {
 		return err
@@ -183,7 +183,7 @@ func (c *Chat) request(options protocol.RequestOptions) error {
 
 	c.requester.update(options)
 
-	return c.proto.Request(context.Background(), options)
+	return c.proto.Request(ctx, options)
 }
 
 func (c *Chat) RequestOptions(newest bool) (protocol.RequestOptions, error) {
@@ -209,14 +209,14 @@ func (c *Chat) load(options protocol.RequestOptions) error {
 	return nil
 }
 
-func (c *Chat) loadAndRequest(params protocol.RequestOptions) error {
+func (c *Chat) loadAndRequest(ctx context.Context, params protocol.RequestOptions) error {
 	// Request messages from the cache.
 	if err := c.load(params); err != nil {
 		return errors.Wrap(err, "failed to load cached messages")
 	}
 
 	// Request historic messages from the network.
-	if err := c.request(params); err != nil {
+	if err := c.request(ctx, params); err != nil {
 		return errors.Wrap(err, "failed to request for messages")
 	}
 

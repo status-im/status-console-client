@@ -196,7 +196,7 @@ func (api *PublicAPI) Chat(ctx context.Context, contact client.Contact) (*rpc.Su
 	// before any events are delivered.
 	sub := api.broadcaster.Subscribe(contact)
 
-	chat, err := api.service.messenger.Join(contact)
+	chat, err := api.service.messenger.Join(ctx, contact)
 	if err != nil {
 		api.broadcaster.Unsubscribe(sub)
 		return nil, err
@@ -227,6 +227,9 @@ func (api *PublicAPI) Chat(ctx context.Context, contact client.Contact) (*rpc.Su
 			case <-notifier.Closed():
 				log.Printf("notifier closed")
 				return
+			case <-ctx.Done():
+				log.Printf("context is canceled: %v", ctx.Err())
+				return
 			}
 		}
 	}()
@@ -238,7 +241,7 @@ func (api *PublicAPI) Chat(ctx context.Context, contact client.Contact) (*rpc.Su
 // If newest is set to true, it requests the most recent messages.
 // Otherwise, it requests older messages than already downloaded.
 func (api *PublicAPI) RequestAll(ctx context.Context, newest bool) error {
-	return api.service.messenger.RequestAll(newest)
+	return api.service.messenger.RequestAll(ctx, newest)
 }
 
 func unmarshalPubKey(b hexutil.Bytes) (*ecdsa.PublicKey, error) {
