@@ -37,6 +37,10 @@ func (o ChatOptions) Validate() error {
 	return nil
 }
 
+const (
+	DefaultDurationRequestOptions = 24 * time.Hour
+)
+
 // RequestOptions is a list of params required
 // to request for historic messages.
 type RequestOptions struct {
@@ -44,6 +48,26 @@ type RequestOptions struct {
 	Limit int
 	From  int64 // in seconds
 	To    int64 // in seconds
+}
+
+// DefaultRequestOptions returns default options returning messages
+// from the last 24 hours.
+func DefaultRequestOptions() RequestOptions {
+	return RequestOptions{
+		From:  time.Now().Add(-DefaultDurationRequestOptions).Unix(),
+		To:    time.Now().Unix(),
+		Limit: 1000,
+	}
+}
+
+// FromAsTime converts int64 (timestamp in seconds) to time.Time.
+func (o RequestOptions) FromAsTime() time.Time {
+	return time.Unix(o.From, 0)
+}
+
+// ToAsTime converts int64 (timestamp in seconds) to time.Time.
+func (o RequestOptions) ToAsTime() time.Time {
+	return time.Unix(o.To, 0)
 }
 
 func (o RequestOptions) Equal(someOpts RequestOptions) bool {
@@ -60,42 +84,27 @@ func (o RequestOptions) Equal(someOpts RequestOptions) bool {
 		o.Limit == someOpts.Limit)
 }
 
-// FromAsTime converts int64 (timestamp in seconds) to time.Time.
-func (o RequestOptions) FromAsTime() time.Time {
-	return time.Unix(o.From, 0)
-}
-
-// ToAsTime converts int64 (timestamp in seconds) to time.Time.
-func (o RequestOptions) ToAsTime() time.Time {
-	return time.Unix(o.To, 0)
-}
-
 // Validate verifies that the given request options are valid.
 func (o RequestOptions) Validate() error {
 	if len(o.Chats) == 0 {
 		return errors.New("no chats selected")
 	}
+
+	for _, chatOpts := range o.Chats {
+		if err := chatOpts.Validate(); err != nil {
+			return err
+		}
+	}
+
 	if o.To == 0 {
 		return errors.New("invalid 'to' field")
 	}
+
 	if o.To <= o.From {
 		return errors.New("invalid 'from' field")
 	}
+
 	return nil
-}
-
-const (
-	DefaultDurationRequestOptions = 24 * time.Hour
-)
-
-// DefaultRequestOptions returns default options returning messages
-// from the last 24 hours.
-func DefaultRequestOptions() RequestOptions {
-	return RequestOptions{
-		From:  time.Now().Add(-DefaultDurationRequestOptions).Unix(),
-		To:    time.Now().Unix(),
-		Limit: 1000,
-	}
 }
 
 // SubscribeOptions are options for Chat.Subscribe method.
@@ -103,29 +112,7 @@ type SubscribeOptions struct {
 	ChatOptions
 }
 
-// Validate vierifies that the given options are valid.
-func (o SubscribeOptions) Validate() error {
-	if o == (SubscribeOptions{}) {
-		return errors.New("empty options")
-	}
-	if o.Recipient != nil && o.ChatName != "" {
-		return errors.New("fields Recipient and ChatName both set")
-	}
-	return nil
-}
-
 // SendOptions are options for Chat.Send.
 type SendOptions struct {
 	ChatOptions
-}
-
-// Validate verifies that the given options are valid.
-func (o SendOptions) Validate() error {
-	if o.ChatName == "" && o.Recipient == nil {
-		return errors.New("field ChatName or Recipient is required")
-	}
-	if o.ChatName != "" && o.Recipient != nil {
-		return errors.New("fields ChatName and Recipient both set")
-	}
-	return nil
 }
