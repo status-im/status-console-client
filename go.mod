@@ -6,6 +6,7 @@ require (
 	github.com/aristanetworks/goarista v0.0.0-20181220211322-0ca71131d8f7 // indirect
 	github.com/beevik/ntp v0.2.0 // indirect
 	github.com/btcsuite/btcd v0.0.0-20181130015935-7d2daa5bfef2 // indirect
+	github.com/campoy/jsonenums v0.0.0-20180221195324-eec6d38da64e // indirect
 	github.com/coreos/go-semver v0.2.0 // indirect
 	github.com/deckarep/golang-set v1.7.1 // indirect
 	github.com/edsrzf/mmap-go v1.0.0 // indirect

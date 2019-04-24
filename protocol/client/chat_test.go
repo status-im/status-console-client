@@ -148,7 +148,7 @@ func waitForEventTypeMessage(t *testing.T, chat *Chat) {
 	for {
 		select {
 		case ev := <-chat.Events():
-			if v, ok := ev.(Event); ok && v.Type() == EventTypeMessage {
+			if _, ok := ev.(messageEvent); ok {
 				return
 			}
 		case <-time.After(time.Millisecond * 100):

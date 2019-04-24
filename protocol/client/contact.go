@@ -20,9 +20,9 @@ func (c ContactType) MarshalJSON() ([]byte, error) {
 
 func (c *ContactType) UnmarshalJSON(data []byte) error {
 	switch string(data) {
-	case `"ContactPublicRoom"`:
+	case fmt.Sprintf(`"%s"`, ContactPublicRoom):
 		*c = ContactPublicRoom
-	case `"ContactPublicKey"`:
+	case fmt.Sprintf(`"%s"`, ContactPublicKey):
 		*c = ContactPublicKey
 	default:
 		return fmt.Errorf("invalid ContactType: %s", data)

@@ -126,7 +126,6 @@ func main() {
 		}
 	}
 
-	// TODO: use a flag
 	if !*noUI {
 		if err := setupGUI(privateKey, messenger); err != nil {
 			exitErr(err)

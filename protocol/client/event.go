@@ -1,8 +1,6 @@
 package client
 
 import (
-	"encoding/json"
-
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
@@ -18,79 +16,40 @@ const (
 	EventTypeError
 )
 
-type Event interface {
-	Contact() Contact
-	Type() EventType
+type EventWithContact interface {
+	GetContact() Contact
 }
 
-type EventError interface {
-	Event
-	Error() error
+type EventWithType interface {
+	GetType() EventType
 }
 
-type EventMessage interface {
-	Event
-	Message() *protocol.Message
+type EventWithError interface {
+	GetError() error
+}
+
+type EventWithMessage interface {
+	GetMessage() *protocol.Message
 }
 
 type baseEvent struct {
-	contact Contact
-	typ     EventType
+	Contact Contact   `json:"contact"`
+	Type    EventType `json:"type"`
 }
 
-func (e baseEvent) Contact() Contact { return e.contact }
-func (e baseEvent) Type() EventType  { return e.typ }
-
-func (e baseEvent) MarshalJSON() ([]byte, error) {
-	item := struct {
-		Contact Contact `json:"contact"`
-		Type    string  `json:"type"`
-	}{
-		Contact: e.contact,
-		Type:    e.typ.String(),
-	}
-
-	return json.Marshal(item)
-}
+func (e baseEvent) GetContact() Contact { return e.Contact }
+func (e baseEvent) GetType() EventType  { return e.Type }
 
 type errorEvent struct {
 	baseEvent
-	err error
+	Error error `json:"error"`
 }
 
-func (e errorEvent) Error() error { return e.err }
-
-func (e errorEvent) MarshalJSON() ([]byte, error) {
-	item := struct {
-		Contact Contact `json:"contact"`
-		Type    string  `json:"type"`
-		Error   error   `json:"error"`
-	}{
-		Contact: e.contact,
-		Type:    e.typ.String(),
-		Error:   e.err,
-	}
-
-	return json.Marshal(item)
-}
+func (e errorEvent) GetError() error { return e.Error }
 
 type messageEvent struct {
 	baseEvent
-	message *protocol.Message
+	Message *protocol.Message `json:"message"`
 }
 
-func (e messageEvent) Message() *protocol.Message { return e.message }
-
-func (e messageEvent) MarshalJSON() ([]byte, error) {
-	item := struct {
-		Contact Contact           `json:"contact"`
-		Type    string            `json:"type"`
-		Message *protocol.Message `json:"message"`
-	}{
-		Contact: e.contact,
-		Type:    e.typ.String(),
-		Message: e.message,
-	}
-
-	return json.Marshal(item)
-}
+func (e messageEvent) GetMessage() *protocol.Message { return e.Message }

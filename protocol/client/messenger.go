@@ -101,8 +101,8 @@ LOOP:
 
 	if err := chat.Err(); err != nil {
 		m.events <- errorEvent{
-			baseEvent: baseEvent{contact: contact, typ: EventTypeError},
-			err:       err,
+			baseEvent: baseEvent{Contact: contact, Type: EventTypeError},
+			Error:     err,
 		}
 	}
 

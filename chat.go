@@ -23,9 +23,6 @@ type ChatViewController struct {
 
 	contact client.Contact
 
-	firstRequest protocol.RequestOptions
-	lastRequest  protocol.RequestOptions
-
 	identity  *ecdsa.PrivateKey
 	messenger *client.Messenger
 
@@ -84,8 +81,8 @@ func (c *ChatViewController) readEventsLoop() {
 				// at the end of the buffer.
 				for _, event := range buffer[c.contact] {
 					switch ev := event.(type) {
-					case client.EventMessage:
-						c.printMessages(false, ev.Message())
+					case client.EventWithMessage:
+						c.printMessages(false, ev.GetMessage())
 					}
 				}
 			}
@@ -95,10 +92,10 @@ func (c *ChatViewController) readEventsLoop() {
 			log.Printf("[ChatViewController::readEventsLoops] received an event: %+v", event)
 
 			switch ev := event.(type) {
-			case client.EventError:
-				c.onError(ev.Error())
-			case client.Event:
-				buffer[ev.Contact()] = append(buffer[ev.Contact()], ev)
+			case client.EventWithError:
+				c.onError(ev.GetError())
+			case client.EventWithContact:
+				buffer[ev.GetContact()] = append(buffer[ev.GetContact()], ev)
 			}
 		case <-c.cancel:
 			return
@@ -113,8 +110,8 @@ func (c *ChatViewController) readEventsLoop() {
 func requiresRedraw(events []interface{}) bool {
 	for _, event := range events {
 		switch ev := event.(type) {
-		case client.Event:
-			switch ev.Type() {
+		case client.EventWithType:
+			switch ev.GetType() {
 			case client.EventTypeInit, client.EventTypeRearrange:
 				return true
 			}
@@ -135,7 +132,9 @@ func (c *ChatViewController) Select(contact client.Contact) error {
 
 	c.contact = contact
 
-	_, err := c.messenger.Join(context.TODO(), contact)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	_, err := c.messenger.Join(ctx, contact)
 	return err
 }
 
@@ -156,20 +155,9 @@ func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) err
 		return fmt.Errorf("chat not found")
 	}
 
-	err := chat.Request(context.TODO(), params)
-	if err == nil {
-		c.updateRequests(params)
-	}
-	return err
-}
-
-func (c *ChatViewController) updateRequests(params protocol.RequestOptions) {
-	if c.firstRequest.From == 0 || c.firstRequest.From > params.From {
-		c.firstRequest = params
-	}
-	if c.lastRequest.To < params.To {
-		c.lastRequest = params
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	return chat.Request(ctx, params)
 }
 
 // Send sends a payload as a message.

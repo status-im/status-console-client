@@ -265,7 +265,7 @@ func (c *Chat) leave() {
 	} else {
 		select {
 		case <-c.cancel:
-			// c.cancel already closed
+			// c.cancel is already closed
 		default:
 			close(c.cancel)
 		}
@@ -374,22 +374,22 @@ func (c *Chat) lessFn(i, j int) bool {
 
 func (c *Chat) onInit() {
 	log.Printf("[Chat::load] sending EventTypeInit")
-	c.events <- baseEvent{contact: c.contact, typ: EventTypeInit}
+	c.events <- baseEvent{Contact: c.contact, Type: EventTypeInit}
 	log.Printf("[Chat::load] sent EventTypeInit")
 }
 
 func (c *Chat) onMessagesRearrange() {
 	log.Printf("[Chat::onMessagesRearrange] sending EventTypeRearrange")
-	c.events <- baseEvent{contact: c.contact, typ: EventTypeRearrange}
+	c.events <- baseEvent{Contact: c.contact, Type: EventTypeRearrange}
 	log.Printf("[Chat::onMessagesRearrange] sent EventTypeRearrange")
 }
 
 func (c *Chat) onNewMessage(m *protocol.Message) {
 	c.events <- messageEvent{
 		baseEvent: baseEvent{
-			contact: c.contact,
-			typ:     EventTypeMessage,
+			Contact: c.contact,
+			Type:    EventTypeMessage,
 		},
-		message: m,
+		Message: m,
 	}
 }

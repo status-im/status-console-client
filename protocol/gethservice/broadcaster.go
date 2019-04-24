@@ -29,8 +29,8 @@ func (b *broadcaster) start(cancel chan struct{}) {
 			var subs []chan interface{}
 
 			switch v := item.(type) {
-			case client.Event:
-				subs = b.subs[v.Contact()]
+			case client.EventWithContact:
+				subs = b.subs[v.GetContact()]
 			}
 
 			// TODO: figure out if we need anything here
