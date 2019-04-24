@@ -372,6 +372,12 @@ func (c *Chat) lessFn(i, j int) bool {
 	return c.messages[i].Clock < c.messages[j].Clock
 }
 
+func (c *Chat) onInit() {
+	log.Printf("[Chat::load] sending EventTypeInit")
+	c.events <- baseEvent{contact: c.contact, typ: EventTypeInit}
+	log.Printf("[Chat::load] sent EventTypeInit")
+}
+
 func (c *Chat) onMessagesRearrange() {
 	log.Printf("[Chat::onMessagesRearrange] sending EventTypeRearrange")
 	c.events <- baseEvent{contact: c.contact, typ: EventTypeRearrange}

@@ -17,10 +17,6 @@ import (
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
-const (
-	defaultRequestOptionsFrom = 60 * 60 * 24
-)
-
 // ChatViewController manages chat view.
 type ChatViewController struct {
 	*ViewController

@@ -62,7 +62,7 @@ func (b *broadcaster) Unsubscribe(sub <-chan interface{}) {
 		}
 		// garbage collect
 		for i := len(subs); i < len(b.subs[c]); i++ {
-			subs[i] = nil
+			b.subs[c][i] = nil
 		}
 		b.subs[c] = subs
 	}

@@ -205,7 +205,12 @@ func (api *PublicAPI) Chat(ctx context.Context, contact client.Contact) (*rpc.Su
 	rpcSub := notifier.CreateSubscription()
 
 	go func() {
-		defer api.service.messenger.Leave(contact)
+		defer func() {
+			err := api.service.messenger.Leave(contact)
+			if err != nil {
+				log.Printf("failed to leave chat for '%s' contact", contact)
+			}
+		}()
 		defer api.broadcaster.Unsubscribe(sub)
 
 		for {

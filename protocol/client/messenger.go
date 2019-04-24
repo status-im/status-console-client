@@ -73,7 +73,15 @@ func (m *Messenger) Join(ctx context.Context, contact Contact) (*Chat, error) {
 		return chat, err
 	}
 
-	return chat, chat.loadAndRequest(ctx, requestParams)
+	if err := chat.load(requestParams); err != nil {
+		return chat, errors.Wrap(err, "failed to load cached messages")
+	}
+
+	// Send an init event after the chat is subscribed and
+	// cached messages are loaded.
+	chat.onInit()
+
+	return chat, chat.request(ctx, requestParams)
 }
 
 func (m *Messenger) chatEventsLoop(chat *Chat, contact Contact, cancel chan struct{}) {
