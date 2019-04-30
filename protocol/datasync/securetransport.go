@@ -25,6 +25,8 @@ type SecureTransport struct {
 	lastClock int64
 	requester requester
 
+	cancel chan struct{} // can be closed by any goroutine and closes all others
+
 	ownMessages chan *protocol.Message // my private messages channel
 }
 
@@ -81,4 +83,10 @@ func (st *SecureTransport) Send(data []byte) error {
 	}
 
 	return err
+}
+
+func (st *SecureTransport) updateLastClock(clock int64) {
+	if clock > st.lastClock {
+		st.lastClock = clock
+	}
 }
