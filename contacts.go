@@ -10,9 +10,9 @@ import (
 // contactToString returns a string representation.
 func contactToString(c client.Contact) string {
 	switch c.Type {
-	case client.ContactPublicChat:
+	case client.ContactPublicRoom:
 		return fmt.Sprintf("#%s", c.Name)
-	case client.ContactPrivateChat:
+	case client.ContactPublicKey:
 		return fmt.Sprintf("@%s", c.Name)
 	default:
 		return c.Name

@@ -3,6 +3,7 @@ package gethservice
 import (
 	"crypto/ecdsa"
 
+	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/v1"
 
 	"github.com/status-im/status-go/node"
@@ -13,9 +14,9 @@ import (
 )
 
 const (
-	// ServiceProtosAPIName is a name of the API namespace
+	// StatusSecureMessagingProtocolAPIName is a name of the API namespace
 	// with the protocol specific methods.
-	ServiceProtosAPIName = "protos"
+	StatusSecureMessagingProtocolAPIName = "ssm"
 )
 
 var _ gethnode.Service = (*Service)(nil)
@@ -28,9 +29,10 @@ type KeysGetter interface {
 
 // Service is a wrapper around Protocol.
 type Service struct {
-	node     *node.StatusNode
-	keys     KeysGetter
-	protocol protocol.Protocol
+	node      *node.StatusNode
+	keys      KeysGetter
+	protocol  protocol.Protocol
+	messenger *client.Messenger
 }
 
 // New creates a new Service.
@@ -46,6 +48,11 @@ func (s *Service) SetProtocol(proto protocol.Protocol) {
 	s.protocol = proto
 }
 
+// SetMessenger sets a Messenger.
+func (s *Service) SetMessenger(m *client.Messenger) {
+	s.messenger = m
+}
+
 // gethnode.Service interface implementation
 
 // Protocols list a list of p2p protocols defined by this service.s
@@ -57,9 +64,9 @@ func (s *Service) Protocols() []p2p.Protocol {
 func (s *Service) APIs() []rpc.API {
 	return []rpc.API{
 		{
-			Namespace: ServiceProtosAPIName,
+			Namespace: StatusSecureMessagingProtocolAPIName,
 			Version:   "1.0",
-			Service:   &PublicAPI{service: s},
+			Service:   NewPublicAPI(s),
 			Public:    true,
 		},
 	}

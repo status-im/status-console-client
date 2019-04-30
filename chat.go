@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"fmt"
@@ -16,18 +17,11 @@ import (
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
-const (
-	defaultRequestOptionsFrom = 60 * 60 * 24
-)
-
 // ChatViewController manages chat view.
 type ChatViewController struct {
 	*ViewController
 
 	contact client.Contact
-
-	firstRequest protocol.RequestOptions
-	lastRequest  protocol.RequestOptions
 
 	identity  *ecdsa.PrivateKey
 	messenger *client.Messenger
@@ -87,8 +81,8 @@ func (c *ChatViewController) readEventsLoop() {
 				// at the end of the buffer.
 				for _, event := range buffer[c.contact] {
 					switch ev := event.(type) {
-					case client.EventMessage:
-						c.printMessages(false, ev.Message())
+					case client.EventWithMessage:
+						c.printMessages(false, ev.GetMessage())
 					}
 				}
 			}
@@ -98,10 +92,10 @@ func (c *ChatViewController) readEventsLoop() {
 			log.Printf("[ChatViewController::readEventsLoops] received an event: %+v", event)
 
 			switch ev := event.(type) {
-			case client.EventError:
-				c.onError(ev.Error())
-			case client.Event:
-				buffer[ev.Contact()] = append(buffer[ev.Contact()], ev)
+			case client.EventWithError:
+				c.onError(ev.GetError())
+			case client.EventWithContact:
+				buffer[ev.GetContact()] = append(buffer[ev.GetContact()], ev)
 			}
 		case <-c.cancel:
 			return
@@ -116,8 +110,8 @@ func (c *ChatViewController) readEventsLoop() {
 func requiresRedraw(events []interface{}) bool {
 	for _, event := range events {
 		switch ev := event.(type) {
-		case client.Event:
-			switch ev.Type() {
+		case client.EventWithType:
+			switch ev.GetType() {
 			case client.EventTypeInit, client.EventTypeRearrange:
 				return true
 			}
@@ -138,27 +132,20 @@ func (c *ChatViewController) Select(contact client.Contact) error {
 
 	c.contact = contact
 
-	params := protocol.DefaultRequestOptions()
-	err := c.messenger.Join(contact, params)
-	if err == nil {
-		c.updateRequests(params)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	_, err := c.messenger.Join(ctx, contact)
 	return err
 }
 
 // RequestOptions returns the RequestOptions for the next request call.
 // Newest param when true means that we are interested in the most recent messages.
-func (c *ChatViewController) RequestOptions(newest bool) protocol.RequestOptions {
-	params := protocol.DefaultRequestOptions()
-
-	if newest && c.lastRequest != (protocol.RequestOptions{}) {
-		params.From = c.lastRequest.From
-	} else if c.firstRequest != (protocol.RequestOptions{}) {
-		params.From = c.firstRequest.From - defaultRequestOptionsFrom
-		params.To = c.firstRequest.To
+func (c *ChatViewController) RequestOptions(newest bool) (protocol.RequestOptions, error) {
+	chat := c.messenger.Chat(c.contact)
+	if chat == nil {
+		return protocol.RequestOptions{}, fmt.Errorf("chat not found")
 	}
-
-	return params
+	return chat.RequestOptions(newest)
 }
 
 // RequestMessages sends a request fro historical messages.
@@ -168,20 +155,9 @@ func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) err
 		return fmt.Errorf("chat not found")
 	}
 
-	err := chat.Request(params)
-	if err == nil {
-		c.updateRequests(params)
-	}
-	return err
-}
-
-func (c *ChatViewController) updateRequests(params protocol.RequestOptions) {
-	if c.firstRequest.From == 0 || c.firstRequest.From > params.From {
-		c.firstRequest = params
-	}
-	if c.lastRequest.To < params.To {
-		c.lastRequest = params
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+	return chat.Request(ctx, params)
 }
 
 // Send sends a payload as a message.

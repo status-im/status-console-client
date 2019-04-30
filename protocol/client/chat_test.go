@@ -59,19 +59,18 @@ func (m *ChatMock) Request(ctx context.Context, params protocol.RequestOptions) 
 
 func TestSubscribe(t *testing.T) {
 	proto := ChatMock{}
-	contact := Contact{Name: "test", Type: ContactPublicChat}
+	contact := Contact{Name: "test", Type: ContactPublicRoom}
 
 	db, err := NewDatabase("")
 	require.NoError(t, err)
 	defer db.Close()
 
 	chat := NewChat(&proto, nil, contact, db)
-	params := protocol.DefaultRequestOptions()
 
-	err = chat.subscribe(params)
+	err = chat.subscribe()
 	require.NoError(t, err)
 	// Subscribe to already subscribed chat.
-	err = chat.subscribe(params)
+	err = chat.subscribe()
 	require.EqualError(t, err, "already subscribed")
 }
 
@@ -107,17 +106,16 @@ func TestSendPrivateMessage(t *testing.T) {
 
 func TestHandleMessageFromProtocol(t *testing.T) {
 	proto := ChatMock{}
-	contact := Contact{Name: "chat1", Type: ContactPublicChat}
+	contact := Contact{Name: "chat1", Type: ContactPublicRoom}
 
 	db, err := NewDatabase("")
 	require.NoError(t, err)
 	defer db.Close()
 
 	chat := NewChat(&proto, nil, contact, db)
-	params := protocol.DefaultRequestOptions()
 
 	// act
-	err = chat.subscribe(params)
+	err = chat.subscribe()
 	require.NoError(t, err)
 
 	now := time.Now()
@@ -150,7 +148,7 @@ func waitForEventTypeMessage(t *testing.T, chat *Chat) {
 	for {
 		select {
 		case ev := <-chat.Events():
-			if v, ok := ev.(Event); ok && v.Type() == EventTypeMessage {
+			if _, ok := ev.(messageEvent); ok {
 				return
 			}
 		case <-time.After(time.Millisecond * 100):

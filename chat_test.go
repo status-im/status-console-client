@@ -57,7 +57,7 @@ func TestSendMessage(t *testing.T) {
 	messenger := client.NewMessenger(&chatMock, nil, db)
 	vc := NewChatViewController(nil, nil, messenger, nil)
 
-	err = vc.Select(client.Contact{Name: chatName, Type: client.ContactPublicChat})
+	err = vc.Select(client.Contact{Name: chatName, Type: client.ContactPublicRoom})
 	require.NoError(t, err)
 	// close reading loops
 	close(vc.cancel)

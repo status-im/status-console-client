@@ -3,7 +3,9 @@ package protocol
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -15,8 +17,9 @@ const (
 
 // Message types.
 const (
-	MessageTypePublicGroup = "public-group-user-message"
-	MessageTypePrivate     = "user-message"
+	MessageTypePublicGroup  = "public-group-user-message"
+	MessageTypePrivate      = "user-message"
+	MessageTypePrivateGroup = "group-user-message"
 )
 
 var (
@@ -56,8 +59,21 @@ type Message struct {
 	Content   Content       `json:"content"`
 
 	// not protocol defined fields
-	ID        []byte           `json:"id"`
+	ID        []byte           `json:"-"`
 	SigPubKey *ecdsa.PublicKey `json:"-"`
+}
+
+func (m *Message) MarshalJSON() ([]byte, error) {
+	type MessageAlias Message
+	item := struct {
+		*MessageAlias
+		ID string `json:"id"`
+	}{
+		MessageAlias: (*MessageAlias)(m),
+		ID:           fmt.Sprintf("%#x", m.ID),
+	}
+
+	return json.Marshal(item)
 }
 
 // createTextMessage creates a Message.
