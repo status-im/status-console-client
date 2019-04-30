@@ -22,7 +22,6 @@ type SecureTransport struct {
 
 	db *client.Database
 
-	lastClock int64
 	requester requester
 
 	cancel chan struct{} // can be closed by any goroutine and closes all others
@@ -47,6 +46,7 @@ func (st *SecureTransport) Send(data []byte) error {
 
 	var message protocol.Message
 
+	// @todo do we need thsi?
 	switch st.contact.Type {
 	case client.ContactPublicRoom:
 		message = protocol.CreatePublicTextMessage(data, st.lastClock, st.contact.Name)
@@ -60,10 +60,6 @@ func (st *SecureTransport) Send(data []byte) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to encode message")
 	}
-
-	st.Lock()
-	st.updateLastClock(int64(message.Clock))
-	st.Unlock()
 
 	opts, err := createSendOptions(st.contact)
 	if err != nil {
@@ -83,10 +79,4 @@ func (st *SecureTransport) Send(data []byte) error {
 	}
 
 	return err
-}
-
-func (st *SecureTransport) updateLastClock(clock int64) {
-	if clock > st.lastClock {
-		st.lastClock = clock
-	}
 }
