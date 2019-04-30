@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
-	"github.com/status-im/mvds"
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
@@ -19,7 +18,6 @@ import (
 type Chat struct {
 	sync.RWMutex
 
-	node  mvds.Node
 	proto protocol.Protocol
 
 	// Identity and Contact between the conversation happens.
@@ -157,8 +155,7 @@ func (c *Chat) Send(data []byte) error {
 		return errors.Wrap(err, "failed to prepare send options")
 	}
 
-	// @todo
-	hash, err := c.node.Send(context.Background(), encodedMessage)
+	hash, err := c.proto.Send(context.Background(), encodedMessage, opts)
 
 	// Own messages need to be pushed manually to the pipeline.
 	if c.contact.Type == ContactPublicKey {
