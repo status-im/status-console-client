@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/status-im/mvds"
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
@@ -19,6 +20,8 @@ type Chat struct {
 	sync.RWMutex
 
 	proto protocol.Protocol
+
+	node mvds.Node
 
 	// Identity and Contact between the conversation happens.
 	identity *ecdsa.PrivateKey
@@ -150,24 +153,7 @@ func (c *Chat) Send(data []byte) error {
 	c.updateLastClock(int64(message.Clock))
 	c.Unlock()
 
-	opts, err := createSendOptions(c.contact)
-	if err != nil {
-		return errors.Wrap(err, "failed to prepare send options")
-	}
-
-	hash, err := c.proto.Send(context.Background(), encodedMessage, opts)
-
-	// Own messages need to be pushed manually to the pipeline.
-	if c.contact.Type == ContactPublicKey {
-		log.Printf("[Chat::Send] sent a private message")
-
-		// TODO: this should be created by c.proto
-		message.SigPubKey = &c.identity.PublicKey
-		message.ID = hash
-		c.ownMessages <- &message
-	}
-
-	return err
+	return c.node.Send(encodedMessage)
 }
 
 // Request historic messages.
