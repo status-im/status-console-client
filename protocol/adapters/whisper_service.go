@@ -210,7 +210,7 @@ func (a *WhisperServiceAdapter) decodeMessage(message *whisper.ReceivedMessage) 
 			hash,
 		)
 		if err != nil {
-			// log.Printf("failed to handle message %#+x by PFS: %v", hash, err)
+			log.Printf("failed to handle message %#+x by PFS: %v", hash, err)
 		} else {
 			payload = decryptedPayload
 		}
