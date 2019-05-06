@@ -93,8 +93,13 @@ func main() {
 	}
 
 	// create database
-	dbPath := filepath.Join(*dataDir, "db")
-	db, err := client.NewDatabase(dbPath)
+	address := crypto.PubkeyToAddress(privateKey.PublicKey)
+	dbPath := filepath.Join(*dataDir, "db.sql")
+	err = os.MkdirAll(*dataDir, 0700)
+	if err != nil {
+		exitErr(err)
+	}
+	db, err := client.InitializeDB(dbPath, address.String())
 	if err != nil {
 		exitErr(err)
 	}
@@ -176,7 +181,7 @@ func (k keysGetter) PrivateKey() (*ecdsa.PrivateKey, error) {
 	return k.privateKey, nil
 }
 
-func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db *client.Database) (*client.Messenger, error) {
+func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
 	rpc, err := rpc.Dial(*providerURI)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to dial")
@@ -196,7 +201,7 @@ func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db *client.Databas
 	return messenger, nil
 }
 
-func createMessengerInProc(pk *ecdsa.PrivateKey, db *client.Database) (*client.Messenger, error) {
+func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
 	// collect mail server request signals
 	signalsForwarder := newSignalForwarder()
 	go signalsForwarder.Start()

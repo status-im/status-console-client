@@ -2,173 +2,291 @@ package client
 
 import (
 	"bytes"
-	"crypto/sha1"
-	"encoding/binary"
+	"context"
+	"crypto/rand"
+	"database/sql"
 	"encoding/gob"
-	"io"
-	"strconv"
+	"fmt"
+	"io/ioutil"
+	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/storage"
-	"github.com/syndtr/goleveldb/leveldb/util"
-
+	"github.com/status-im/migrate"
+	"github.com/status-im/migrate/database/sqlcipher"
+	bindata "github.com/status-im/migrate/source/go_bindata"
+	"github.com/status-im/status-console-client/protocol/client/migrations"
+	"github.com/status-im/status-console-client/protocol/client/sqlite"
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
-var (
-	contactsListKey = []byte("contacts-list")
-)
-
 func init() {
+	// this is used for marshalling public key with a curve.
 	gob.Register(&secp256k1.BitCurve{})
 }
 
-// Database is a wrapped around leveldb to provide storage
-// for messenger data.
-type Database struct {
-	db *leveldb.DB
+// Database is an interface for all db operations.
+type Database interface {
+	Close() error
+	Messages(c Contact, from, to time.Time) (result []*protocol.Message, err error)
+	SaveMessages(c Contact, messages []*protocol.Message) error
+	Contacts() ([]Contact, error)
+	SaveContacts(contacts []Contact) error
 }
 
-// NewDatabase returns a new database creating files
-// in a given path directory.
-func NewDatabase(path string) (*Database, error) {
-	if path == "" {
-		// If path is not give, use in-memory storage.
-		storage := storage.NewMemStorage()
-		db, err := leveldb.Open(storage, nil)
-		if err != nil {
-			return nil, err
-		}
-		return &Database{db: db}, nil
-	}
+// Migrate applies migrations.
+func Migrate(db *sql.DB) error {
+	resources := bindata.Resource(
+		migrations.AssetNames(),
+		func(name string) ([]byte, error) {
+			return migrations.Asset(name)
+		},
+	)
 
-	db, err := leveldb.OpenFile(path, nil)
+	source, err := bindata.WithInstance(resources)
 	if err != nil {
-		return nil, err
-	}
-
-	return &Database{db: db}, nil
-}
-
-// Close closes the database.
-func (d *Database) Close() error {
-	return d.db.Close()
-}
-
-// Messages returns all messages for a given contact
-// and between from and to timestamps.
-func (d *Database) Messages(c Contact, from, to time.Time) (result []*protocol.Message, err error) {
-	start := d.keyFromContact(c, from, nil)
-	limit := d.keyFromContact(c, to.Add(time.Second), nil) // add 1s because iter is right-exclusive
-
-	iter := d.db.NewIterator(&util.Range{Start: start, Limit: limit}, nil)
-	defer iter.Release()
-
-	for iter.Next() {
-		value := iter.Value()
-		buf := bytes.NewBuffer(value)
-		dec := gob.NewDecoder(buf)
-
-		var m protocol.Message
-
-		err = dec.Decode(&m)
-		if err != nil {
-			return
-		}
-
-		result = append(result, &m)
-	}
-
-	err = iter.Error()
-
-	return
-}
-
-// SaveMessages stores messages on a disk.
-func (d *Database) SaveMessages(c Contact, messages []*protocol.Message) error {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-
-	batch := new(leveldb.Batch)
-	for _, m := range messages {
-		if err := enc.Encode(m); err != nil {
-			return err
-		}
-
-		key := d.keyFromContact(c, m.Timestamp.Time(), m.ID)
-		data := buf.Bytes()
-		// Data from the buffer needs to be copied to another slice
-		// because a slice returned from Buffer.Bytes() is valid
-		// only until another write.
-		// As we batch writes and wait untill the loop is finished,
-		// slices with encoded messages must be available later.
-		value := make([]byte, len(data))
-		copy(value, data)
-		batch.Put(key, value)
-
-		buf.Reset()
-	}
-
-	return d.db.Write(batch, nil)
-}
-
-// Contacts retrieves all saved contacts.
-func (d *Database) Contacts() ([]Contact, error) {
-	value, err := d.db.Get(contactsListKey, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	buf := bytes.NewBuffer(value)
-	dec := gob.NewDecoder(buf)
-
-	var contacts []Contact
-
-	if err := dec.Decode(&contacts); err != nil {
-		return nil, err
-	}
-
-	return contacts, nil
-}
-
-// SaveContacts saves all contacts on a disk.
-func (d *Database) SaveContacts(contacts []Contact) error {
-	var buf bytes.Buffer
-
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(contacts); err != nil {
 		return err
 	}
 
-	return d.db.Put([]byte(contactsListKey), buf.Bytes(), nil)
-}
-
-const (
-	contactPrefixLength  = sha1.Size
-	timeLength           = 8
-	hashLength           = 32
-	keyFromContactLength = contactPrefixLength + timeLength + hashLength
-)
-
-func (d *Database) prefixFromContact(c Contact) []byte {
-	h := sha1.New()
-	_, _ = io.WriteString(h, c.Name)
-	_, _ = io.WriteString(h, ":")
-	_, _ = io.WriteString(h, strconv.Itoa(int(c.Type)))
-	return h.Sum(nil)
-}
-
-func (d *Database) keyFromContact(c Contact, t time.Time, hash []byte) []byte {
-	var key [keyFromContactLength]byte
-
-	copy(key[:], d.prefixFromContact(c))
-	binary.BigEndian.PutUint64(key[contactPrefixLength:], uint64(t.Unix()))
-
-	if hash != nil {
-		copy(key[contactPrefixLength+timeLength:], hash)
+	driver, err := sqlcipher.WithInstance(db, &sqlcipher.Config{})
+	if err != nil {
+		return err
 	}
 
-	return key[:]
+	m, err := migrate.NewWithInstance(
+		"go-bindata",
+		source,
+		"sqlcipher",
+		driver)
+	if err != nil {
+		return err
+	}
+
+	if err = m.Up(); err != migrate.ErrNoChange {
+		return err
+	}
+	return nil
+}
+
+// InitializeTmpDB creates database in temporary directory with a random key.
+// Used for tests.
+func InitializeTmpDB() (TmpDatabase, error) {
+	tmpfile, err := ioutil.TempFile("", "client-tests-")
+	if err != nil {
+		return TmpDatabase{}, err
+	}
+	pass := make([]byte, 4)
+	_, err = rand.Read(pass)
+	if err != nil {
+		return TmpDatabase{}, err
+	}
+	db, err := InitializeDB(tmpfile.Name(), string(pass))
+	if err != nil {
+		return TmpDatabase{}, err
+	}
+	return TmpDatabase{
+		SQLLiteDatabase: db,
+		file:            tmpfile,
+	}, nil
+}
+
+// TmpDatabase wraps SQLLiteDatabase and removes temporary file after db was closed.
+type TmpDatabase struct {
+	SQLLiteDatabase
+	file *os.File
+}
+
+// Close closes sqlite database and removes temporary file.
+func (db TmpDatabase) Close() error {
+	_ = db.SQLLiteDatabase.Close()
+	return os.Remove(db.file.Name())
+}
+
+// InitializeDB opens encrypted sqlite database from provided path and applies migrations.
+func InitializeDB(path, key string) (SQLLiteDatabase, error) {
+	db, err := sqlite.OpenDB(path, key)
+	if err != nil {
+		return SQLLiteDatabase{}, err
+	}
+	err = Migrate(db)
+	if err != nil {
+		return SQLLiteDatabase{}, err
+	}
+	return SQLLiteDatabase{db: db}, nil
+}
+
+// SQLLiteDatabase wrapper around sql db with operations common for a client.
+type SQLLiteDatabase struct {
+	db *sql.DB
+}
+
+// Close closes internal sqlite database.
+func (db SQLLiteDatabase) Close() error {
+	return db.db.Close()
+}
+
+// SaveContacts inserts or replaces provided contacts.
+// TODO should it delete all previous contacts?
+func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
+	var (
+		tx   *sql.Tx
+		stmt *sql.Stmt
+	)
+	tx, err = db.db.BeginTx(context.Background(), &sql.TxOptions{})
+	if err != nil {
+		return err
+	}
+	stmt, err = tx.Prepare("INSERT OR REPLACE INTO user_contacts(id, name, type, public_key) VALUES (?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err == nil {
+			err = tx.Commit()
+		} else {
+			_ = tx.Rollback()
+		}
+	}()
+	var (
+		buf bytes.Buffer
+	)
+	for i := range contacts {
+		enc := gob.NewEncoder(&buf)
+		if contacts[i].PublicKey != nil {
+			err = enc.Encode(contacts[i].PublicKey)
+			if err != nil {
+				return err
+			}
+		}
+		pkey := append([]byte{}, buf.Bytes()...)
+		buf.Reset()
+		id := fmt.Sprintf("%s:%d", contacts[i].Name, contacts[i].Type)
+		_, err = stmt.Exec(id, contacts[i].Name, contacts[i].Type, pkey)
+		if err != nil {
+			return err
+		}
+	}
+	return err
+}
+
+// Contacts returns all available contacts.
+func (db SQLLiteDatabase) Contacts() ([]Contact, error) {
+	rows, err := db.db.Query("SELECT name, type, public_key FROM user_contacts")
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		rst = []Contact{}
+		buf bytes.Buffer
+	)
+	for rows.Next() {
+		// do not reuse same gob instance. same instance marshalls two same objects differently
+		// if used repetitively.
+		dec := gob.NewDecoder(&buf)
+		contact := Contact{}
+		pkey := []byte{}
+		err = rows.Scan(&contact.Name, &contact.Type, &pkey)
+		if err != nil {
+			return nil, err
+		}
+		if len(pkey) != 0 {
+			buf.Write(pkey)
+			err = dec.Decode(&contact.PublicKey)
+			if err != nil {
+				return nil, err
+			}
+			buf.Reset()
+		}
+		rst = append(rst, contact)
+	}
+	return rst, nil
+}
+
+func (db SQLLiteDatabase) SaveMessages(c Contact, messages []*protocol.Message) (err error) {
+	var (
+		tx   *sql.Tx
+		stmt *sql.Stmt
+	)
+	tx, err = db.db.BeginTx(context.Background(), &sql.TxOptions{})
+	if err != nil {
+		return err
+	}
+	stmt, err = tx.Prepare(`INSERT OR REPLACE INTO user_messages(
+id, contact_id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err == nil {
+			err = tx.Commit()
+		} else {
+			// don't shadow original error
+			_ = tx.Rollback()
+		}
+	}()
+
+	var (
+		buf       bytes.Buffer
+		contactID = fmt.Sprintf("%s:%d", c.Name, c.Type)
+	)
+	for _, msg := range messages {
+		enc := gob.NewEncoder(&buf)
+		pkey := []byte{}
+		if msg.SigPubKey != nil {
+			err = enc.Encode(msg.SigPubKey)
+			if err != nil {
+				return err
+			}
+			pkey = append(pkey, buf.Bytes()...)
+			buf.Reset()
+		}
+		_, err = stmt.Exec(
+			msg.ID, contactID, msg.ContentT, msg.MessageT, msg.Text,
+			msg.Clock, msg.Timestamp, msg.Content.ChatID, msg.Content.Text, pkey)
+		if err != nil {
+			return err
+		}
+	}
+	return err
+}
+
+// Messages returns messages for a given contact, in a given period. Ordered by a timestamp.
+func (db SQLLiteDatabase) Messages(c Contact, from, to time.Time) (result []*protocol.Message, err error) {
+	contactID := fmt.Sprintf("%s:%d", c.Name, c.Type)
+	rows, err := db.db.Query(`SELECT
+id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key
+FROM user_messages WHERE contact_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp`,
+		contactID, protocol.TimestampInMsFromTime(from), protocol.TimestampInMsFromTime(to))
+	if err != nil {
+		return nil, err
+	}
+	var (
+		rst = []*protocol.Message{}
+		buf bytes.Buffer
+	)
+	for rows.Next() {
+		dec := gob.NewDecoder(&buf)
+		msg := protocol.Message{
+			Content: protocol.Content{},
+		}
+		pkey := []byte{}
+		err = rows.Scan(
+			&msg.ID, &msg.ContentT, &msg.MessageT, &msg.Text, &msg.Clock,
+			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey)
+		if err != nil {
+			return nil, err
+		}
+		if len(pkey) != 0 {
+			buf.Write(pkey)
+			err = dec.Decode(&msg.SigPubKey)
+			if err != nil {
+				return nil, err
+			}
+			buf.Reset()
+		}
+		rst = append(rst, &msg)
+	}
+	return rst, nil
 }
