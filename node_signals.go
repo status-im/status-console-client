@@ -10,10 +10,6 @@ import (
 	"github.com/status-im/status-go/signal"
 )
 
-func printHandler(event string) {
-	log.Printf("received signal: %s", event)
-}
-
 type signalEnvelope struct {
 	Type  string          `json:"type"`
 	Event json.RawMessage `json:"event"`
@@ -75,9 +71,8 @@ func (s *signalForwarder) Filter(reqID []byte) (<-chan mailTypeSignal, func()) {
 	return c, func() { s.cancel(reqID); close(c) }
 }
 
-func filterMailTypesHandler(fn func(string), in chan<- mailTypeSignal) func(string) {
+func filterMailTypesHandler(in chan<- mailTypeSignal) func(string) {
 	return func(event string) {
-		fn(event)
 
 		var envelope signalEnvelope
 		if err := json.Unmarshal([]byte(event), &envelope); err != nil {

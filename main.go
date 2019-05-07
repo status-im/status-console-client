@@ -50,13 +50,21 @@ var (
 )
 
 func main() {
-	log.SetOutput(os.Stderr)
+	err := os.MkdirAll(*dataDir, 0777)
+	if err != nil {
+		exitErr(err)
+	}
+	logPath := filepath.Join(*dataDir, "client.log")
+	logFile, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		exitErr(err)
+	}
+	log.SetOutput(logFile)
 
 	if err := ff.Parse(fs, os.Args[1:]); err != nil {
 		exitErr(errors.Wrap(err, "failed to parse flags"))
 	}
-
-	err := logutils.OverrideRootLog(true, *logLevel, logutils.FileOptions{}, false)
+	err = logutils.OverrideRootLog(true, *logLevel, logutils.FileOptions{Filename: filepath.Join(*dataDir, "status.log")}, false)
 	if err != nil {
 		log.Fatalf("failed to override root log: %v\n", err)
 	}
@@ -195,7 +203,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db *client.Database) (*client.M
 
 	// setup signals handler
 	signal.SetDefaultNodeNotificationHandler(
-		filterMailTypesHandler(printHandler, signalsForwarder.in),
+		filterMailTypesHandler(signalsForwarder.in),
 	)
 
 	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
