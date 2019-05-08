@@ -64,9 +64,18 @@ func NewChat(proto protocol.Protocol, identity *ecdsa.PrivateKey, contact Contac
 		messagesByHash: make(map[string]struct{}),
 	}
 
+	store := mvds.NewDummyStore()
+	node := mvds.NewNode(&store, c, calculateSendTime) // @todo
+
+	c.node = node
+
 	go c.readOwnMessagesLoop(c.ownMessages, c.cancel)
 
 	return &c
+}
+
+func calculateSendTime(count uint64, time int64) int64 {
+	return time + int64(count*2)
 }
 
 // Events returns a channel with Chat events.
