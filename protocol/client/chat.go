@@ -70,6 +70,8 @@ func NewChat(proto protocol.Protocol, identity *ecdsa.PrivateKey, contact Contac
 
 	c.node = node
 
+	go c.node.Run()
+
 	go c.readOwnMessagesLoop(c.ownMessages, c.cancel)
 
 	return &c
