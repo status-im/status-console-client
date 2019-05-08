@@ -51,8 +51,9 @@ func TestSendMessage(t *testing.T) {
 	payload := []byte("test message")
 	chatMock := ChatMock{}
 
-	db, err := client.NewDatabase("")
+	db, err := client.InitializeTmpDB()
 	require.NoError(t, err)
+	defer db.Close()
 
 	messenger := client.NewMessenger(&chatMock, nil, db)
 	vc := NewChatViewController(nil, nil, messenger, nil)

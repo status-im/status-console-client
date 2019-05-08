@@ -24,7 +24,7 @@ type Chat struct {
 	identity *ecdsa.PrivateKey
 	contact  Contact
 
-	db *Database
+	db Database
 
 	sub    *protocol.Subscription
 	events chan interface{}
@@ -48,7 +48,7 @@ type Chat struct {
 // leaving but instead a new instance
 // should be created and replace the
 // previous one.
-func NewChat(proto protocol.Protocol, identity *ecdsa.PrivateKey, contact Contact, db *Database) *Chat {
+func NewChat(proto protocol.Protocol, identity *ecdsa.PrivateKey, contact Contact, db Database) *Chat {
 	c := Chat{
 		proto:          proto,
 		identity:       identity,

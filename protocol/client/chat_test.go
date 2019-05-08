@@ -50,7 +50,7 @@ func (m *ChatMock) Send(
 		data: data,
 	}
 	m.messages = append(m.messages, message)
-	return []byte{}, nil
+	return crypto.Keccak256(data), nil
 }
 
 func (m *ChatMock) Request(ctx context.Context, params protocol.RequestOptions) error {
@@ -61,7 +61,7 @@ func TestSubscribe(t *testing.T) {
 	proto := ChatMock{}
 	contact := Contact{Name: "test", Type: ContactPublicRoom}
 
-	db, err := NewDatabase("")
+	db, err := InitializeTmpDB()
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -81,7 +81,7 @@ func TestSendPrivateMessage(t *testing.T) {
 
 	identity, _ := crypto.GenerateKey()
 
-	db, err := NewDatabase("")
+	db, err := InitializeTmpDB()
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -108,7 +108,7 @@ func TestHandleMessageFromProtocol(t *testing.T) {
 	proto := ChatMock{}
 	contact := Contact{Name: "chat1", Type: ContactPublicRoom}
 
-	db, err := NewDatabase("")
+	db, err := InitializeTmpDB()
 	require.NoError(t, err)
 	defer db.Close()
 

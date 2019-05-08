@@ -43,6 +43,7 @@ install-dev:
 	go get -u github.com/goware/modvendor
 	go get -u github.com/golang/mock/gomock
 	go install github.com/golang/mock/mockgen
+	go get -u github.com/jteeuwen/go-bindata/...
 .PHONY: install-dev
 
 mock:
@@ -51,3 +52,7 @@ mock:
 		-package protocol_mock \
 		github.com/status-im/status-console-client/protocol/v1 Protocol
 .PHONY: mock
+
+gen-migrations:
+	pushd protocol/client/migrations/ && rm bindata.go && go-bindata -pkg migrations ./ && popd
+.PHONY: gen-migrations
