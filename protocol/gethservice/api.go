@@ -32,7 +32,7 @@ type MessagesParams struct {
 	ChatParams
 }
 
-// SendParams is an object with JSON-serializable parameters for SendMessage method.
+// SendParams is an object with JSON-serializable parameters for Send method.
 type SendParams struct {
 	ChatParams
 }

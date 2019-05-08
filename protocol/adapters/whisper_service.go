@@ -226,7 +226,7 @@ func (a *WhisperServiceAdapter) decodeMessage(message *whisper.ReceivedMessage) 
 	return &decoded, nil
 }
 
-// SendMessage sends a new message using the Whisper service.
+// Send sends a new message using the Whisper service.
 func (a *WhisperServiceAdapter) Send(
 	ctx context.Context,
 	data []byte,
