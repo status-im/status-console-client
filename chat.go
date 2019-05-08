@@ -160,7 +160,7 @@ func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) err
 	return chat.Request(ctx, params)
 }
 
-// SendMessage sends a payload as a message.
+// Send sends a payload as a message.
 func (c *ChatViewController) Send(data []byte) error {
 	chat := c.messenger.Chat(c.contact)
 	if chat == nil {

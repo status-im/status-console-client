@@ -77,7 +77,7 @@ func (m *Messenger) Join(ctx context.Context, contact Contact) (*Chat, error) {
 		return chat, errors.Wrap(err, "failed to load cached messages")
 	}
 
-	// SendMessage an init event after the chat is subscribed and
+	// Send an init event after the chat is subscribed and
 	// cached messages are loaded.
 	chat.onInit()
 

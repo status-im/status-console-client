@@ -126,7 +126,7 @@ func (api *PublicAPI) Messages(ctx context.Context, params MessagesParams) (*rpc
 	return rpcSub, nil
 }
 
-// SendMessage sends a message to the network.
+// Send sends a message to the network.
 func (api *PublicAPI) Send(ctx context.Context, data hexutil.Bytes, params SendParams) (hexutil.Bytes, error) {
 	if api.service.protocol == nil {
 		return nil, ErrProtocolNotSet

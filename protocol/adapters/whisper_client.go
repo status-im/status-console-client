@@ -153,7 +153,7 @@ func (a *WhisperClientAdapter) subscribeMessages(
 	return sub, nil
 }
 
-// SendMessage sends a new message to a public chat.
+// Send sends a new message to a public chat.
 // Identity is required to sign a message as only signed messages
 // are accepted and displayed.
 func (a *WhisperClientAdapter) Send(
