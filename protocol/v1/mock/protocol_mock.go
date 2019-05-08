@@ -48,19 +48,19 @@ func (mr *MockProtocolMockRecorder) Request(arg0, arg1 interface{}) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Request", reflect.TypeOf((*MockProtocol)(nil).Request), arg0, arg1)
 }
 
-// Send mocks base method
+// SendMessage mocks base method
 func (m *MockProtocol) Send(arg0 context.Context, arg1 []byte, arg2 v1.SendOptions) ([]byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Send", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "SendMessage", arg0, arg1, arg2)
 	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// Send indicates an expected call of Send
+// SendMessage indicates an expected call of SendMessage
 func (mr *MockProtocolMockRecorder) Send(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Send", reflect.TypeOf((*MockProtocol)(nil).Send), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendMessage", reflect.TypeOf((*MockProtocol)(nil).Send), arg0, arg1, arg2)
 }
 
 // Subscribe mocks base method

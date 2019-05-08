@@ -88,7 +88,7 @@ func TestSendPrivateMessage(t *testing.T) {
 	chat := NewChat(&proto, identity, contact, db)
 
 	// act
-	err = chat.Send([]byte("some message"))
+	err = chat.SendMessage([]byte("some message"))
 	require.NoError(t, err)
 
 	// assert

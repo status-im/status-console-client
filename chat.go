@@ -160,13 +160,13 @@ func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) err
 	return chat.Request(ctx, params)
 }
 
-// Send sends a payload as a message.
+// SendMessage sends a payload as a message.
 func (c *ChatViewController) Send(data []byte) error {
 	chat := c.messenger.Chat(c.contact)
 	if chat == nil {
 		return fmt.Errorf("chat not found")
 	}
-	return chat.Send(data)
+	return chat.SendMessage(data)
 }
 
 func (c *ChatViewController) printMessages(clear bool, messages ...*protocol.Message) {

@@ -12,7 +12,7 @@ type Protocol interface {
 	// Subscribe listens to new messages.
 	Subscribe(ctx context.Context, messages chan<- *Message, options SubscribeOptions) (*Subscription, error)
 
-	// Send sends a message to the network.
+	// SendMessage sends a message to the network.
 	// Identity is required as the protocol requires
 	// all messages to be signed.
 	Send(ctx context.Context, data []byte, options SendOptions) ([]byte, error)
@@ -112,7 +112,7 @@ type SubscribeOptions struct {
 	ChatOptions
 }
 
-// SendOptions are options for Chat.Send.
+// SendOptions are options for Chat.SendMessage.
 type SendOptions struct {
 	ChatOptions
 }

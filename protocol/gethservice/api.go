@@ -32,7 +32,7 @@ type MessagesParams struct {
 	ChatParams
 }
 
-// SendParams is an object with JSON-serializable parameters for Send method.
+// SendParams is an object with JSON-serializable parameters for SendMessage method.
 type SendParams struct {
 	ChatParams
 }
@@ -126,7 +126,7 @@ func (api *PublicAPI) Messages(ctx context.Context, params MessagesParams) (*rpc
 	return rpcSub, nil
 }
 
-// Send sends a message to the network.
+// SendMessage sends a message to the network.
 func (api *PublicAPI) Send(ctx context.Context, data hexutil.Bytes, params SendParams) (hexutil.Bytes, error) {
 	if api.service.protocol == nil {
 		return nil, ErrProtocolNotSet
