@@ -9,6 +9,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/status-im/mvds"
 	"github.com/status-im/status-console-client/protocol/v1"
@@ -137,7 +138,14 @@ func (c *Chat) Send(_ mvds.PeerId, _ mvds.PeerId, payload mvds.Payload) error {
 		return errors.Wrap(err, "failed to prepare send options")
 	}
 
-	hash, err := c.proto.Send(context.Background(), encodedMessage, opts) // @todo marshal proto
+	bytes, err := proto.Marshal(&payload)
+	if err != nil {
+		return err
+	}
+
+	hash, err := c.proto.Send(context.Background(), bytes, opts)
+	// @todo we need to change the way this entire ID `hash` works because we no longer really need it, we are sending more
+	// messages than just communication, such as `ACK` & `OFFER` and we only need to store `MESSAGE`.
 
 	// Own messages need to be pushed manually to the pipeline.
 	// @todo figure this out
