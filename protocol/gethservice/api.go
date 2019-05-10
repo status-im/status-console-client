@@ -196,7 +196,7 @@ func (api *PublicAPI) Chat(ctx context.Context, contact client.Contact) (*rpc.Su
 	// before any events are delivered.
 	sub := api.broadcaster.Subscribe(contact)
 
-	chat, err := api.service.messenger.Join(ctx, contact)
+	err := api.service.messenger.Join(ctx, contact)
 	if err != nil {
 		api.broadcaster.Unsubscribe(sub)
 		return nil, err
@@ -219,11 +219,6 @@ func (api *PublicAPI) Chat(ctx context.Context, contact client.Contact) (*rpc.Su
 				if err := notifier.Notify(rpcSub.ID, e); err != nil {
 					log.Printf("failed to notify %s about new message", rpcSub.ID)
 				}
-			case <-chat.Done():
-				if err := chat.Err(); err != nil {
-					log.Printf("chat errored: %v", err)
-				}
-				return
 			case err := <-rpcSub.Err():
 				if err != nil {
 					log.Printf("RPC subscription errored: %v", err)

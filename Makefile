@@ -54,5 +54,5 @@ mock:
 .PHONY: mock
 
 gen-migrations:
-	pushd protocol/client/migrations/ && rm bindata.go && go-bindata -pkg migrations ./ && popd
+	pushd protocol/client/migrations/ && rm -f bindata.go && go-bindata -pkg migrations ./ && popd
 .PHONY: gen-migrations

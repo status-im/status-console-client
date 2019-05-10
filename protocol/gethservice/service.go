@@ -32,7 +32,7 @@ type Service struct {
 	node      *node.StatusNode
 	keys      KeysGetter
 	protocol  protocol.Protocol
-	messenger *client.Messenger
+	messenger *client.MessengerV2
 }
 
 // New creates a new Service.
@@ -49,7 +49,7 @@ func (s *Service) SetProtocol(proto protocol.Protocol) {
 }
 
 // SetMessenger sets a Messenger.
-func (s *Service) SetMessenger(m *client.Messenger) {
+func (s *Service) SetMessenger(m *client.MessengerV2) {
 	s.messenger = m
 }
 
