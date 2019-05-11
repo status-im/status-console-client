@@ -37,15 +37,21 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 		return nil, err
 	}
 
-	err := c.sync.AppendMessage(newMessage.Topic, newMessage.MarshalJSON())
+	id, err := c.sync.AppendMessage(toGroupId(newMessage.Topic), newMessage.MarshalJSON())
 	if err != nil {
 		return nil, err
 	}
 
-	return hex.DecodeString(hash)
+	return id[:], nil
 
 }
 
 func (*DataSyncClient) Request(ctx context.Context, params protocol.RequestOptions) error {
 	panic("implement me")
+}
+
+func toGroupId(topicType whisper.TopicType) mvds.GroupID {
+	g := mvds.GroupID{}
+	copy(g[:], topicType[:])
+	return g
 }
