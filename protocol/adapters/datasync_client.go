@@ -33,11 +33,17 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 	if err != nil {
 		return nil, err
 	}
+
 	if err := updateNewMessageFromSendOptions(newMessage, options); err != nil {
 		return nil, err
 	}
 
-	id, err := c.sync.AppendMessage(toGroupId(newMessage.Topic), newMessage.MarshalJSON())
+	msg, err := newMessage.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := c.sync.AppendMessage(toGroupId(newMessage.Topic), msg)
 	if err != nil {
 		return nil, err
 	}
