@@ -60,7 +60,7 @@ func (*DataSyncWhisperTransport) Watch() mvds.Packet {
 	panic("implement me")
 }
 
-func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, sender mvds.PeerId, peer mvds.PeerId, payload mvds.Payload) error {
+func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, _ mvds.PeerId, payload mvds.Payload) error {
 	data, err := proto.Marshal(&payload)
 
 	newMessage, err := newNewMessage(t.keysManager, data)
@@ -70,7 +70,6 @@ func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, sender mvds.PeerId, 
 
 	// @todo set whisper topic on message and SymKeyID or PublicKey depending on chat type
 
-	shhAPI := whisper.NewPublicWhisperAPI(t.shh)
-	_, err = shhAPI.Post(context.Background(), newMessage.ToWhisper())
+	_, err = whisper.NewPublicWhisperAPI(t.shh).Post(context.Background(), newMessage.ToWhisper())
 	return err
 }
