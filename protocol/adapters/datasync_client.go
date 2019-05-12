@@ -8,7 +8,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/status-im/mvds"
 	"github.com/status-im/status-console-client/protocol/v1"
-	"github.com/status-im/status-go/node"
 	whisper "github.com/status-im/whisper/whisperv6"
 )
 
@@ -16,8 +15,6 @@ import (
 // that implements the Protocol interface.
 type DataSyncClient struct {
 	sync mvds.Node
-
-	node *node.StatusNode // TODO: replace with an interface
 }
 
 func (*DataSyncClient) Subscribe(ctx context.Context, messages chan<- *protocol.Message, options protocol.SubscribeOptions) (*protocol.Subscription, error) {
