@@ -45,12 +45,6 @@ func (*DataSyncClient) Request(ctx context.Context, params protocol.RequestOptio
 	panic("implement me")
 }
 
-func toGroupId(topicType whisper.TopicType) mvds.GroupID {
-	g := mvds.GroupID{}
-	copy(g[:], topicType[:])
-	return g
-}
-
 type DataSyncWhisperTransport struct {
 	shh         *whisper.Whisper
 	keysManager *whisperClientKeysManager
@@ -68,8 +62,23 @@ func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, _ mvd
 		return err
 	}
 
-	// @todo set whisper topic on message and SymKeyID or PublicKey depending on chat type
+	newMessage.Topic = toTopicType(group)
+
+	// @todo set SymKeyID or PublicKey depending on chat type
 
 	_, err = whisper.NewPublicWhisperAPI(t.shh).Post(context.Background(), newMessage.ToWhisper())
 	return err
+}
+
+
+func toGroupId(topicType whisper.TopicType) mvds.GroupID {
+	g := mvds.GroupID{}
+	copy(g[:], topicType[:])
+	return g
+}
+
+func toTopicType(g mvds.GroupID) whisper.TopicType {
+	t := whisper.TopicType{}
+	copy(t[:], g[:4])
+	return t
 }
