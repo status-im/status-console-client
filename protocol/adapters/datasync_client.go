@@ -2,8 +2,9 @@ package adapters
 
 import (
 	"context"
-	"encoding/hex"
+	"crypto/ecdsa"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gogo/protobuf/proto"
 	"github.com/status-im/mvds"
 	"github.com/status-im/status-console-client/protocol/v1"
@@ -54,7 +55,7 @@ func (*DataSyncWhisperTransport) Watch() mvds.Packet {
 	panic("implement me")
 }
 
-func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, _ mvds.PeerId, payload mvds.Payload) error {
+func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, peer mvds.PeerId, payload mvds.Payload) error {
 	data, err := proto.Marshal(&payload)
 
 	newMessage, err := newNewMessage(t.keysManager, data)
@@ -65,6 +66,10 @@ func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, _ mvd
 	newMessage.Topic = toTopicType(group)
 
 	// @todo set SymKeyID or PublicKey depending on chat type
+
+	// we are only assuming private chats
+	k := ecdsa.PublicKey(peer)
+	newMessage.PublicKey = crypto.FromECDSAPub(&k)
 
 	_, err = whisper.NewPublicWhisperAPI(t.shh).Post(context.Background(), newMessage.ToWhisper())
 	return err
