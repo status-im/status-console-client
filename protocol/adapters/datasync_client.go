@@ -21,6 +21,7 @@ func (*DataSyncClient) Subscribe(ctx context.Context, messages chan<- *protocol.
 	panic("implement me")
 }
 
+// Send appends a message to the data sync node for later sending.
 func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol.SendOptions) ([]byte, error) {
 	if err := options.Validate(); err != nil {
 		return nil, err
@@ -52,6 +53,7 @@ func (*DataSyncWhisperTransport) Watch() mvds.Packet {
 	panic("implement me")
 }
 
+// Send sends a new message using the Whisper service.
 func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, peer mvds.PeerId, payload mvds.Payload) error {
 	data, err := proto.Marshal(&payload)
 
