@@ -59,10 +59,9 @@ func (m *dataSyncClientKeysManager) GetRawSymKey(id string) ([]byte, error) {
 type DataSyncClient struct {
 	sync mvds.Node
 
-	node *node.StatusNode // TODO: replace with an interface
-	shh  *whisper.Whisper
+	node        *node.StatusNode // TODO: replace with an interface
+	shh         *whisper.Whisper
 	keysManager *dataSyncClientKeysManager
-
 }
 
 func (*DataSyncClient) Subscribe(ctx context.Context, messages chan<- *protocol.Message, options protocol.SubscribeOptions) (*protocol.Subscription, error) {
@@ -94,7 +93,6 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 	}
 
 	return id[:], nil
-
 }
 
 func (*DataSyncClient) Request(ctx context.Context, params protocol.RequestOptions) error {
