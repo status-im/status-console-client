@@ -20,6 +20,8 @@ type DataSyncClient struct {
 
 // Subscribe subscribes to a public chat using the Whisper service.
 func (*DataSyncClient) Subscribe(ctx context.Context, messages chan<- *protocol.Message, options protocol.SubscribeOptions) (*protocol.Subscription, error) {
+	// @todo our subscribe needs to be a little interesting, it expands what is contained in whisper_service to also pipe messages to a channel that can be read by the watch function
+	// and then decodes all payload.messages
 	panic("implement me")
 }
 
