@@ -3,7 +3,10 @@ package adapters
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/sha256"
+	"encoding/binary"
 	"log"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gogo/protobuf/proto"
@@ -16,13 +19,12 @@ import (
 // that implements the Protocol interface.
 type DataSyncClient struct {
 	sync mvds.Node
+	t    DataSyncWhisperTransport
 }
 
 // Subscribe subscribes to a public chat using the Whisper service.
-func (*DataSyncClient) Subscribe(ctx context.Context, messages chan<- *protocol.Message, options protocol.SubscribeOptions) (*protocol.Subscription, error) {
-	// @todo our subscribe needs to be a little interesting, it expands what is contained in whisper_service to also pipe messages to a channel that can be read by the watch function
-	// and then decodes all payload.messages
-	panic("implement me")
+func (c *DataSyncClient) Subscribe(ctx context.Context, messages chan<- *protocol.Message, options protocol.SubscribeOptions) (*protocol.Subscription, error) {
+	return c.t.subscribe(messages, options)
 }
 
 // Send appends a message to the data sync node for later sending.
@@ -51,10 +53,12 @@ func (*DataSyncClient) Request(ctx context.Context, params protocol.RequestOptio
 type DataSyncWhisperTransport struct {
 	shh         *whisper.Whisper
 	keysManager *whisperClientKeysManager
+
+	packets chan mvds.Packet
 }
 
-func (*DataSyncWhisperTransport) Watch() mvds.Packet {
-	panic("implement me")
+func (t *DataSyncWhisperTransport) Watch() mvds.Packet {
+	return <-t.packets
 }
 
 // Send sends a new message using the Whisper service.
@@ -78,18 +82,88 @@ func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, peer 
 	return err
 }
 
-func (t *DataSyncWhisperTransport) handlePayloads(received []*whisper.ReceivedMessage) []*mvds.Payload {
-	var messages []*mvds.Payload
+func (t *DataSyncWhisperTransport) subscribe(in chan<- *protocol.Message, options protocol.SubscribeOptions) (*protocol.Subscription, error) {
+	if err := options.Validate(); err != nil {
+		return nil, err
+	}
 
-	for _, item := range received {
-		payload := &mvds.Payload{}
-		err := proto.Unmarshal(item.Payload, payload)
+	filter := newFilter(t.keysManager)
+	if err := updateFilterFromSubscribeOptions(filter, options); err != nil {
+		return nil, err
+	}
+
+	filterID, err := t.shh.Subscribe(filter.ToWhisper())
+	if err != nil {
+		return nil, err
+	}
+
+	subWhisper := newWhisperSubscription(t.shh, filterID)
+	sub := protocol.NewSubscription()
+
+	go func() {
+		defer subWhisper.Unsubscribe() // nolint: errcheck
+
+		tick := time.NewTicker(time.Second)
+		defer tick.Stop()
+
+		for {
+			select {
+			case <-tick.C:
+				received, err := subWhisper.Messages()
+				if err != nil {
+					sub.Cancel(err)
+					return
+				}
+
+				for _, item := range received {
+					payload := t.handlePayload(item)
+
+					t.packets <- mvds.Packet{
+						Group:   toGroupId(item.Topic),
+						Sender:  mvds.PeerId(*item.Src),
+						Payload: *payload,
+					}
+
+					messages := t.decodeMessages(*payload)
+					for _, m := range messages {
+						m.SigPubKey = item.Src
+						in <- m
+					}
+				}
+			case <-sub.Done():
+				return
+			}
+		}
+	}()
+
+	return sub, nil
+}
+// @todo return error?
+func (t *DataSyncWhisperTransport) handlePayload(received *whisper.ReceivedMessage) *mvds.Payload {
+	payload := &mvds.Payload{}
+	err := proto.Unmarshal(received.Payload, payload)
+	if err != nil {
+		log.Printf("failed to decode message %#+x: %v", received.EnvelopeHash.Bytes(), err)
+		return nil // @todo
+	}
+
+	return payload
+}
+
+
+func (t *DataSyncWhisperTransport) decodeMessages(payload mvds.Payload) []*protocol.Message {
+	messages := make([]*protocol.Message, 0)
+
+	for _, message := range payload.Messages {
+		decoded, err := protocol.DecodeMessage(message.Body)
 		if err != nil {
-			log.Printf("failed to decode message %#+x: %v", item.EnvelopeHash.Bytes(), err)
+			// @todo log or something?
 			continue
 		}
 
-		messages = append(messages, payload)
+		decoded.ID = messageID(*message)
+
+		messages = append(messages, &decoded)
 	}
 
 	return messages
@@ -105,4 +179,19 @@ func toTopicType(g mvds.GroupID) whisper.TopicType {
 	t := whisper.TopicType{}
 	copy(t[:], g[:4])
 	return t
+}
+
+func messageID(m mvds.Message) []byte {
+	t := make([]byte, 8)
+	binary.LittleEndian.PutUint64(t, uint64(m.Timestamp))
+
+	b := append([]byte("MESSAGE_ID"), m.GroupId[:]...)
+	b = append(b, t...)
+	b = append(b, m.Body...)
+
+	r := sha256.Sum256(b)
+	hash := make([]byte, len(r))
+	copy(hash[:], r[:])
+
+	return hash
 }
