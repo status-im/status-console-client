@@ -17,6 +17,7 @@ type DataSyncClient struct {
 	sync mvds.Node
 }
 
+// Subscribe subscribes to a public chat using the Whisper service.
 func (*DataSyncClient) Subscribe(ctx context.Context, messages chan<- *protocol.Message, options protocol.SubscribeOptions) (*protocol.Subscription, error) {
 	panic("implement me")
 }
