@@ -82,39 +82,17 @@ func (t *DataSyncWhisperTransport) handlePayloads(received []*whisper.ReceivedMe
 	var messages []*mvds.Payload
 
 	for _, item := range received {
-		message, err := t.decodePayload(item)
+		payload := &mvds.Payload{}
+		err := proto.Unmarshal(item.Payload, payload)
 		if err != nil {
 			log.Printf("failed to decode message %#+x: %v", item.EnvelopeHash.Bytes(), err)
 			continue
 		}
-		messages = append(messages, message)
+
+		messages = append(messages, payload)
 	}
 
 	return messages
-}
-
-func (t *DataSyncWhisperTransport) decodePayload(message *whisper.ReceivedMessage) (*mvds.Payload, error) {
-	payload := &mvds.Payload{}
-	err := proto.Unmarshal(message.Payload, payload)
-	if err != nil {
-		return nil, err
-	}
-
-	return payload, nil
-
-	// @todo this won't need to be here tbh
-	//for _, m := range payload.Messages {
-	//
-	//}
-
-	//decoded, err := protocol.DecodeMessage(payload)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//decoded.ID = hash
-	//decoded.SigPubKey = publicKey
-	//
-	//return &decoded, nil
 }
 
 func toGroupId(topicType whisper.TopicType) mvds.GroupID {
