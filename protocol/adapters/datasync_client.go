@@ -75,6 +75,29 @@ func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, peer 
 	return err
 }
 
+func (t *DataSyncWhisperTransport) decodeReceivedMessage(message *whisper.ReceivedMessage) (*mvds.Payload, error) {
+	payload := &mvds.Payload{}
+	err := proto.Unmarshal(message.Payload, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	return payload, nil
+
+	// @todo this won't need to be here tbh
+	//for _, m := range payload.Messages {
+	//
+	//}
+
+	//decoded, err := protocol.DecodeMessage(payload)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//decoded.ID = hash
+	//decoded.SigPubKey = publicKey
+	//
+	//return &decoded, nil
+}
 
 func toGroupId(topicType whisper.TopicType) mvds.GroupID {
 	g := mvds.GroupID{}
