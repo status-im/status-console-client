@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"crypto/ecdsa"
+	"log"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gogo/protobuf/proto"
@@ -73,6 +74,21 @@ func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, peer 
 
 	_, err = whisper.NewPublicWhisperAPI(t.shh).Post(context.Background(), newMessage.ToWhisper())
 	return err
+}
+
+func (t *DataSyncWhisperTransport) handlePayloads(received []*whisper.ReceivedMessage) []*mvds.Payload {
+	var messages []*mvds.Payload
+
+	for _, item := range received {
+		message, err := t.decodePayload(item)
+		if err != nil {
+			log.Printf("failed to decode message %#+x: %v", item.EnvelopeHash.Bytes(), err)
+			continue
+		}
+		messages = append(messages, message)
+	}
+
+	return messages
 }
 
 func (t *DataSyncWhisperTransport) decodePayload(message *whisper.ReceivedMessage) (*mvds.Payload, error) {
