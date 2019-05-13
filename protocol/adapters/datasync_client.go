@@ -75,7 +75,7 @@ func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, peer 
 	return err
 }
 
-func (t *DataSyncWhisperTransport) decodeReceivedMessage(message *whisper.ReceivedMessage) (*mvds.Payload, error) {
+func (t *DataSyncWhisperTransport) decodePayload(message *whisper.ReceivedMessage) (*mvds.Payload, error) {
 	payload := &mvds.Payload{}
 	err := proto.Unmarshal(message.Payload, payload)
 	if err != nil {
