@@ -29,6 +29,8 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 		return nil, err
 	}
 
+	// @todo I think we need to wrap data into a protocol.Message?
+
 	topic, err := topic(options)
 	if err != nil {
 		return nil, err
