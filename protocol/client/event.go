@@ -40,13 +40,6 @@ type baseEvent struct {
 func (e baseEvent) GetContact() Contact { return e.Contact }
 func (e baseEvent) GetType() EventType  { return e.Type }
 
-type errorEvent struct {
-	baseEvent
-	Error error `json:"error"`
-}
-
-func (e errorEvent) GetError() error { return e.Error }
-
 type messageEvent struct {
 	baseEvent
 	Message *protocol.Message `json:"message"`

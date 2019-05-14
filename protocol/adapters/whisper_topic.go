@@ -16,6 +16,8 @@ func PublicChatTopic(name string) (whisper.TopicType, error) {
 }
 
 // PrivateChatTopic returns a Whisper topic for a private chat.
+// FIXME(dshulyak) TopicDiscovery is selected by an application not protocol.
+// Move it one layer higher.
 func PrivateChatTopic() (whisper.TopicType, error) {
 	return PublicChatTopic(TopicDiscovery)
 }

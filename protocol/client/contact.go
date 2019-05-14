@@ -14,6 +14,9 @@ import (
 // ContactType defines a type of a contact.
 type ContactType int
 
+// ContactState defines state of the contact.
+type ContactState int
+
 func (c ContactType) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"%s"`, c)), nil
 }
@@ -35,12 +38,20 @@ func (c *ContactType) UnmarshalJSON(data []byte) error {
 const (
 	ContactPublicRoom ContactType = iota + 1
 	ContactPublicKey
+
+	// ContactAdded default level. Added or confirmed by user.
+	ContactAdded ContactState = iota
+	// ContactNew contact got connected to us and waits for being added or blocked.
+	ContactNew
+	// Messages of the blocked contact must be discarded (or atleast not visible to the user)
+	ContactBlocked
 )
 
 // Contact is a single contact which has a type and name.
 type Contact struct {
 	Name      string           `json:"name"`
 	Type      ContactType      `json:"type"`
+	State     ContactState     `json:"state"`
 	PublicKey *ecdsa.PublicKey `json:"-"`
 }
 
