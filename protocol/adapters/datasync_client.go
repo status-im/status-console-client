@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"log"
+	"sort"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -186,6 +187,10 @@ func (t *DataSyncWhisperTransport) decodeMessages(payload mvds.Payload) []*proto
 
 		messages = append(messages, &decoded)
 	}
+
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].Clock < messages[j].Clock
+	})
 
 	return messages
 }
