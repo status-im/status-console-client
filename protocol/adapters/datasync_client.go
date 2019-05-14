@@ -47,7 +47,7 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 }
 
 func (*DataSyncClient) Request(ctx context.Context, params protocol.RequestOptions) error {
-	panic("implement me")
+	return nil
 }
 
 type DataSyncWhisperTransport struct {
