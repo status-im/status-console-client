@@ -52,9 +52,21 @@ func (*DataSyncClient) Request(ctx context.Context, params protocol.RequestOptio
 
 type DataSyncWhisperTransport struct {
 	shh         *whisper.Whisper
-	keysManager *whisperClientKeysManager
+	keysManager *whisperServiceKeysManager
 
 	packets chan mvds.Packet
+}
+
+func NewDataSyncWhisperTransport(shh *whisper.Whisper, privateKey *ecdsa.PrivateKey) *DataSyncWhisperTransport {
+	return &DataSyncWhisperTransport{
+		shh: shh,
+		keysManager: &whisperServiceKeysManager{
+			shh:               shh,
+			privateKey:        privateKey,
+			passToSymKeyCache: make(map[string]string),
+		},
+		packets: make(chan mvds.Packet),
+	}
 }
 
 func (t *DataSyncWhisperTransport) Watch() mvds.Packet {
