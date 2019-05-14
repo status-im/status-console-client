@@ -23,6 +23,9 @@ type DataSyncClient struct {
 }
 
 func NewDataSyncClient(sync *mvds.Node, t *DataSyncWhisperTransport) *DataSyncClient {
+
+	go sync.Run()
+
 	return &DataSyncClient{
 		sync: sync,
 		t:    t,
