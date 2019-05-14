@@ -18,8 +18,15 @@ import (
 // DataSyncClient is an adapter for MVDS
 // that implements the Protocol interface.
 type DataSyncClient struct {
-	sync mvds.Node
-	t    DataSyncWhisperTransport
+	sync *mvds.Node
+	t    *DataSyncWhisperTransport
+}
+
+func NewDataSyncClient(sync *mvds.Node, t *DataSyncWhisperTransport) *DataSyncClient {
+	return &DataSyncClient{
+		sync: sync,
+		t:    t,
+	}
 }
 
 // Subscribe subscribes to a public chat using the Whisper service.
@@ -150,6 +157,7 @@ func (t *DataSyncWhisperTransport) subscribe(in chan<- *protocol.Message, option
 
 	return sub, nil
 }
+
 // @todo return error?
 func (t *DataSyncWhisperTransport) handlePayload(received *whisper.ReceivedMessage) *mvds.Payload {
 	payload := &mvds.Payload{}
@@ -161,7 +169,6 @@ func (t *DataSyncWhisperTransport) handlePayload(received *whisper.ReceivedMessa
 
 	return payload
 }
-
 
 func (t *DataSyncWhisperTransport) decodeMessages(payload mvds.Payload) []*protocol.Message {
 	messages := make([]*protocol.Message, 0)

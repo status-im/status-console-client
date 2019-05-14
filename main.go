@@ -18,6 +18,7 @@ import (
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
+	"github.com/status-im/mvds"
 	"github.com/status-im/status-console-client/protocol/adapters"
 	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/gethservice"
@@ -262,6 +263,57 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 	return messenger, nil
 }
 
+
+func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
+	// collect mail server request signals
+	signalsForwarder := newSignalForwarder()
+	go signalsForwarder.Start()
+
+	// setup signals handler
+	signal.SetDefaultNodeNotificationHandler(
+		filterMailTypesHandler(signalsForwarder.in),
+	)
+
+	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
+	if err != nil {
+		exitErr(errors.Wrap(err, "failed to generate node config"))
+	}
+
+	statusNode := node.New()
+
+	protocolGethService := gethservice.New(
+		statusNode,
+		&keysGetter{privateKey: pk},
+	)
+
+	services := []gethnode.ServiceConstructor{
+		func(ctx *gethnode.ServiceContext) (gethnode.Service, error) {
+			return protocolGethService, nil
+		},
+	}
+
+	if err := statusNode.Start(nodeConfig, services...); err != nil {
+		return nil, errors.Wrap(err, "failed to start node")
+	}
+
+	shhService, err := statusNode.WhisperService()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get Whisper service")
+	}
+
+	t := adapters.NewDataSyncWhisperTransport(shhService, pk)
+	ds := mvds.NewDummyStore()
+	n := mvds.NewNode(&ds, t, Calc, mvds.PeerId(pk.PublicKey))
+
+	adapter := adapters.NewDataSyncClient(n, t)
+	messenger := client.NewMessenger(adapter, pk, db)
+
+	protocolGethService.SetProtocol(adapter)
+	protocolGethService.SetMessenger(messenger)
+
+	return messenger, nil
+}
+
 func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 	var err error
 
@@ -483,4 +535,9 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 	}
 
 	return nil
+}
+
+// @todo move?
+func Calc(count uint64, time int64) int64 {
+	return time + int64(count*2)
 }
