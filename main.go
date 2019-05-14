@@ -45,6 +45,7 @@ var (
 	fleet      = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
 	configFile = fs.String("node-config", "", "a JSON file with node config")
 	pfsEnabled = fs.Bool("pfs", false, "enable PFS")
+	datasyncEnabled = fs.Bool("ds", false, "enable data sync")
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -117,7 +118,12 @@ func main() {
 			exitErr(err)
 		}
 	} else {
-		messenger, err = createMessengerInProc(privateKey, db)
+		if *datasyncEnabled {
+			messenger, err = createMessengerWithDataSync(privateKey, db)
+		} else {
+			messenger, err = createMessengerInProc(privateKey, db)
+		}
+
 		if err != nil {
 			exitErr(err)
 		}
