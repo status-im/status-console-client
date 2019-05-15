@@ -44,6 +44,7 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 		return nil, err
 	}
 
+
 	if options.ChatName == "" {
 		return nil, errors.New("missing chat name")
 	}
@@ -51,6 +52,17 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 	topic, err := ToTopic(options.ChatName)
 	if err != nil {
 		return nil, err
+	}
+
+	gid := toGroupId(topic)
+
+	if options.Recipient != nil {
+		p := mvds.PeerId(*options.Recipient)
+
+		if !c.sync.IsPeerInGroup(gid, p) {
+			c.sync.AddPeer(gid, p)
+			c.sync.Share(gid, p)
+		}
 	}
 
 	id, err := c.sync.AppendMessage(toGroupId(topic), data)
