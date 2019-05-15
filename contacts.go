@@ -22,12 +22,12 @@ func contactToString(c client.Contact) string {
 // ContactsViewController manages contacts view.
 type ContactsViewController struct {
 	*ViewController
-	messenger *client.Messenger
+	messenger *client.MessengerV2
 	contacts  []client.Contact
 }
 
 // NewContactsViewController returns a new contact view controller.
-func NewContactsViewController(vm *ViewController, m *client.Messenger) *ContactsViewController {
+func NewContactsViewController(vm *ViewController, m *client.MessengerV2) *ContactsViewController {
 	return &ContactsViewController{ViewController: vm, messenger: m}
 }
 

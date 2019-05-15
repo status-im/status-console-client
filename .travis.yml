@@ -13,10 +13,6 @@ before_script:
 
 matrix:
   include:
-  - go: "1.10.x"
-    script:
-    - make lint-v110
-    - make test
   - go: "1.11.x"
     env: GOFLAGS=-mod=vendor
     script:

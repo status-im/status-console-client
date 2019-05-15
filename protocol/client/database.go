@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
+	"github.com/pkg/errors"
 	"github.com/status-im/migrate"
 	"github.com/status-im/migrate/database/sqlcipher"
 	bindata "github.com/status-im/migrate/source/go_bindata"
@@ -25,13 +26,26 @@ func init() {
 	gob.Register(&secp256k1.BitCurve{})
 }
 
+const (
+	uniqueIDContstraint = "UNIQUE constraint failed: user_messages.id"
+)
+
+var (
+	// ErrMsgAlreadyExist returned if msg already exist.
+	ErrMsgAlreadyExist = errors.New("message with given ID already exist")
+)
+
 // Database is an interface for all db operations.
 type Database interface {
 	Close() error
 	Messages(c Contact, from, to time.Time) (result []*protocol.Message, err error)
-	SaveMessages(c Contact, messages []*protocol.Message) error
+	GetNewMessages(Contact, int64) ([]*protocol.Message, error)
+	SaveMessages(c Contact, messages []*protocol.Message) (int64, error)
+	LastMessageClock(Contact) (int64, error)
 	Contacts() ([]Contact, error)
 	SaveContacts(contacts []Contact) error
+	DeleteContact(Contact) error
+	PublicContactExist(Contact) (bool, error)
 }
 
 // Migrate applies migrations.
@@ -136,7 +150,7 @@ func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
 	if err != nil {
 		return err
 	}
-	stmt, err = tx.Prepare("INSERT OR REPLACE INTO user_contacts(id, name, type, public_key) VALUES (?, ?, ?, ?)")
+	stmt, err = tx.Prepare("INSERT OR REPLACE INTO user_contacts(id, name, type, state, topic, public_key) VALUES (?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -161,7 +175,7 @@ func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
 		pkey := append([]byte{}, buf.Bytes()...)
 		buf.Reset()
 		id := fmt.Sprintf("%s:%d", contacts[i].Name, contacts[i].Type)
-		_, err = stmt.Exec(id, contacts[i].Name, contacts[i].Type, pkey)
+		_, err = stmt.Exec(id, contacts[i].Name, contacts[i].Type, contacts[i].State, contacts[i].Topic, pkey)
 		if err != nil {
 			return err
 		}
@@ -171,7 +185,7 @@ func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
 
 // Contacts returns all available contacts.
 func (db SQLLiteDatabase) Contacts() ([]Contact, error) {
-	rows, err := db.db.Query("SELECT name, type, public_key FROM user_contacts")
+	rows, err := db.db.Query("SELECT name, type, state, topic, public_key FROM user_contacts")
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +200,7 @@ func (db SQLLiteDatabase) Contacts() ([]Contact, error) {
 		dec := gob.NewDecoder(&buf)
 		contact := Contact{}
 		pkey := []byte{}
-		err = rows.Scan(&contact.Name, &contact.Type, &pkey)
+		err = rows.Scan(&contact.Name, &contact.Type, &contact.State, &contact.Topic, &pkey)
 		if err != nil {
 			return nil, err
 		}
@@ -203,33 +217,68 @@ func (db SQLLiteDatabase) Contacts() ([]Contact, error) {
 	return rst, nil
 }
 
-func (db SQLLiteDatabase) SaveMessages(c Contact, messages []*protocol.Message) (err error) {
+func (db SQLLiteDatabase) DeleteContact(c Contact) error {
+	_, err := db.db.Exec("DELETE FROM user_contacts WHERE id = ?", fmt.Sprintf("%s:%d", c.Name, c.Type))
+	if err != nil {
+		return errors.Wrap(err, "error deleting contact from db")
+	}
+	return nil
+}
+
+func (db SQLLiteDatabase) PublicContactExist(c Contact) (exists bool, err error) {
+	buf := bytes.Buffer{}
+	enc := gob.NewEncoder(&buf)
+	if c.PublicKey != nil {
+		err = enc.Encode(c.PublicKey)
+		if err != nil {
+			return false, err
+		}
+	} else {
+		return false, errors.New("no public key")
+	}
+	err = db.db.QueryRow("SELECT EXISTS(SELECT id FROM user_contacts WHERE public_key = ?)", buf.Bytes()).Scan(&exists)
+	return exists, err
+}
+
+func (db SQLLiteDatabase) LastMessageClock(c Contact) (int64, error) {
+	var last sql.NullInt64
+	err := db.db.QueryRow("SELECT max(clock) FROM user_messages WHERE contact_id = ?", contactID(c)).Scan(&last)
+	if err != nil {
+		return 0, err
+	}
+	return last.Int64, nil
+}
+
+func (db SQLLiteDatabase) SaveMessages(c Contact, messages []*protocol.Message) (last int64, err error) {
 	var (
 		tx   *sql.Tx
 		stmt *sql.Stmt
 	)
 	tx, err = db.db.BeginTx(context.Background(), &sql.TxOptions{})
 	if err != nil {
-		return err
+		return
 	}
-	stmt, err = tx.Prepare(`INSERT OR REPLACE INTO user_messages(
+	stmt, err = tx.Prepare(`INSERT INTO user_messages(
 id, contact_id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
-		return err
+		return
 	}
 	defer func() {
 		if err == nil {
 			err = tx.Commit()
+			return
 		} else {
 			// don't shadow original error
 			_ = tx.Rollback()
+			return
 		}
 	}()
 
 	var (
 		buf       bytes.Buffer
 		contactID = fmt.Sprintf("%s:%d", c.Name, c.Type)
+		rst       sql.Result
 	)
 	for _, msg := range messages {
 		enc := gob.NewEncoder(&buf)
@@ -237,19 +286,26 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 		if msg.SigPubKey != nil {
 			err = enc.Encode(msg.SigPubKey)
 			if err != nil {
-				return err
+				return
 			}
 			pkey = append(pkey, buf.Bytes()...)
 			buf.Reset()
 		}
-		_, err = stmt.Exec(
+		rst, err = stmt.Exec(
 			msg.ID, contactID, msg.ContentT, msg.MessageT, msg.Text,
 			msg.Clock, msg.Timestamp, msg.Content.ChatID, msg.Content.Text, pkey)
 		if err != nil {
-			return err
+			if err.Error() == uniqueIDContstraint {
+				err = ErrMsgAlreadyExist
+			}
+			return
+		}
+		last, err = rst.LastInsertId()
+		if err != nil {
+			return
 		}
 	}
-	return err
+	return
 }
 
 // Messages returns messages for a given contact, in a given period. Ordered by a timestamp.
@@ -289,4 +345,46 @@ FROM user_messages WHERE contact_id = ? AND timestamp >= ? AND timestamp <= ? OR
 		rst = append(rst, &msg)
 	}
 	return rst, nil
+}
+
+func (db SQLLiteDatabase) GetNewMessages(c Contact, rowid int64) ([]*protocol.Message, error) {
+	contactID := fmt.Sprintf("%s:%d", c.Name, c.Type)
+	rows, err := db.db.Query(`SELECT
+id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key
+FROM user_messages WHERE contact_id = ? AND rowid >= ? ORDER BY clock`,
+		contactID, rowid)
+	if err != nil {
+		return nil, err
+	}
+	var (
+		rst = []*protocol.Message{}
+		buf bytes.Buffer
+	)
+	for rows.Next() {
+		dec := gob.NewDecoder(&buf)
+		msg := protocol.Message{
+			Content: protocol.Content{},
+		}
+		pkey := []byte{}
+		err = rows.Scan(
+			&msg.ID, &msg.ContentT, &msg.MessageT, &msg.Text, &msg.Clock,
+			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey)
+		if err != nil {
+			return nil, err
+		}
+		if len(pkey) != 0 {
+			buf.Write(pkey)
+			err = dec.Decode(&msg.SigPubKey)
+			if err != nil {
+				return nil, err
+			}
+			buf.Reset()
+		}
+		rst = append(rst, &msg)
+	}
+	return rst, nil
+}
+
+func contactID(c Contact) string {
+	return fmt.Sprintf("%s:%d", c.Name, c.Type)
 }

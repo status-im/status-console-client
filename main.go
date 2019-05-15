@@ -52,6 +52,9 @@ var (
 )
 
 func main() {
+	if err := ff.Parse(fs, os.Args[1:]); err != nil {
+		exitErr(errors.Wrap(err, "failed to parse flags"))
+	}
 	err := os.MkdirAll(*dataDir, 0777)
 	if err != nil {
 		exitErr(err)
@@ -63,9 +66,6 @@ func main() {
 	}
 	log.SetOutput(logFile)
 
-	if err := ff.Parse(fs, os.Args[1:]); err != nil {
-		exitErr(errors.Wrap(err, "failed to parse flags"))
-	}
 	err = logutils.OverrideRootLog(true, *logLevel, logutils.FileOptions{Filename: filepath.Join(*dataDir, "status.log")}, false)
 	if err != nil {
 		log.Fatalf("failed to override root log: %v\n", err)
@@ -109,7 +109,7 @@ func main() {
 
 	// initialize protocol
 	var (
-		messenger *client.Messenger
+		messenger *client.MessengerV2
 	)
 
 	if *providerURI != "" {
@@ -136,15 +136,21 @@ func main() {
 
 	if contacts, err := db.Contacts(); len(contacts) == 0 || err != nil {
 		debugContacts := []client.Contact{
-			{Name: "status", Type: client.ContactPublicRoom},
-			{Name: "status-core", Type: client.ContactPublicRoom},
-			{Name: "testing-adamb", Type: client.ContactPublicRoom},
+			{Name: "status", Type: client.ContactPublicRoom, Topic: "status"},
+			{Name: "status-core", Type: client.ContactPublicRoom, Topic: "status-core"},
+			{Name: "testing-adamb", Type: client.ContactPublicRoom, Topic: "testing-adamb"},
 			adambContact,
 		}
 		if err := db.SaveContacts(debugContacts); err != nil {
 			exitErr(err)
 		}
 	}
+	go func() {
+		err = messenger.Start()
+		if err != nil {
+			exitErr(err)
+		}
+	}()
 
 	if !*noUI {
 		if err := setupGUI(privateKey, messenger); err != nil {
@@ -188,7 +194,7 @@ func (k keysGetter) PrivateKey() (*ecdsa.PrivateKey, error) {
 	return k.privateKey, nil
 }
 
-func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
+func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database) (*client.MessengerV2, error) {
 	rpc, err := rpc.Dial(*providerURI)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to dial")
@@ -204,11 +210,11 @@ func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database
 		pk,
 		nodeConfig.ClusterConfig.TrustedMailServers,
 	)
-	messenger := client.NewMessenger(proto, pk, db)
-	return messenger, nil
+	messenger := client.NewMessengerV2(pk, proto, db)
+	return &messenger, nil
 }
 
-func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
+func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.MessengerV2, error) {
 	// collect mail server request signals
 	signalsForwarder := newSignalForwarder()
 	go signalsForwarder.Start()
@@ -246,10 +252,10 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 	}
 
 	adapter := adapters.NewWhisperServiceAdapter(statusNode, shhService, pk)
-	messenger := client.NewMessenger(adapter, pk, db)
+	messenger := client.NewMessengerV2(pk, adapter, db)
 
 	protocolGethService.SetProtocol(adapter)
-	protocolGethService.SetMessenger(messenger)
+	protocolGethService.SetMessenger(&messenger)
 
 	// TODO: should be removed from StatusNode
 	if *pfsEnabled {
@@ -266,9 +272,8 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		log.Printf("PFS has been initialized")
 	}
 
-	return messenger, nil
+	return &messenger, nil
 }
-
 
 func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
 	// collect mail server request signals
@@ -320,7 +325,7 @@ func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*cli
 	return messenger, nil
 }
 
-func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
+func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.MessengerV2) error {
 	var err error
 
 	// global

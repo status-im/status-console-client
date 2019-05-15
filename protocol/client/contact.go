@@ -14,6 +14,9 @@ import (
 // ContactType defines a type of a contact.
 type ContactType int
 
+// ContactState defines state of the contact.
+type ContactState int
+
 func (c ContactType) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"%s"`, c)), nil
 }
@@ -35,12 +38,21 @@ func (c *ContactType) UnmarshalJSON(data []byte) error {
 const (
 	ContactPublicRoom ContactType = iota + 1
 	ContactPublicKey
+
+	// ContactAdded default level. Added or confirmed by user.
+	ContactAdded ContactState = iota
+	// ContactNew contact got connected to us and waits for being added or blocked.
+	ContactNew
+	// Messages of the blocked contact must be discarded (or atleast not visible to the user)
+	ContactBlocked
 )
 
 // Contact is a single contact which has a type and name.
 type Contact struct {
 	Name      string           `json:"name"`
 	Type      ContactType      `json:"type"`
+	State     ContactState     `json:"state"`
+	Topic     string           `json:"topic"`
 	PublicKey *ecdsa.PublicKey `json:"-"`
 }
 
@@ -99,7 +111,7 @@ func (c *Contact) UnmarshalJSON(data []byte) error {
 func ContactWithPublicKey(name, pubKeyHex string) (c Contact, err error) {
 	c.Name = name
 	c.Type = ContactPublicKey
-
+	c.Topic = DefaultPrivateTopic()
 	pubKeyBytes, err := hexutil.Decode(pubKeyHex)
 	if err != nil {
 		return
@@ -107,14 +119,4 @@ func ContactWithPublicKey(name, pubKeyHex string) (c Contact, err error) {
 
 	c.PublicKey, err = crypto.UnmarshalPubkey(pubKeyBytes)
 	return
-}
-
-// ContainsContact check if a slice contains a given contact.
-func ContainsContact(cs []Contact, c Contact) bool {
-	for _, item := range cs {
-		if item == c {
-			return true
-		}
-	}
-	return false
 }

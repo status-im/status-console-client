@@ -402,7 +402,7 @@ func (f *filter) ToWhisper() *whisper.Filter {
 }
 
 func (f *filter) updateForPublicGroup(name string) error {
-	topic, err := PublicChatTopic(name)
+	topic, err := ToTopic(name)
 	if err != nil {
 		return err
 	}
@@ -421,8 +421,8 @@ func (f *filter) updateForPublicGroup(name string) error {
 	return nil
 }
 
-func (f *filter) updateForPrivate(recipient *ecdsa.PublicKey) error {
-	topic, err := PrivateChatTopic()
+func (f *filter) updateForPrivate(name string, recipient *ecdsa.PublicKey) error {
+	topic, err := ToTopic(name)
 	if err != nil {
 		return err
 	}
@@ -434,8 +434,8 @@ func (f *filter) updateForPrivate(recipient *ecdsa.PublicKey) error {
 }
 
 func updateFilterFromSubscribeOptions(f *filter, options protocol.SubscribeOptions) error {
-	if options.Recipient != nil {
-		return f.updateForPrivate(options.Recipient)
+	if options.Recipient != nil && options.ChatName != "" {
+		return f.updateForPrivate(options.ChatName, options.Recipient)
 	} else if options.ChatName != "" {
 		return f.updateForPublicGroup(options.ChatName)
 	} else {

@@ -37,6 +37,19 @@ func openDB(path string, key string, kdfIter int) (*sql.DB, error) {
 	if _, err = db.Exec(kdfString); err != nil {
 		return nil, err
 	}
+
+	// readers do not block writers and faster i/o operations
+	// https://www.sqlite.org/draft/wal.html
+	// must be set after db is encrypted
+	var mode string
+	err = db.QueryRow("PRAGMA journal_mode=WAL").Scan(&mode)
+	if err != nil {
+		return nil, err
+	}
+	if mode != "wal" {
+		return nil, fmt.Errorf("unable to set journal_mode to WAL. actual mode %s", mode)
+	}
+
 	return db, nil
 }
 

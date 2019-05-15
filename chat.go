@@ -24,16 +24,18 @@ type ChatViewController struct {
 	contact client.Contact
 
 	identity  *ecdsa.PrivateKey
-	messenger *client.Messenger
+	messenger *client.MessengerV2
 
 	onError func(error)
 
 	cancel chan struct{} // cancel the current chat loop
 	done   chan struct{} // wait for the current chat loop to finish
+
+	changeContact chan client.Contact
 }
 
 // NewChatViewController returns a new chat view controller.
-func NewChatViewController(vc *ViewController, id Identity, m *client.Messenger, onError func(error)) *ChatViewController {
+func NewChatViewController(vc *ViewController, id Identity, m *client.MessengerV2, onError func(error)) *ChatViewController {
 	if onError == nil {
 		onError = func(error) {}
 	}
@@ -43,15 +45,19 @@ func NewChatViewController(vc *ViewController, id Identity, m *client.Messenger,
 		identity:       id,
 		messenger:      m,
 		onError:        onError,
+		changeContact:  make(chan client.Contact, 1),
 	}
 }
 
-func (c *ChatViewController) readEventsLoop() {
+func (c *ChatViewController) readEventsLoop(contact client.Contact) {
 	c.done = make(chan struct{})
 	defer close(c.done)
 
-	// buckets with events indexed by contacts
-	buffer := make(map[client.Contact][]interface{})
+	var (
+		messages = []*protocol.Message{}
+		clock    int64
+		inorder  bool
+	)
 
 	// We use a ticker in order to buffer storm of received events.
 	t := time.NewTicker(time.Second)
@@ -60,34 +66,26 @@ func (c *ChatViewController) readEventsLoop() {
 	for {
 		select {
 		case <-t.C:
-			chat := c.messenger.Chat(c.contact)
-			if chat == nil {
-				c.onError(fmt.Errorf("no chat for contact '%s'", c.contact))
-				break
-			}
-
-			needsRedraw := requiresRedraw(buffer[c.contact])
-
-			if needsRedraw {
-				// Get all available messages and
-				// rewrite the buffer completely.
-				messages := chat.Messages()
-
+			if !inorder {
+				// messages are sorted by clock value
+				// TODO draw messages only after offset (if possible)
+				all, err := c.messenger.Messages(c.contact, 0)
+				if err != nil {
+					c.onError(err)
+					continue
+				}
+				if len(all) != 0 {
+					clock = all[len(all)-1].Clock
+				}
 				log.Printf("[ChatViewController::readEventsLoops] retrieved %d messages", len(messages))
-
-				c.printMessages(true, messages...)
+				c.printMessages(true, all...)
+				inorder = true
 			} else {
-				// Messages arrived in order so we can safely put them
-				// at the end of the buffer.
-				for _, event := range buffer[c.contact] {
-					switch ev := event.(type) {
-					case client.EventWithMessage:
-						c.printMessages(false, ev.GetMessage())
-					}
+				if len(messages) != 0 {
+					c.printMessages(false, messages...)
 				}
 			}
-
-			buffer = make(map[client.Contact][]interface{})
+			messages = []*protocol.Message{}
 		case event := <-c.messenger.Events():
 			log.Printf("[ChatViewController::readEventsLoops] received an event: %+v", event)
 
@@ -95,29 +93,31 @@ func (c *ChatViewController) readEventsLoop() {
 			case client.EventWithError:
 				c.onError(ev.GetError())
 			case client.EventWithContact:
-				buffer[ev.GetContact()] = append(buffer[ev.GetContact()], ev)
+				if ev.GetContact() != contact {
+					continue
+				}
+				msgev, ok := ev.(client.EventWithMessage)
+				if !ok {
+					continue
+				}
+				if !inorder {
+					continue
+				}
+				msg := msgev.GetMessage()
+				if msg.Clock < clock {
+					inorder = false
+					continue
+				}
+				messages = append(messages, msg)
 			}
+		case contact = <-c.changeContact:
+			inorder = false
+			clock = 0
+			messages = []*protocol.Message{}
 		case <-c.cancel:
 			return
 		}
 	}
-}
-
-// requiresRedraw checks if in the list of events, there are any which
-// require to redraw the whole view. This is an optimization as usually
-// messages arrive in order so they can simply be appended to the buffer,
-// however, if the message is our of order the whole buffer needs to be changed.
-func requiresRedraw(events []interface{}) bool {
-	for _, event := range events {
-		switch ev := event.(type) {
-		case client.EventWithType:
-			switch ev.GetType() {
-			case client.EventTypeInit, client.EventTypeRearrange:
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // Select informs the chat view controller about a selected contact.
@@ -127,46 +127,32 @@ func (c *ChatViewController) Select(contact client.Contact) error {
 
 	if c.cancel == nil {
 		c.cancel = make(chan struct{})
-		go c.readEventsLoop()
+		go c.readEventsLoop(contact)
 	}
-
+	c.changeContact <- contact
 	c.contact = contact
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
-	_, err := c.messenger.Join(ctx, contact)
-	return err
+	return c.messenger.Join(ctx, contact)
 }
 
 // RequestOptions returns the RequestOptions for the next request call.
 // Newest param when true means that we are interested in the most recent messages.
 func (c *ChatViewController) RequestOptions(newest bool) (protocol.RequestOptions, error) {
-	chat := c.messenger.Chat(c.contact)
-	if chat == nil {
-		return protocol.RequestOptions{}, fmt.Errorf("chat not found")
-	}
-	return chat.RequestOptions(newest)
+	return protocol.DefaultRequestOptions(), nil
 }
 
 // RequestMessages sends a request fro historical messages.
 func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) error {
-	chat := c.messenger.Chat(c.contact)
-	if chat == nil {
-		return fmt.Errorf("chat not found")
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
-	return chat.Request(ctx, params)
+	return c.messenger.Request(ctx, c.contact, params)
 }
 
 // Send sends a payload as a message.
 func (c *ChatViewController) Send(data []byte) error {
-	chat := c.messenger.Chat(c.contact)
-	if chat == nil {
-		return fmt.Errorf("chat not found")
-	}
-	return chat.Send(data)
+	return c.messenger.Send(c.contact, data)
 }
 
 func (c *ChatViewController) printMessages(clear bool, messages ...*protocol.Message) {
