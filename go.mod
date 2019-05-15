@@ -13,11 +13,11 @@ require (
 	github.com/fjl/memsize v0.0.0-20180929194037-2a09253e352a // indirect
 	github.com/go-playground/locales v0.12.1 // indirect
 	github.com/go-playground/universal-translator v0.16.0 // indirect
+	github.com/gogo/protobuf v1.2.1
 	github.com/golang-migrate/migrate v3.5.4+incompatible // indirect
 	github.com/golang/mock v1.3.1
 	github.com/influxdata/influxdb v1.7.6 // indirect
 	github.com/jroimartin/gocui v0.4.0
-	github.com/jteeuwen/go-bindata v3.0.7+incompatible // indirect
 	github.com/karalabe/hid v0.0.0-20181128192157-d815e0c1a2e2 // indirect
 	github.com/leodido/go-urn v1.1.0 // indirect
 	github.com/mattn/go-runewidth v0.0.4 // indirect
@@ -36,6 +36,7 @@ require (
 	github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24 // indirect
 	github.com/status-im/doubleratchet v2.0.0+incompatible // indirect
 	github.com/status-im/migrate v0.0.0-20181227113212-3bde36291b5c
+	github.com/status-im/mvds v0.0.0-20190515180244-cab307381356
 	github.com/status-im/rendezvous v1.2.0 // indirect
 	github.com/status-im/status-go v0.23.0-beta.9
 	github.com/status-im/whisper v1.4.8
@@ -45,7 +46,6 @@ require (
 	golang.org/x/net v0.0.0-20190514140710-3ec191127204 // indirect
 	golang.org/x/sys v0.0.0-20190514135907-3a4b5fb9f71f // indirect
 	golang.org/x/text v0.3.2 // indirect
-	golang.org/x/tools v0.0.0-20190515035509-2196cb7019cc // indirect
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/go-playground/validator.v9 v9.24.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
