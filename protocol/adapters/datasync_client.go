@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gogo/protobuf/proto"
+	"github.com/pkg/errors"
 	"github.com/status-im/mvds"
 	"github.com/status-im/status-console-client/protocol/v1"
 	whisper "github.com/status-im/whisper/whisperv6"
@@ -43,7 +44,11 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 		return nil, err
 	}
 
-	topic, err := topic(options)
+	if options.ChatName == "" {
+		return nil, errors.New("missing chat name")
+	}
+
+	topic, err := ToTopic(options.ChatName)
 	if err != nil {
 		return nil, err
 	}
