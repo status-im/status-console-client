@@ -219,6 +219,12 @@ func (t *DataSyncWhisperTransport) decodeMessages(payload mvds.Payload) []*proto
 	return messages
 }
 
+// CalculateSendTime calculates the next epoch
+// at which a message should be sent.
+func CalculateSendTime(count uint64, time int64) int64 {
+	return time + int64(count*2)
+}
+
 func toGroupId(topicType whisper.TopicType) mvds.GroupID {
 	g := mvds.GroupID{}
 	copy(g[:], topicType[:])

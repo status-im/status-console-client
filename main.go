@@ -314,7 +314,7 @@ func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*cli
 
 	t := adapters.NewDataSyncWhisperTransport(shhService, pk)
 	ds := mvds.NewDummyStore()
-	n := mvds.NewNode(&ds, t, Calc, mvds.PeerId(pk.PublicKey))
+	n := mvds.NewNode(&ds, t, adapters.CalculateSendTime, mvds.PeerId(pk.PublicKey))
 
 	adapter := adapters.NewDataSyncClient(n, t)
 	messenger := client.NewMessengerV2(pk, adapter, db)
@@ -546,9 +546,4 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.MessengerV2) error
 	}
 
 	return nil
-}
-
-// @todo move?
-func Calc(count uint64, time int64) int64 {
-	return time + int64(count*2)
 }
