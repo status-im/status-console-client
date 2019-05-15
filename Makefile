@@ -40,10 +40,12 @@ install-linter:
 
 install-dev:
 	# a tool to vendor non-go files
-	go get -u github.com/goware/modvendor
+	# installed from a fork that doesn't ignore replace directive
+	# FIXME update to https://github.com/goware/modvendor once the problem is fixed
+	GO111MODULE=auto go get -u github.com/dshulyak/modvendor
 	go get -u github.com/golang/mock/gomock
 	go install github.com/golang/mock/mockgen
-	go get -u github.com/jteeuwen/go-bindata/...
+	go get -u github.com/jteeuwen/go-bindata/go-bindata@v3.0.7
 .PHONY: install-dev
 
 mock:
