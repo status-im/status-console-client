@@ -68,10 +68,8 @@ func updateNewMessageFromSendOptions(m *newMessage, options protocol.SendOptions
 }
 
 func topic(o protocol.SendOptions) (whisper.TopicType, error) {
-	if o.Recipient != nil {
-		return PrivateChatTopic()
-	} else if o.ChatName != "" {
-		return PublicChatTopic(o.ChatName)
+	if o.ChatName != "" {
+		return ToTopic(o.ChatName)
 	}
 
 	return whisper.TopicType{}, errors.New("unrecognized options")
