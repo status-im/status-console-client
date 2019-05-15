@@ -36,8 +36,8 @@ func (m *newMessage) ToWhisper() whisper.NewMessage {
 	return m.NewMessage
 }
 
-func (m *newMessage) updateForPrivate(recipient *ecdsa.PublicKey) (err error) {
-	m.Topic, err = PrivateChatTopic()
+func (m *newMessage) updateForPrivate(name string, recipient *ecdsa.PublicKey) (err error) {
+	m.Topic, err = ToTopic(name)
 	if err != nil {
 		return
 	}
@@ -48,7 +48,7 @@ func (m *newMessage) updateForPrivate(recipient *ecdsa.PublicKey) (err error) {
 }
 
 func (m *newMessage) updateForPublicGroup(name string) (err error) {
-	m.Topic, err = PublicChatTopic(name)
+	m.Topic, err = ToTopic(name)
 	if err != nil {
 		return
 	}
@@ -58,8 +58,8 @@ func (m *newMessage) updateForPublicGroup(name string) (err error) {
 }
 
 func updateNewMessageFromSendOptions(m *newMessage, options protocol.SendOptions) error {
-	if options.Recipient != nil {
-		return m.updateForPrivate(options.Recipient)
+	if options.Recipient != nil && options.ChatName != "" {
+		return m.updateForPrivate(options.ChatName, options.Recipient)
 	} else if options.ChatName != "" {
 		return m.updateForPublicGroup(options.ChatName)
 	} else {

@@ -69,9 +69,11 @@ func bytesToArgs(b []byte) []string {
 
 func contactAddCmdHandler(args []string) (c client.Contact, err error) {
 	if len(args) == 1 {
+		name := args[0]
 		c = client.Contact{
-			Name: args[0],
-			Type: client.ContactPublicRoom,
+			Name:  name,
+			Type:  client.ContactPublicRoom,
+			Topic: name,
 		}
 	} else if len(args) == 2 {
 		c, err = client.ContactWithPublicKey(args[1], args[0])
@@ -94,19 +96,20 @@ func ContactCmdFactory(c *ContactsViewController) CmdHandler {
 			if err != nil {
 				return err
 			}
+			log.Printf("adding contact with topic %s\n", contact.Topic)
 			if err := c.Add(contact); err != nil {
 				return err
 			}
 			// TODO: fix removing contacts
 			// case "remove":
-			// 	if len(args) == 2 {
-			// 		if err := c.Remove(args[1]); err != nil {
-			// 			return err
-			// 		}
-			// 		c.Refresh()
-			// 		return nil
-			// 	}
-			// 	return errors.New("/contact: incorect arguments to remove subcommand")
+			//	if len(args) == 2 {
+			//		if err := c.Remove(args[1]); err != nil {
+			//			return err
+			//		}
+			//		c.Refresh()
+			//		return nil
+			//	}
+			//	return errors.New("/contact: incorect arguments to remove subcommand")
 		}
 
 		return nil

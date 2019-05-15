@@ -43,14 +43,9 @@ func (pub PublicStream) Handle(msg protocol.Message) error {
 	return nil
 }
 
-func NewPrivateHandler(contacts []Contact, db Database) StreamHandler {
-	keyed := map[string]Contact{}
-	for i := range contacts {
-		keyed[PubkeyToHex(contacts[i].PublicKey)] = contacts[i]
-	}
+func NewPrivateHandler(db Database) StreamHandler {
 	return PrivateStream{
-		contacts: keyed,
-		db:       db,
+		db: db,
 	}.Handle
 }
 
@@ -58,8 +53,7 @@ func NewPrivateHandler(contacts []Contact, db Database) StreamHandler {
 // In our case every message will have a pubkey (derived from signature) that will be used
 // to determine who is the writer
 type PrivateStream struct {
-	contacts map[string]Contact // key is a hex from public key
-	db       Database
+	db Database
 }
 
 func (priv PrivateStream) Handle(msg protocol.Message) error {
@@ -67,13 +61,12 @@ func (priv PrivateStream) Handle(msg protocol.Message) error {
 		return errors.New("message should be signed")
 	}
 	keyhex := PubkeyToHex(msg.SigPubKey)
-	// FIXME(dshulyak) Check if contact exist in database
-	// preferably don't marshal key as a blob
 	contact := Contact{
 		Type:      ContactPublicKey,
 		State:     ContactNew,
 		Name:      keyhex, // TODO(dshulyak) replace with 3-word funny name
 		PublicKey: msg.SigPubKey,
+		Topic:     DefaultPrivateTopic(),
 	}
 	exist, err := priv.db.PublicContactExist(contact)
 	if err != nil {
@@ -101,8 +94,7 @@ type AsyncStream interface {
 }
 
 type Stream struct {
-	// TODO replace contact with a topic. content from single stream can be delivered to multiple contacts.
-	contact Contact
+	options protocol.SubscribeOptions
 
 	proto   protocol.Protocol
 	handler StreamHandler
@@ -112,9 +104,9 @@ type Stream struct {
 	wg     sync.WaitGroup
 }
 
-func NewStream(ctx context.Context, contact Contact, proto protocol.Protocol, handler StreamHandler) *Stream {
+func NewStream(ctx context.Context, options protocol.SubscribeOptions, proto protocol.Protocol, handler StreamHandler) *Stream {
 	return &Stream{
-		contact: contact,
+		options: options,
 		proto:   proto,
 		handler: handler,
 		parent:  ctx,
@@ -128,11 +120,7 @@ func (stream *Stream) Start() error {
 	ctx, cancel := context.WithCancel(stream.parent)
 	stream.cancel = cancel
 	msgs := make(chan *protocol.Message, 100)
-	opts, err := createSubscribeOptions(stream.contact)
-	if err != nil {
-		return errors.Wrap(err, "failed to create subscribe options")
-	}
-	sub, err := stream.proto.Subscribe(ctx, msgs, opts)
+	sub, err := stream.proto.Subscribe(ctx, msgs, stream.options)
 	if err != nil {
 		stream.cancel = nil
 		return err

@@ -18,7 +18,8 @@ func NewMessengerV2(identity *ecdsa.PrivateKey, proto protocol.Protocol, db Data
 		proto:    proto,
 		db:       NewDatabaseWithEvents(db, feed),
 
-		public: map[string]AsyncStream{},
+		public:  map[string]AsyncStream{},
+		private: map[string]AsyncStream{},
 		// FIXME(dshulyak) add sufficient buffer to this channel
 		// it may block stream that receives messages
 		events: feed,
@@ -32,20 +33,9 @@ type MessengerV2 struct {
 
 	mu      sync.Mutex
 	public  map[string]AsyncStream
-	private AsyncStream
+	private map[string]AsyncStream
 
 	events chan interface{}
-}
-
-func NewMessanger(identity *ecdsa.PrivateKey, db Database, proto protocol.Protocol) MessengerV2 {
-	return MessengerV2{
-		identity: identity,
-		db:       db,
-		proto:    proto,
-
-		public: map[string]AsyncStream{},
-		events: make(chan interface{}),
-	}
 }
 
 func (m *MessengerV2) Start() error {
@@ -55,29 +45,35 @@ func (m *MessengerV2) Start() error {
 	if err != nil {
 		return errors.Wrap(err, "unable to read contacts from database")
 	}
-	private := []Contact{}
+
 	for i := range contacts {
+		options, err := createSubscribeOptions(contacts[i])
+		if err != nil {
+			return err
+		}
 		if contacts[i].Type == ContactPublicKey {
-			private = append(private, contacts[i])
+			_, exist := m.private[contacts[i].Topic]
+			if exist {
+				continue
+			}
+			stream := NewStream(context.Background(), options, m.proto, NewPrivateHandler(m.db))
+			err := stream.Start()
+			if err != nil {
+				return errors.Wrap(err, "unable to start private stream")
+			}
+			m.private[contacts[i].Topic] = stream
 		} else {
-			stream := NewStream(context.Background(), contacts[i], m.proto, NewPublicHandler(contacts[i], m.db))
+			_, exist := m.public[contacts[i].Topic]
+			if exist {
+				return fmt.Errorf("multiple public chats with same topic: %s", contacts[i].Topic)
+			}
+			stream := NewStream(context.Background(), options, m.proto, NewPublicHandler(contacts[i], m.db))
 			err := stream.Start()
 			if err != nil {
 				return errors.Wrap(err, "unable to start stream")
 			}
-			m.public[contacts[i].Name] = stream
+			m.public[contacts[i].Topic] = stream
 		}
-	}
-	// FIXME(dshulyak) even if we have no private contacts we still should start a stream for private messages.
-	// this requires moving topic one level higher, from whisper adapter to the client
-	if len(private) != 0 {
-		any := private[0]
-		stream := NewStream(context.Background(), any, m.proto, NewPrivateHandler(private, m.db))
-		err := stream.Start()
-		if err != nil {
-			return errors.Wrap(err, "unable to start private stream")
-		}
-		m.private = stream
 	}
 	log.Printf("[INFO] request messages from mail sever")
 	return m.RequestAll(context.Background(), true)
@@ -86,25 +82,66 @@ func (m *MessengerV2) Start() error {
 func (m *MessengerV2) Join(ctx context.Context, c Contact) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	err := m.db.SaveContacts([]Contact{c})
+	if c.Type == ContactPublicRoom {
+		return m.joinPublic(ctx, c)
+	}
+	return m.joinPrivate(ctx, c)
+}
+
+func (m *MessengerV2) joinPrivate(ctx context.Context, c Contact) (err error) {
+	// FIXME(dshulyak) don't request messages on every join
+	// all messages must be requested in a single request when app starts
+	defer func() {
+		if err == nil {
+			err = m.Request(ctx, c, protocol.DefaultRequestOptions())
+		}
+	}()
+	_, exist := m.private[c.Topic]
+	if exist {
+		return
+	}
+	var options protocol.SubscribeOptions
+	options, err = createSubscribeOptions(c)
 	if err != nil {
-		return errors.Wrap(err, "can't add contact to db")
+		return err
 	}
-	_, exist := m.public[c.Name]
-	if c.Type == ContactPublicKey || exist {
-		// FIXME(dshulyak) don't request messages on every join
-		// all messages must be requested in a single request when app starts
-		return m.Request(ctx, c, protocol.DefaultRequestOptions())
-	}
-	log.Printf("[INFO] created stream for contact %s\n", c)
-	stream := NewStream(context.Background(), c, m.proto, NewPublicHandler(c, m.db))
+	stream := NewStream(context.Background(), options, m.proto, NewPrivateHandler(m.db))
 	err = stream.Start()
 	if err != nil {
-		return errors.Wrap(err, "can't subscribe to a stream")
+		err = errors.Wrap(err, "can't subscribe to a stream")
+		return err
+	}
+	m.private[c.Name] = stream
+	return
+}
+
+func (m *MessengerV2) joinPublic(ctx context.Context, c Contact) (err error) {
+	// FIXME(dshulyak) don't request messages on every join
+	// all messages must be requested in a single request when app starts
+	defer func() {
+		if err == nil {
+			err = m.Request(ctx, c, protocol.DefaultRequestOptions())
+		}
+	}()
+	_, exist := m.public[c.Topic]
+	if exist {
+		// FIXME(dshulyak) don't request messages on every join
+		// all messages must be requested in a single request when app starts
+		return
+	}
+	var options protocol.SubscribeOptions
+	options, err = createSubscribeOptions(c)
+	if err != nil {
+		return err
+	}
+	stream := NewStream(context.Background(), options, m.proto, NewPublicHandler(c, m.db))
+	err = stream.Start()
+	if err != nil {
+		err = errors.Wrap(err, "can't subscribe to a stream")
+		return
 	}
 	m.public[c.Name] = stream
-	log.Printf("[INFO] made request for new messages contact %s\n", c)
-	return m.Request(ctx, c, protocol.DefaultRequestOptions())
+	return
 }
 
 // Messages reads all messages from database.
