@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS user_messages (
-id VARCHAR UNIQUE NOT NULL,
+id BLOB UNIQUE NOT NULL,
 contact_id VARCHAR NOT NULL,
 content_type VARCHAR,
 message_type VARCHAR,

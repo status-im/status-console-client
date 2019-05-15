@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/pkg/errors"
+
 	_ "github.com/mutecomm/go-sqlcipher" // We require go sqlcipher that overrides default implementation
 )
 
@@ -29,7 +31,7 @@ func openDB(path string, key string, kdfIter int) (*sql.DB, error) {
 	}
 
 	if _, err = db.Exec(keyString); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to set key pragma")
 	}
 
 	kdfString := fmt.Sprintf("PRAGMA kdf_iter = '%d'", kdfIter)

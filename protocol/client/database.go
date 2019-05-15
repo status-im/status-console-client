@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/gob"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -94,7 +95,7 @@ func InitializeTmpDB() (TmpDatabase, error) {
 	if err != nil {
 		return TmpDatabase{}, err
 	}
-	db, err := InitializeDB(tmpfile.Name(), string(pass))
+	db, err := InitializeDB(tmpfile.Name(), hex.EncodeToString(pass))
 	if err != nil {
 		return TmpDatabase{}, err
 	}
