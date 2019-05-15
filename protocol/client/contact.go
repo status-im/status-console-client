@@ -52,6 +52,7 @@ type Contact struct {
 	Name      string           `json:"name"`
 	Type      ContactType      `json:"type"`
 	State     ContactState     `json:"state"`
+	Topic     string           `json:"topic"`
 	PublicKey *ecdsa.PublicKey `json:"-"`
 }
 
@@ -110,7 +111,7 @@ func (c *Contact) UnmarshalJSON(data []byte) error {
 func ContactWithPublicKey(name, pubKeyHex string) (c Contact, err error) {
 	c.Name = name
 	c.Type = ContactPublicKey
-
+	c.Topic = DefaultPrivateTopic()
 	pubKeyBytes, err := hexutil.Decode(pubKeyHex)
 	if err != nil {
 		return
@@ -118,14 +119,4 @@ func ContactWithPublicKey(name, pubKeyHex string) (c Contact, err error) {
 
 	c.PublicKey, err = crypto.UnmarshalPubkey(pubKeyBytes)
 	return
-}
-
-// ContainsContact check if a slice contains a given contact.
-func ContainsContact(cs []Contact, c Contact) bool {
-	for _, item := range cs {
-		if item == c {
-			return true
-		}
-	}
-	return false
 }

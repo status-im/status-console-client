@@ -20,6 +20,7 @@ func TestContactReplacedBySameName(t *testing.T) {
 		Name:      "first",
 		Type:      ContactPublicRoom,
 		PublicKey: &pk.PublicKey,
+		Topic:     "first",
 	}
 	require.NoError(t, db.SaveContacts([]Contact{contact}))
 	require.NoError(t, db.SaveContacts([]Contact{contact}))
@@ -42,6 +43,7 @@ func TestMessagesFilteredAndOrderedByTimestamp(t *testing.T) {
 		Name:      "test",
 		Type:      ContactPublicRoom,
 		PublicKey: &pk.PublicKey,
+		Topic:     "first",
 	}
 	require.NoError(t, db.SaveContacts([]Contact{contact}))
 	contacts, err := db.Contacts()
@@ -75,8 +77,9 @@ func TestMessagesFilteredAndOrderedByTimestamp(t *testing.T) {
 
 func TestSaveMessagesUniqueConstraint(t *testing.T) {
 	contact := Contact{
-		Name: "test",
-		Type: ContactPublicRoom,
+		Name:  "test",
+		Type:  ContactPublicRoom,
+		Topic: "first",
 	}
 	sameid := []byte("1")
 	msg1 := protocol.Message{
@@ -107,8 +110,9 @@ func TestGetLastMessageClock(t *testing.T) {
 		}
 	}
 	contact := Contact{
-		Name: "test",
-		Type: ContactPublicRoom,
+		Name:  "test",
+		Type:  ContactPublicRoom,
+		Topic: "first",
 	}
 	_, err = db.SaveMessages(contact, messages)
 	require.NoError(t, err)
@@ -127,6 +131,7 @@ func TestPublicContactExist(t *testing.T) {
 		Name:      "first",
 		Type:      ContactPublicKey,
 		PublicKey: &pk.PublicKey,
+		Topic:     "first",
 	}
 	require.NoError(t, db.SaveContacts([]Contact{contact}))
 	exists, err := db.PublicContactExist(contact)
@@ -145,16 +150,19 @@ func BenchmarkLoadMessages(b *testing.B) {
 			Name:      "first",
 			Type:      ContactPublicKey,
 			PublicKey: &pk.PublicKey,
+			Topic:     "test",
 		},
 		{
 			Name:      "second",
 			Type:      ContactPublicKey,
 			PublicKey: &pk.PublicKey,
+			Topic:     "test",
 		},
 		{
 			Name:      "third",
 			Type:      ContactPublicKey,
 			PublicKey: &pk.PublicKey,
+			Topic:     "test",
 		},
 	}
 	count := 10000

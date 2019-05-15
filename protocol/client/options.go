@@ -11,9 +11,9 @@ var (
 )
 
 func createSubscribeOptions(c Contact) (opts protocol.SubscribeOptions, err error) {
+	opts.ChatName = c.Topic
 	switch c.Type {
 	case ContactPublicRoom:
-		opts.ChatName = c.Name
 	case ContactPublicKey:
 		opts.Recipient = c.PublicKey
 	default:
@@ -23,9 +23,9 @@ func createSubscribeOptions(c Contact) (opts protocol.SubscribeOptions, err erro
 }
 
 func createSendOptions(c Contact) (opts protocol.SendOptions, err error) {
+	opts.ChatName = c.Topic
 	switch c.Type {
 	case ContactPublicRoom:
-		opts.ChatName = c.Name
 	case ContactPublicKey:
 		opts.Recipient = c.PublicKey
 	default:
@@ -36,10 +36,9 @@ func createSendOptions(c Contact) (opts protocol.SendOptions, err error) {
 
 func enhanceRequestOptions(c Contact, opts *protocol.RequestOptions) error {
 	var chatOptions protocol.ChatOptions
-
+	chatOptions.ChatName = c.Topic
 	switch c.Type {
 	case ContactPublicRoom:
-		chatOptions.ChatName = c.Name
 	case ContactPublicKey:
 		chatOptions.Recipient = c.PublicKey
 	default:

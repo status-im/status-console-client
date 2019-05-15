@@ -260,7 +260,7 @@ func (c *criteria) ToWhisper() whisper.Criteria {
 }
 
 func (c *criteria) updateForPublicGroup(name string) error {
-	topic, err := PublicChatTopic(name)
+	topic, err := ToTopic(name)
 	if err != nil {
 		return err
 	}
@@ -275,8 +275,8 @@ func (c *criteria) updateForPublicGroup(name string) error {
 	return nil
 }
 
-func (c *criteria) updateForPrivate(recipient *ecdsa.PublicKey) error {
-	topic, err := PrivateChatTopic()
+func (c *criteria) updateForPrivate(name string, recipient *ecdsa.PublicKey) error {
+	topic, err := ToTopic(name)
 	if err != nil {
 		return err
 	}
@@ -292,8 +292,8 @@ func (c *criteria) updateForPrivate(recipient *ecdsa.PublicKey) error {
 }
 
 func updateCriteriaFromSubscribeOptions(c *criteria, options protocol.SubscribeOptions) error {
-	if options.Recipient != nil {
-		return c.updateForPrivate(options.Recipient)
+	if options.Recipient != nil && options.ChatName != "" {
+		return c.updateForPrivate(options.ChatName, options.Recipient)
 	} else if options.ChatName != "" {
 		return c.updateForPublicGroup(options.ChatName)
 	} else {

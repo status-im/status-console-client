@@ -6,6 +6,7 @@ import (
 	"github.com/status-im/status-console-client/protocol/v1"
 	"github.com/status-im/status-go/services/shhext"
 	whisper "github.com/status-im/whisper/whisperv6"
+	"golang.org/x/crypto/sha3"
 )
 
 func createShhextRequestMessagesParam(enode, mailSymKeyID string, options protocol.RequestOptions) (shhext.MessagesRequest, error) {
@@ -29,13 +30,18 @@ func createShhextRequestMessagesParam(enode, mailSymKeyID string, options protoc
 }
 
 func topicForChatOptions(options protocol.ChatOptions) (whisper.TopicType, error) {
-	if options.Recipient != nil {
-		return PrivateChatTopic()
-	}
-
 	if options.ChatName != "" {
-		return PublicChatTopic(options.ChatName)
+		return ToTopic(options.ChatName)
 	}
 
 	return whisper.TopicType{}, errors.New("invalid options")
+}
+
+// ToTopic returns a Whisper topic for a channel name.
+func ToTopic(name string) (whisper.TopicType, error) {
+	hash := sha3.NewLegacyKeccak256()
+	if _, err := hash.Write([]byte(name)); err != nil {
+		return whisper.TopicType{}, err
+	}
+	return whisper.BytesToTopic(hash.Sum(nil)), nil
 }

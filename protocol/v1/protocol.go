@@ -31,9 +31,6 @@ func (o ChatOptions) Validate() error {
 	if o == (ChatOptions{}) {
 		return errors.New("empty options")
 	}
-	if o.ChatName != "" && o.Recipient != nil {
-		return errors.New("field ChatName and Recipient both set")
-	}
 	return nil
 }
 

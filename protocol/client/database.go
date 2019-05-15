@@ -150,7 +150,7 @@ func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
 	if err != nil {
 		return err
 	}
-	stmt, err = tx.Prepare("INSERT OR REPLACE INTO user_contacts(id, name, type, state, public_key) VALUES (?, ?, ?, ?, ?)")
+	stmt, err = tx.Prepare("INSERT OR REPLACE INTO user_contacts(id, name, type, state, topic, public_key) VALUES (?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
 		pkey := append([]byte{}, buf.Bytes()...)
 		buf.Reset()
 		id := fmt.Sprintf("%s:%d", contacts[i].Name, contacts[i].Type)
-		_, err = stmt.Exec(id, contacts[i].Name, contacts[i].Type, contacts[i].State, pkey)
+		_, err = stmt.Exec(id, contacts[i].Name, contacts[i].Type, contacts[i].State, contacts[i].Topic, pkey)
 		if err != nil {
 			return err
 		}
@@ -185,7 +185,7 @@ func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
 
 // Contacts returns all available contacts.
 func (db SQLLiteDatabase) Contacts() ([]Contact, error) {
-	rows, err := db.db.Query("SELECT name, type, state, public_key FROM user_contacts")
+	rows, err := db.db.Query("SELECT name, type, state, topic, public_key FROM user_contacts")
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +200,7 @@ func (db SQLLiteDatabase) Contacts() ([]Contact, error) {
 		dec := gob.NewDecoder(&buf)
 		contact := Contact{}
 		pkey := []byte{}
-		err = rows.Scan(&contact.Name, &contact.Type, &contact.State, &pkey)
+		err = rows.Scan(&contact.Name, &contact.Type, &contact.State, &contact.Topic, &pkey)
 		if err != nil {
 			return nil, err
 		}

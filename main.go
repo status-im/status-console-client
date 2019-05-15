@@ -129,19 +129,21 @@ func main() {
 
 	if contacts, err := db.Contacts(); len(contacts) == 0 || err != nil {
 		debugContacts := []client.Contact{
-			{Name: "status", Type: client.ContactPublicRoom},
-			{Name: "status-core", Type: client.ContactPublicRoom},
-			{Name: "testing-adamb", Type: client.ContactPublicRoom},
+			{Name: "status", Type: client.ContactPublicRoom, Topic: "status"},
+			{Name: "status-core", Type: client.ContactPublicRoom, Topic: "status-core"},
+			{Name: "testing-adamb", Type: client.ContactPublicRoom, Topic: "testing-adamb"},
 			adambContact,
 		}
 		if err := db.SaveContacts(debugContacts); err != nil {
 			exitErr(err)
 		}
 	}
-	err = messenger.Start()
-	if err != nil {
-		exitErr(err)
-	}
+	go func() {
+		err = messenger.Start()
+		if err != nil {
+			exitErr(err)
+		}
+	}()
 
 	if !*noUI {
 		if err := setupGUI(privateKey, messenger); err != nil {

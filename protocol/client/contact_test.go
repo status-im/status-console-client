@@ -31,7 +31,7 @@ func TestContactMarshalUnmarshal(t *testing.T) {
 				Name: "status",
 				Type: ContactPublicRoom,
 			},
-			result: `{"name":"status","type":"ContactPublicRoom","state":0}`,
+			result: `{"name":"status","type":"ContactPublicRoom","state":0,"topic":""}`,
 		},
 		{
 			name: "ContactPublicKey",
@@ -40,7 +40,7 @@ func TestContactMarshalUnmarshal(t *testing.T) {
 				Type:      ContactPublicKey,
 				PublicKey: &privateKey.PublicKey,
 			},
-			result: fmt.Sprintf(`{"name":"user1","type":"ContactPublicKey","state":0,"public_key":"%s"}`, publicKeyStr),
+			result: fmt.Sprintf(`{"name":"user1","type":"ContactPublicKey","state":0,"topic":"","public_key":"%s"}`, publicKeyStr),
 		},
 	}
 

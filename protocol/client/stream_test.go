@@ -31,7 +31,7 @@ func TestPrivateStreamSavesNewContactsAndMessages(t *testing.T) {
 	pkey, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	private := NewPrivateHandler([]Contact{}, db)
+	private := NewPrivateHandler(db)
 	msg := protocol.Message{
 		ID:        []byte{1},
 		SigPubKey: &pkey.PublicKey,
