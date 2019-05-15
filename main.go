@@ -275,7 +275,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 	return &messenger, nil
 }
 
-func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
+func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*client.MessengerV2, error) {
 	// collect mail server request signals
 	signalsForwarder := newSignalForwarder()
 	go signalsForwarder.Start()
@@ -317,12 +317,12 @@ func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*cli
 	n := mvds.NewNode(&ds, t, Calc, mvds.PeerId(pk.PublicKey))
 
 	adapter := adapters.NewDataSyncClient(n, t)
-	messenger := client.NewMessenger(adapter, pk, db)
+	messenger := client.NewMessengerV2(pk, adapter, db)
 
 	protocolGethService.SetProtocol(adapter)
-	protocolGethService.SetMessenger(messenger)
+	protocolGethService.SetMessenger(&messenger)
 
-	return messenger, nil
+	return &messenger, nil
 }
 
 func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.MessengerV2) error {
