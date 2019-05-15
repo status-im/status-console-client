@@ -44,7 +44,6 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 		return nil, err
 	}
 
-
 	if options.ChatName == "" {
 		return nil, errors.New("missing chat name")
 	}
@@ -56,14 +55,7 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 
 	gid := toGroupId(topic)
 
-	if options.Recipient != nil {
-		p := mvds.PeerId(*options.Recipient)
-
-		if !c.sync.IsPeerInGroup(gid, p) {
-			c.sync.AddPeer(gid, p)
-			c.sync.Share(gid, p)
-		}
-	}
+	c.peer(gid, options.Recipient)
 
 	id, err := c.sync.AppendMessage(toGroupId(topic), data)
 	if err != nil {
@@ -75,6 +67,21 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 
 func (*DataSyncClient) Request(ctx context.Context, params protocol.RequestOptions) error {
 	return nil
+}
+
+func (c *DataSyncClient) peer(id mvds.GroupID, peer *ecdsa.PublicKey) {
+	if peer == nil {
+		return
+	}
+
+	p := mvds.PeerId(*peer)
+
+	if c.sync.IsPeerInGroup(id, p) {
+		return
+	}
+
+	c.sync.AddPeer(id, p)
+	c.sync.Share(id, p)
 }
 
 type DataSyncWhisperTransport struct {
