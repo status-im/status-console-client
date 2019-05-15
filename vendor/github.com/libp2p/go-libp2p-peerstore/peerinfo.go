@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/libp2p/go-libp2p-peer"
+	peer "github.com/libp2p/go-libp2p-peer"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -16,6 +16,12 @@ import (
 type PeerInfo struct {
 	ID    peer.ID
 	Addrs []ma.Multiaddr
+}
+
+var _ fmt.Stringer = PeerInfo{}
+
+func (pi PeerInfo) String() string {
+	return fmt.Sprintf("{%v: %v}", pi.ID, pi.Addrs)
 }
 
 var ErrInvalidAddr = fmt.Errorf("invalid p2p multiaddr")
@@ -58,7 +64,7 @@ func InfoFromP2pAddr(m ma.Multiaddr) (*PeerInfo, error) {
 }
 
 func InfoToP2pAddrs(pi *PeerInfo) ([]ma.Multiaddr, error) {
-	addrs := []ma.Multiaddr{}
+	var addrs []ma.Multiaddr
 	tpl := "/" + ma.ProtocolWithCode(ma.P_IPFS).Name + "/"
 	for _, addr := range pi.Addrs {
 		p2paddr, err := ma.NewMultiaddr(tpl + peer.IDB58Encode(pi.ID))
@@ -77,7 +83,7 @@ func (pi *PeerInfo) Loggable() map[string]interface{} {
 	}
 }
 
-func (pi *PeerInfo) MarshalJSON() ([]byte, error) {
+func (pi PeerInfo) MarshalJSON() ([]byte, error) {
 	out := make(map[string]interface{})
 	out["ID"] = pi.ID.Pretty()
 	var addrs []string

@@ -61,3 +61,7 @@ func (si InstrumentedStream) SetProtocol(pid protocol.ID) {
 func (si InstrumentedStream) Conn() inet.Conn {
 	return si.s.Conn()
 }
+
+func (si InstrumentedStream) Stat() inet.Stat {
+	return si.s.Stat()
+}
