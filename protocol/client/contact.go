@@ -61,6 +61,11 @@ func (c Contact) String() string {
 	return c.Name
 }
 
+// Equal returns true if contacts have same name and same type.
+func (c Contact) Equal(other Contact) bool {
+	return c.Name == other.Name && c.Type == other.Type
+}
+
 func (c Contact) MarshalJSON() ([]byte, error) {
 	type ContactAlias Contact
 
