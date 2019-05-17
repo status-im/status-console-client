@@ -329,27 +329,31 @@ func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, req shhext.
 
 	shhextAPI := shhext.NewPublicAPI(shhextService)
 
+	log.Printf("[WhisperServiceAdapter::requestMessages] request for a chunk with %d messages\n", req.Limit)
+	start := time.Now()
 	resp, err = shhextAPI.RequestMessagesSync(shhext.RetryConfig{
 		BaseTimeout: time.Second * 10,
 		StepTimeout: time.Second,
 		MaxRetries:  3,
 	}, req)
 	if err != nil {
+		log.Printf("[WhisperServiceAdapter::requestMessages] timed out. err %v\n", err)
 		return
 	}
+	log.Printf("[WhisperServiceAdapter::requestMessages] delivery for %d message took %v\n", req.Limit, time.Since(start))
 
-	log.Printf("[WhisperServiceAdapter::requestMessages] response = %+v, err = %v", resp, err)
+	log.Printf("[WhisperServiceAdapter::requestMessages] response = %+v, err = %v\n", resp, err)
 
 	if resp.Error != nil {
 		err = resp.Error
 		return
 	}
-
-	if !followCursor || req.Cursor == "" {
+	if !followCursor || resp.Cursor == "" {
 		return
 	}
 
 	req.Cursor = resp.Cursor
+	log.Printf("[WhisperServiceAdapter::requestMessages] request messages with cursor %v\n", req.Cursor)
 	return a.requestMessages(ctx, req, true)
 }
 
