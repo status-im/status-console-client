@@ -57,10 +57,12 @@ func (c *ChatViewController) readEventsLoop(contact client.Contact) {
 		messages = []*protocol.Message{}
 		clock    int64
 		inorder  bool
+		events   = make(chan client.Event)
+		sub      = c.messenger.Subscribe(events)
+		// We use a ticker in order to buffer storm of received events.
+		t = time.NewTicker(time.Second)
 	)
-
-	// We use a ticker in order to buffer storm of received events.
-	t := time.NewTicker(time.Second)
+	defer sub.Unsubscribe()
 	defer t.Stop()
 
 	for {
@@ -86,10 +88,16 @@ func (c *ChatViewController) readEventsLoop(contact client.Contact) {
 				}
 			}
 			messages = []*protocol.Message{}
-		case event := <-c.messenger.Events():
+		case err := <-sub.Err():
+			if err == nil {
+				return
+			}
+			c.onError(err)
+			return
+		case event := <-events:
 			log.Printf("[ChatViewController::readEventsLoops] received an event: %+v", event)
 
-			switch ev := event.(type) {
+			switch ev := event.Interface.(type) {
 			case client.EventWithError:
 				c.onError(ev.GetError())
 			case client.EventWithContact:

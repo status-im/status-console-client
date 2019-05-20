@@ -7,22 +7,21 @@ import (
 	"log"
 	"sync"
 
+	"github.com/ethereum/go-ethereum/event"
 	"github.com/pkg/errors"
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
 func NewMessengerV2(identity *ecdsa.PrivateKey, proto protocol.Protocol, db Database) MessengerV2 {
-	feed := make(chan interface{})
+	events := &event.Feed{}
 	return MessengerV2{
 		identity: identity,
 		proto:    proto,
-		db:       NewDatabaseWithEvents(db, feed),
+		db:       NewDatabaseWithEvents(db, events),
 
 		public:  map[string]AsyncStream{},
 		private: map[string]AsyncStream{},
-		// FIXME(dshulyak) add sufficient buffer to this channel
-		// it may block stream that receives messages
-		events: feed,
+		events:  events,
 	}
 }
 
@@ -35,7 +34,7 @@ type MessengerV2 struct {
 	public  map[string]AsyncStream
 	private map[string]AsyncStream
 
-	events chan interface{}
+	events *event.Feed
 }
 
 func (m *MessengerV2) Start() error {
@@ -238,6 +237,6 @@ func (m *MessengerV2) Leave(c Contact) error {
 	return nil
 }
 
-func (m *MessengerV2) Events() <-chan interface{} {
-	return m.events
+func (m *MessengerV2) Subscribe(events chan Event) event.Subscription {
+	return m.events.Subscribe(events)
 }
