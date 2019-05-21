@@ -16,6 +16,16 @@ const (
 	EventTypeError
 )
 
+// Event is used to workaround event.Feed type checking.
+// Every event.Feed instance will remember first type that was used either in Send or Subscribe.
+// After that value of every object will be matched against that type.
+// For example if we subscribed first with interface{} - feed.etype will be changed to interface{}
+// and then when client.messageFeed is posted to event.Feed it will get value and match it against interface{}.
+// Feed type checking is either not accurate or it was designed to prevent subscribing with various interfaces.
+type Event struct {
+	Interface interface{}
+}
+
 type EventWithContact interface {
 	GetContact() Contact
 }

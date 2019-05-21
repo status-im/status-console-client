@@ -64,7 +64,7 @@ func TestSendMessage(t *testing.T) {
 	err = vc.Select(client.Contact{Name: chatName, Type: client.ContactPublicRoom, Topic: chatName})
 	require.NoError(t, err)
 	// close reading loops
-	defer close(vc.cancel)
+	close(vc.cancel)
 
 	err = vc.Send(payload)
 	require.NoError(t, err)
