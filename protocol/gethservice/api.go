@@ -189,7 +189,7 @@ func (api *PublicAPI) Chat(ctx context.Context, contact client.Contact) (*rpc.Su
 	// Create a broadcaster instance.
 	// TODO: move it.
 	if api.broadcaster == nil {
-		api.broadcaster = newBroadcaster(api.service.messenger.Events())
+		api.broadcaster = newBroadcaster(api.service.messenger)
 	}
 
 	// Subscription needs to be created

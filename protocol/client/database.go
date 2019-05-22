@@ -1,11 +1,11 @@
 package client
 
 import (
-	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"database/sql"
-	"encoding/gob"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -21,9 +21,35 @@ import (
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
-func init() {
-	// this is used for marshalling public key with a curve.
-	gob.Register(&secp256k1.BitCurve{})
+func marshalEcdsaPub(pub *ecdsa.PublicKey) (rst []byte, err error) {
+	switch pub.Curve.(type) {
+	case *secp256k1.BitCurve:
+		rst = make([]byte, 34)
+		rst[0] = 1
+		copy(rst[1:], secp256k1.CompressPubkey(pub.X, pub.Y))
+		return rst[:], nil
+	default:
+		return nil, errors.New("unknown curve")
+	}
+}
+
+func unmarshalEcdsaPub(buf []byte) (*ecdsa.PublicKey, error) {
+	pub := &ecdsa.PublicKey{}
+	if len(buf) < 1 {
+		return nil, errors.New("too small")
+	}
+	switch buf[0] {
+	case 1:
+		pub.Curve = secp256k1.S256()
+		pub.X, pub.Y = secp256k1.DecompressPubkey(buf[1:])
+		ok := pub.IsOnCurve(pub.X, pub.Y)
+		if !ok {
+			return nil, errors.New("not on curve")
+		}
+		return pub, nil
+	default:
+		return nil, errors.New("unknown curve")
+	}
 }
 
 const (
@@ -94,7 +120,7 @@ func InitializeTmpDB() (TmpDatabase, error) {
 	if err != nil {
 		return TmpDatabase{}, err
 	}
-	db, err := InitializeDB(tmpfile.Name(), string(pass))
+	db, err := InitializeDB(tmpfile.Name(), hex.EncodeToString(pass))
 	if err != nil {
 		return TmpDatabase{}, err
 	}
@@ -161,19 +187,14 @@ func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
 			_ = tx.Rollback()
 		}
 	}()
-	var (
-		buf bytes.Buffer
-	)
 	for i := range contacts {
-		enc := gob.NewEncoder(&buf)
+		pkey := []byte{}
 		if contacts[i].PublicKey != nil {
-			err = enc.Encode(contacts[i].PublicKey)
+			pkey, err = marshalEcdsaPub(contacts[i].PublicKey)
 			if err != nil {
 				return err
 			}
 		}
-		pkey := append([]byte{}, buf.Bytes()...)
-		buf.Reset()
 		id := fmt.Sprintf("%s:%d", contacts[i].Name, contacts[i].Type)
 		_, err = stmt.Exec(id, contacts[i].Name, contacts[i].Type, contacts[i].State, contacts[i].Topic, pkey)
 		if err != nil {
@@ -192,12 +213,10 @@ func (db SQLLiteDatabase) Contacts() ([]Contact, error) {
 
 	var (
 		rst = []Contact{}
-		buf bytes.Buffer
 	)
 	for rows.Next() {
 		// do not reuse same gob instance. same instance marshalls two same objects differently
 		// if used repetitively.
-		dec := gob.NewDecoder(&buf)
 		contact := Contact{}
 		pkey := []byte{}
 		err = rows.Scan(&contact.Name, &contact.Type, &contact.State, &contact.Topic, &pkey)
@@ -205,12 +224,10 @@ func (db SQLLiteDatabase) Contacts() ([]Contact, error) {
 			return nil, err
 		}
 		if len(pkey) != 0 {
-			buf.Write(pkey)
-			err = dec.Decode(&contact.PublicKey)
+			contact.PublicKey, err = unmarshalEcdsaPub(pkey)
 			if err != nil {
 				return nil, err
 			}
-			buf.Reset()
 		}
 		rst = append(rst, contact)
 	}
@@ -226,17 +243,16 @@ func (db SQLLiteDatabase) DeleteContact(c Contact) error {
 }
 
 func (db SQLLiteDatabase) PublicContactExist(c Contact) (exists bool, err error) {
-	buf := bytes.Buffer{}
-	enc := gob.NewEncoder(&buf)
+	var pkey []byte
 	if c.PublicKey != nil {
-		err = enc.Encode(c.PublicKey)
+		pkey, err = marshalEcdsaPub(c.PublicKey)
 		if err != nil {
 			return false, err
 		}
 	} else {
 		return false, errors.New("no public key")
 	}
-	err = db.db.QueryRow("SELECT EXISTS(SELECT id FROM user_contacts WHERE public_key = ?)", buf.Bytes()).Scan(&exists)
+	err = db.db.QueryRow("SELECT EXISTS(SELECT id FROM user_contacts WHERE public_key = ?)", pkey).Scan(&exists)
 	return exists, err
 }
 
@@ -276,20 +292,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	}()
 
 	var (
-		buf       bytes.Buffer
 		contactID = fmt.Sprintf("%s:%d", c.Name, c.Type)
 		rst       sql.Result
 	)
 	for _, msg := range messages {
-		enc := gob.NewEncoder(&buf)
 		pkey := []byte{}
 		if msg.SigPubKey != nil {
-			err = enc.Encode(msg.SigPubKey)
-			if err != nil {
-				return
-			}
-			pkey = append(pkey, buf.Bytes()...)
-			buf.Reset()
+			pkey, err = marshalEcdsaPub(msg.SigPubKey)
 		}
 		rst, err = stmt.Exec(
 			msg.ID, contactID, msg.ContentT, msg.MessageT, msg.Text,
@@ -320,10 +329,8 @@ FROM user_messages WHERE contact_id = ? AND timestamp >= ? AND timestamp <= ? OR
 	}
 	var (
 		rst = []*protocol.Message{}
-		buf bytes.Buffer
 	)
 	for rows.Next() {
-		dec := gob.NewDecoder(&buf)
 		msg := protocol.Message{
 			Content: protocol.Content{},
 		}
@@ -335,12 +342,10 @@ FROM user_messages WHERE contact_id = ? AND timestamp >= ? AND timestamp <= ? OR
 			return nil, err
 		}
 		if len(pkey) != 0 {
-			buf.Write(pkey)
-			err = dec.Decode(&msg.SigPubKey)
+			msg.SigPubKey, err = unmarshalEcdsaPub(pkey)
 			if err != nil {
 				return nil, err
 			}
-			buf.Reset()
 		}
 		rst = append(rst, &msg)
 	}
@@ -358,10 +363,8 @@ FROM user_messages WHERE contact_id = ? AND rowid >= ? ORDER BY clock`,
 	}
 	var (
 		rst = []*protocol.Message{}
-		buf bytes.Buffer
 	)
 	for rows.Next() {
-		dec := gob.NewDecoder(&buf)
 		msg := protocol.Message{
 			Content: protocol.Content{},
 		}
@@ -373,12 +376,10 @@ FROM user_messages WHERE contact_id = ? AND rowid >= ? ORDER BY clock`,
 			return nil, err
 		}
 		if len(pkey) != 0 {
-			buf.Write(pkey)
-			err = dec.Decode(&msg.SigPubKey)
+			msg.SigPubKey, err = unmarshalEcdsaPub(pkey)
 			if err != nil {
 				return nil, err
 			}
-			buf.Reset()
 		}
 		rst = append(rst, &msg)
 	}

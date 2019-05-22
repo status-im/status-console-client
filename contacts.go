@@ -2,9 +2,15 @@ package main
 
 import (
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/jroimartin/gocui"
 	"github.com/status-im/status-console-client/protocol/client"
+)
+
+const (
+	refreshInterval = time.Second
 )
 
 // contactToString returns a string representation.
@@ -24,11 +30,14 @@ type ContactsViewController struct {
 	*ViewController
 	messenger *client.MessengerV2
 	contacts  []client.Contact
+
+	quit chan struct{}
+	once sync.Once
 }
 
 // NewContactsViewController returns a new contact view controller.
 func NewContactsViewController(vm *ViewController, m *client.MessengerV2) *ContactsViewController {
-	return &ContactsViewController{ViewController: vm, messenger: m}
+	return &ContactsViewController{ViewController: vm, messenger: m, quit: make(chan struct{})}
 }
 
 // refresh repaints the current list of contacts.
@@ -61,6 +70,20 @@ func (c *ContactsViewController) load() error {
 
 // LoadAndRefresh loads contacts from the storage and refreshes the view.
 func (c *ContactsViewController) LoadAndRefresh() error {
+	c.once.Do(func() {
+		go func() {
+			ticker := time.Tick(refreshInterval)
+			for {
+				select {
+				case <-ticker:
+					_ = c.LoadAndRefresh()
+				case <-c.quit:
+					return
+				}
+			}
+
+		}()
+	})
 	if err := c.load(); err != nil {
 		return err
 	}

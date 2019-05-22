@@ -1,16 +1,21 @@
 package gethservice
 
 import (
+	"github.com/ethereum/go-ethereum/event"
 	"github.com/status-im/status-console-client/protocol/client"
 )
 
+type publisher interface {
+	Subscribe(chan client.Event) event.Subscription
+}
+
 type broadcaster struct {
-	source <-chan interface{}
+	source publisher
 	subs   map[client.Contact][]chan interface{}
 	cancel chan struct{}
 }
 
-func newBroadcaster(source <-chan interface{}) *broadcaster {
+func newBroadcaster(source publisher) *broadcaster {
 	b := broadcaster{
 		source: source,
 		subs:   make(map[client.Contact][]chan interface{}),
@@ -23,12 +28,14 @@ func newBroadcaster(source <-chan interface{}) *broadcaster {
 }
 
 func (b *broadcaster) start(cancel chan struct{}) {
+	events := make(chan client.Event)
+	sub := b.source.Subscribe(events)
 	for {
 		select {
-		case item := <-b.source:
+		case item := <-events:
 			var subs []chan interface{}
 
-			switch v := item.(type) {
+			switch v := item.Interface.(type) {
 			case client.EventWithContact:
 				subs = b.subs[v.GetContact()]
 			}
@@ -38,7 +45,10 @@ func (b *broadcaster) start(cancel chan struct{}) {
 			for _, out := range subs {
 				out <- item
 			}
+		case <-sub.Err():
+			return
 		case <-cancel:
+			sub.Unsubscribe()
 			return
 		}
 	}
