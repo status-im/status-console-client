@@ -134,8 +134,20 @@ func main() {
 			{Name: "testing-adamb", Type: client.ContactPublicRoom, Topic: "testing-adamb"},
 			adambContact,
 		}
-		if err := db.SaveContacts(debugContacts); err != nil {
-			exitErr(err)
+		uniqueContacts := []client.Contact{}
+		for _, c := range debugContacts {
+			exist, err := db.ContactExist(c)
+			if err != nil {
+				exitErr(err)
+			}
+			if !exist {
+				uniqueContacts = append(uniqueContacts, c)
+			}
+		}
+		if len(uniqueContacts) != 0 {
+			if err := db.SaveContacts(uniqueContacts); err != nil {
+				exitErr(err)
+			}
 		}
 	}
 	go func() {
