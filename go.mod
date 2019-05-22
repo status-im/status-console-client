@@ -18,7 +18,6 @@ require (
 	github.com/golang/mock v1.3.1
 	github.com/influxdata/influxdb v1.7.6 // indirect
 	github.com/jroimartin/gocui v0.4.0
-	github.com/jteeuwen/go-bindata v3.0.7+incompatible // indirect
 	github.com/karalabe/hid v0.0.0-20181128192157-d815e0c1a2e2 // indirect
 	github.com/leodido/go-urn v1.1.0 // indirect
 	github.com/mattn/go-runewidth v0.0.4 // indirect
@@ -47,7 +46,6 @@ require (
 	golang.org/x/net v0.0.0-20190522135303-fa69b94a3b58 // indirect
 	golang.org/x/sys v0.0.0-20190522044717-8097e1b27ff5 // indirect
 	golang.org/x/text v0.3.2 // indirect
-	golang.org/x/tools v0.0.0-20190521203540-521d6ed310dd // indirect
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/go-playground/validator.v9 v9.24.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
