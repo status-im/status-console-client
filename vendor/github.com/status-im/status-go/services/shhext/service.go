@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/status-im/status-go/db"
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/services/shhext/chat"
 	"github.com/status-im/status-go/services/shhext/dedup"
@@ -34,18 +35,20 @@ var errProtocolNotInitialized = errors.New("procotol is not initialized")
 // EnvelopeEventsHandler used for two different event types.
 type EnvelopeEventsHandler interface {
 	EnvelopeSent(common.Hash)
-	EnvelopeExpired(common.Hash)
+	EnvelopeExpired(common.Hash, error)
 	MailServerRequestCompleted(common.Hash, common.Hash, []byte, error)
 	MailServerRequestExpired(common.Hash)
 }
 
 // Service is a service that provides some additional Whisper API.
 type Service struct {
+	storage          db.TransactionalStorage
 	w                *whisper.Whisper
 	config           params.ShhextConfig
 	envelopesMonitor *EnvelopesMonitor
 	mailMonitor      *MailRequestMonitor
 	requestsRegistry *RequestsRegistry
+	historyUpdates   *HistoryUpdateReactor
 	server           *p2p.Server
 	nodeID           *ecdsa.PrivateKey
 	deduplicator     *dedup.Deduplicator
@@ -53,25 +56,25 @@ type Service struct {
 	dataDir          string
 	installationID   string
 	pfsEnabled       bool
-
-	peerStore       *mailservers.PeerStore
-	cache           *mailservers.Cache
-	connManager     *mailservers.ConnectionManager
-	lastUsedMonitor *mailservers.LastUsedConnectionMonitor
+	peerStore        *mailservers.PeerStore
+	cache            *mailservers.Cache
+	connManager      *mailservers.ConnectionManager
+	lastUsedMonitor  *mailservers.LastUsedConnectionMonitor
 }
 
 // Make sure that Service implements node.Service interface.
 var _ node.Service = (*Service)(nil)
 
 // New returns a new Service. dataDir is a folder path to a network-independent location
-func New(w *whisper.Whisper, handler EnvelopeEventsHandler, db *leveldb.DB, config params.ShhextConfig) *Service {
-	cache := mailservers.NewCache(db)
+func New(w *whisper.Whisper, handler EnvelopeEventsHandler, ldb *leveldb.DB, config params.ShhextConfig) *Service {
+	cache := mailservers.NewCache(ldb)
 	ps := mailservers.NewPeerStore(cache)
 	delay := defaultRequestsDelay
 	if config.RequestsDelay != 0 {
 		delay = config.RequestsDelay
 	}
 	requestsRegistry := NewRequestsRegistry(delay)
+	historyUpdates := NewHistoryUpdateReactor()
 	mailMonitor := &MailRequestMonitor{
 		w:                w,
 		handler:          handler,
@@ -80,12 +83,14 @@ func New(w *whisper.Whisper, handler EnvelopeEventsHandler, db *leveldb.DB, conf
 	}
 	envelopesMonitor := NewEnvelopesMonitor(w, handler, config.MailServerConfirmations, ps, config.MaxMessageDeliveryAttempts)
 	return &Service{
+		storage:          db.NewLevelDBStorage(ldb),
 		w:                w,
 		config:           config,
 		envelopesMonitor: envelopesMonitor,
 		mailMonitor:      mailMonitor,
 		requestsRegistry: requestsRegistry,
-		deduplicator:     dedup.NewDeduplicator(w, db),
+		historyUpdates:   historyUpdates,
+		deduplicator:     dedup.NewDeduplicator(w, ldb),
 		dataDir:          config.BackupDisabledDataDir,
 		installationID:   config.InstallationID,
 		pfsEnabled:       config.PFSEnabled,

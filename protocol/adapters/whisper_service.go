@@ -396,6 +396,7 @@ func newFilter(keys keysManager) *filter {
 		Filter: &whisper.Filter{
 			PoW:      0,
 			AllowP2P: true,
+			Messages: whisper.NewMemoryMessageStore(),
 		},
 		keys: keys,
 	}
