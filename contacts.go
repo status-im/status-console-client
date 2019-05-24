@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -76,7 +77,7 @@ func (c *ContactsViewController) LoadAndRefresh() error {
 			for {
 				select {
 				case <-ticker:
-					_ = c.LoadAndRefresh()
+					_ = c.refreshOnChanges()
 				case <-c.quit:
 					return
 				}
@@ -89,6 +90,32 @@ func (c *ContactsViewController) LoadAndRefresh() error {
 	}
 	c.refresh()
 	return nil
+}
+
+func (c *ContactsViewController) refreshOnChanges() error {
+	contacts, err := c.messenger.Contacts()
+	if err != nil {
+		return err
+	}
+	if c.changes(contacts) {
+		log.Printf("[CONTACTS] new contacts %v", contacts)
+		c.contacts = contacts
+		c.refresh()
+	}
+	return nil
+}
+
+func (c *ContactsViewController) changes(contacts []client.Contact) bool {
+	if len(contacts) != len(c.contacts) {
+		return true
+	}
+	// every time contacts are sorted in a same way.
+	for i := range contacts {
+		if !contacts[i].Equal(c.contacts[i]) {
+			return true
+		}
+	}
+	return false
 }
 
 // ContactByIdx allows to retrieve a contact for a given index.
