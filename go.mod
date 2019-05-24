@@ -18,7 +18,7 @@ require (
 	github.com/golang/mock v1.3.1
 	github.com/influxdata/influxdb v1.7.6 // indirect
 	github.com/jroimartin/gocui v0.4.0
-	github.com/karalabe/hid v0.0.0-20181128192157-d815e0c1a2e2 // indirect
+	github.com/karalabe/hid v0.0.0-20190524082611-12a701bced72 // indirect
 	github.com/leodido/go-urn v1.1.0 // indirect
 	github.com/mattn/go-runewidth v0.0.4 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
