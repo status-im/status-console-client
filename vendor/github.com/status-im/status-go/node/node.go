@@ -16,8 +16,8 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
+	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/discv5"
-	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/status-im/status-go/mailserver"
 	"github.com/status-im/status-go/params"
@@ -218,10 +218,6 @@ func activateLightEthService(stack *node.Node, config *params.NodeConfig) error 
 	ethConf.SyncMode = downloader.LightSync
 	ethConf.NetworkId = config.NetworkID
 	ethConf.DatabaseCache = config.LightEthConfig.DatabaseCache
-	ethConf.ULC = &eth.ULCConfig{
-		TrustedServers:     config.LightEthConfig.TrustedNodes,
-		MinTrustedFraction: config.LightEthConfig.MinTrustedFraction,
-	}
 	return stack.Register(func(ctx *node.ServiceContext) (node.Service, error) {
 		return les.New(ctx, &ethConf)
 	})
@@ -235,7 +231,7 @@ func activatePersonalService(stack *node.Node, config *params.NodeConfig) error 
 }
 
 func activateStatusService(stack *node.Node, config *params.NodeConfig) error {
-	if !config.EnableStatusService {
+	if !config.StatusServiceEnabled {
 		logger.Info("Status service api is disabled")
 		return nil
 	}
@@ -327,19 +323,28 @@ func activateShhService(stack *node.Node, config *params.NodeConfig, db *leveldb
 		if err := ctx.Service(&whisper); err != nil {
 			return nil, err
 		}
-		return shhext.New(whisper, shhext.EnvelopeSignalHandler{}, db, config.ShhextConfig), nil
+
+		config := &shhext.ServiceConfig{
+			DataDir:        config.BackupDisabledDataDir,
+			InstallationID: config.InstallationID,
+			Debug:          config.DebugAPIEnabled,
+			PFSEnabled:     config.PFSEnabled,
+		}
+
+		svc := shhext.New(whisper, shhext.EnvelopeSignalHandler{}, db, config)
+		return svc, nil
 	})
 }
 
-// parseNodes creates list of enode.Node out of enode strings.
-func parseNodes(enodes []string) []*enode.Node {
-	var nodes []*enode.Node
-	for _, item := range enodes {
-		parsedPeer, err := enode.ParseV4(item)
+// parseNodes creates list of discover.Node out of enode strings.
+func parseNodes(enodes []string) []*discover.Node {
+	var nodes []*discover.Node
+	for _, enode := range enodes {
+		parsedPeer, err := discover.ParseNode(enode)
 		if err == nil {
 			nodes = append(nodes, parsedPeer)
 		} else {
-			logger.Error("Failed to parse enode", "enode", item, "err", err)
+			logger.Error("Failed to parse enode", "enode", enode, "err", err)
 		}
 
 	}
@@ -361,10 +366,10 @@ func parseNodesV5(enodes []string) []*discv5.Node {
 	return nodes
 }
 
-func parseNodesToNodeID(enodes []string) []enode.ID {
-	nodeIDs := make([]enode.ID, 0, len(enodes))
+func parseNodesToNodeID(enodes []string) []discover.NodeID {
+	nodeIDs := make([]discover.NodeID, 0, len(enodes))
 	for _, node := range parseNodes(enodes) {
-		nodeIDs = append(nodeIDs, node.ID())
+		nodeIDs = append(nodeIDs, node.ID)
 	}
 	return nodeIDs
 }

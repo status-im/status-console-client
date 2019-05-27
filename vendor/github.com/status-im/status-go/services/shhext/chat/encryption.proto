@@ -15,17 +15,16 @@ message Bundle {
   map<string,SignedPreKey> signed_pre_keys = 2;
   // Prekey signature
   bytes signature = 4;
-
-  // When the bundle was created locally
-  int64 timestamp = 5;
 }
 
 message BundleContainer {
-  reserved 3;
   // X3DH prekey bundle
   Bundle bundle = 1;
   // Private signed prekey
   bytes private_signed_pre_key = 2;
+
+  // Local time creation
+  int64 timestamp = 3;
 }
 
 message DRHeader {
@@ -45,11 +44,12 @@ message DHHeader {
 }
 
 message X3DHHeader {
-  reserved 3;
   // Ephemeral key used
   bytes key = 1;
   // Used bundle's signed prekey
   bytes id = 4;
+  // DEPRECATED: The device id
+  string installation_id = 3;
 }
 
 // Direct message value
@@ -68,9 +68,6 @@ message ProtocolMessage {
 
   // The device id of the sender
   string installation_id = 2;
-
-  // List of bundles
-  repeated Bundle bundles = 3;
 
   // One to one message, encrypted, indexed by installation_id
   map<string,DirectMessageProtocol> direct_message = 101;

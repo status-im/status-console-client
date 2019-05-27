@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/pkg/errors"
@@ -88,13 +89,6 @@ func (m *MessengerV2) Join(ctx context.Context, c Contact) error {
 }
 
 func (m *MessengerV2) joinPrivate(ctx context.Context, c Contact) (err error) {
-	// FIXME(dshulyak) don't request messages on every join
-	// all messages must be requested in a single request when app starts
-	defer func() {
-		if err == nil {
-			err = m.Request(ctx, c, protocol.DefaultRequestOptions())
-		}
-	}()
 	_, exist := m.private[c.Topic]
 	if exist {
 		return
@@ -111,17 +105,19 @@ func (m *MessengerV2) joinPrivate(ctx context.Context, c Contact) (err error) {
 		return err
 	}
 	m.private[c.Name] = stream
-	return
+	opts := protocol.DefaultRequestOptions()
+	err = enhanceRequestOptions(c, &opts)
+	if err != nil {
+		return err
+	}
+	err = m.Request(ctx, c, opts)
+	if err == nil {
+		err = m.db.UpdateHistories([]History{{Contact: c, Synced: opts.To}})
+	}
+	return err
 }
 
 func (m *MessengerV2) joinPublic(ctx context.Context, c Contact) (err error) {
-	// FIXME(dshulyak) don't request messages on every join
-	// all messages must be requested in a single request when app starts
-	defer func() {
-		if err == nil {
-			err = m.Request(ctx, c, protocol.DefaultRequestOptions())
-		}
-	}()
 	_, exist := m.public[c.Topic]
 	if exist {
 		// FIXME(dshulyak) don't request messages on every join
@@ -140,7 +136,16 @@ func (m *MessengerV2) joinPublic(ctx context.Context, c Contact) (err error) {
 		return
 	}
 	m.public[c.Name] = stream
-	return
+	opts := protocol.DefaultRequestOptions()
+	err = enhanceRequestOptions(c, &opts)
+	if err != nil {
+		return err
+	}
+	err = m.Request(ctx, c, opts)
+	if err == nil {
+		err = m.db.UpdateHistories([]History{{Contact: c, Synced: opts.To}})
+	}
+	return err
 }
 
 // Messages reads all messages from database.
@@ -156,19 +161,56 @@ func (m *MessengerV2) Request(ctx context.Context, c Contact, options protocol.R
 	return m.proto.Request(ctx, options)
 }
 
+func (m *MessengerV2) requestHistories(ctx context.Context, histories []History, opts protocol.RequestOptions) error {
+	log.Printf("[messenger::RequestAll] requesting messages for chats %+v: from %d to %d\n", opts.Chats, opts.From, opts.To)
+	start := time.Now()
+	err := m.proto.Request(ctx, opts)
+	if err != nil {
+		return err
+	}
+	log.Printf("[messenger::RequestAll] requesting message for chats %+v finished. took %v\n", opts.Chats, time.Since(start))
+	for i := range histories {
+		histories[i].Synced = opts.To
+	}
+	err = m.db.UpdateHistories(histories)
+	return err
+}
+
 func (m *MessengerV2) RequestAll(ctx context.Context, newest bool) error {
-	contacts, err := m.db.Contacts()
+	// FIXME(dshulyak) if newest is false request 24 hour of messages older then the
+	// earliest envelope for each contact.
+	histories, err := m.db.Histories()
 	if err != nil {
 		return errors.Wrap(err, "error fetching contacts")
 	}
-	requestParams := protocol.DefaultRequestOptions()
-	for _, c := range contacts {
-		err = enhanceRequestOptions(c, &requestParams)
+	var (
+		now               = time.Now()
+		synced, notsynced = splitIntoSyncedNotSynced(histories)
+		errors            = make(chan error, 2)
+		wg                sync.WaitGroup
+	)
+	if len(synced) != 0 {
+		wg.Add(1)
+		go func() {
+			errors <- m.requestHistories(ctx, synced, syncedToOpts(synced, now))
+			wg.Done()
+		}()
+	}
+	if len(notsynced) != 0 {
+		wg.Add(1)
+		go func() {
+			errors <- m.requestHistories(ctx, notsynced, notsyncedToOpts(notsynced, now))
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	close(errors)
+	for err := range errors {
 		if err != nil {
 			return err
 		}
 	}
-	return m.proto.Request(ctx, requestParams)
+	return nil
 }
 
 func (m *MessengerV2) Send(c Contact, data []byte) error {

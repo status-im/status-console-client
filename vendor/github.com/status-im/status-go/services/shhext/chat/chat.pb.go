@@ -3,11 +3,9 @@
 
 package chat
 
-import (
-	fmt "fmt"
-	proto "github.com/golang/protobuf/proto"
-	math "math"
-)
+import proto "github.com/golang/protobuf/proto"
+import fmt "fmt"
+import math "math"
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
@@ -41,7 +39,6 @@ func (*ChatMessagePayload) ProtoMessage()    {}
 func (*ChatMessagePayload) Descriptor() ([]byte, []int) {
 	return fileDescriptor_8c585a45e2093e54, []int{0}
 }
-
 func (m *ChatMessagePayload) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ChatMessagePayload.Unmarshal(m, b)
 }
@@ -109,7 +106,6 @@ func (*ContactUpdatePayload) ProtoMessage()    {}
 func (*ContactUpdatePayload) Descriptor() ([]byte, []int) {
 	return fileDescriptor_8c585a45e2093e54, []int{1}
 }
-
 func (m *ContactUpdatePayload) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ContactUpdatePayload.Unmarshal(m, b)
 }
@@ -172,7 +168,6 @@ func (*OneToOneRPC) ProtoMessage()    {}
 func (*OneToOneRPC) Descriptor() ([]byte, []int) {
 	return fileDescriptor_8c585a45e2093e54, []int{2}
 }
-
 func (m *OneToOneRPC) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_OneToOneRPC.Unmarshal(m, b)
 }
@@ -227,7 +222,6 @@ func (*ContactUpdateRPC) ProtoMessage()    {}
 func (*ContactUpdateRPC) Descriptor() ([]byte, []int) {
 	return fileDescriptor_8c585a45e2093e54, []int{3}
 }
-
 func (m *ContactUpdateRPC) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ContactUpdateRPC.Unmarshal(m, b)
 }
@@ -281,7 +275,6 @@ func (*ChatProtocolMessage) ProtoMessage()    {}
 func (*ChatProtocolMessage) Descriptor() ([]byte, []int) {
 	return fileDescriptor_8c585a45e2093e54, []int{4}
 }
-
 func (m *ChatProtocolMessage) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ChatProtocolMessage.Unmarshal(m, b)
 }

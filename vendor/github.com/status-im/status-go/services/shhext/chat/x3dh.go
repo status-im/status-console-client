@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
-	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/ecies"
@@ -45,12 +43,9 @@ func FromBase64(str string) (*Bundle, error) {
 	return bundle, nil
 }
 
-func buildSignatureMaterial(bundle *Bundle) []byte {
-	signedPreKeys := bundle.GetSignedPreKeys()
-	timestamp := bundle.GetTimestamp()
+func buildSignatureMaterial(signedPreKeys *map[string]*SignedPreKey) []byte {
 	var keys []string
-
-	for k := range signedPreKeys {
+	for k := range *signedPreKeys {
 		keys = append(keys, k)
 	}
 	var signatureMaterial []byte
@@ -58,23 +53,18 @@ func buildSignatureMaterial(bundle *Bundle) []byte {
 	sort.Strings(keys)
 
 	for _, installationID := range keys {
-		signedPreKey := signedPreKeys[installationID]
+		signedPreKey := (*signedPreKeys)[installationID]
 		signatureMaterial = append(signatureMaterial, []byte(installationID)...)
 		signatureMaterial = append(signatureMaterial, signedPreKey.SignedPreKey...)
-		signatureMaterial = append(signatureMaterial, []byte(strconv.FormatUint(uint64(signedPreKey.Version), 10))...)
-		// We don't use timestamp in the signature if it's 0, for backward compatibility
+		signatureMaterial = append(signatureMaterial, []byte(fmt.Sprint(signedPreKey.Version))...)
 	}
-
-	if timestamp != 0 {
-		signatureMaterial = append(signatureMaterial, []byte(strconv.FormatInt(timestamp, 10))...)
-	}
-
 	return signatureMaterial
 
 }
 
 func SignBundle(identity *ecdsa.PrivateKey, bundleContainer *BundleContainer) error {
-	signatureMaterial := buildSignatureMaterial(bundleContainer.GetBundle())
+	signedPreKeys := bundleContainer.GetBundle().GetSignedPreKeys()
+	signatureMaterial := buildSignatureMaterial(&signedPreKeys)
 
 	signature, err := crypto.Sign(crypto.Keccak256(signatureMaterial), identity)
 	if err != nil {
@@ -99,7 +89,6 @@ func NewBundleContainer(identity *ecdsa.PrivateKey, installationID string) (*Bun
 	signedPreKeys[installationID] = &SignedPreKey{SignedPreKey: compressedPreKey}
 
 	bundle := Bundle{
-		Timestamp:     time.Now().UnixNano(),
 		Identity:      compressedIdentityKey,
 		SignedPreKeys: signedPreKeys,
 	}
@@ -123,7 +112,8 @@ func ExtractIdentity(bundle *Bundle) (string, error) {
 		return "", err
 	}
 
-	signatureMaterial := buildSignatureMaterial(bundle)
+	signedPreKeys := bundle.GetSignedPreKeys()
+	signatureMaterial := buildSignatureMaterial(&signedPreKeys)
 
 	recoveredKey, err := crypto.SigToPub(
 		crypto.Keccak256(signatureMaterial),

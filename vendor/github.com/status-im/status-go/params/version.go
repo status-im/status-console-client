@@ -1,7 +1,4 @@
 package params
 
-// Version is defined in VERSION file.
+// Version relies on a git tag and is passed by linker's '-ldflags' flag.
 var Version string
-
-// GitCommit is a commit hash.
-var GitCommit string

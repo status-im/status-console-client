@@ -14,3 +14,5 @@
 # Application specific
 bin/*
 notes/*
+
+status-console-client

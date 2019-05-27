@@ -4,14 +4,15 @@ import (
 	"context"
 
 	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/discover"
+	"github.com/ethereum/go-ethereum/p2p/discv5"
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/signal"
 )
 
 // Verifier verifies if a give node is trusted.
 type Verifier interface {
-	VerifyNode(context.Context, enode.ID) bool
+	VerifyNode(context.Context, discover.NodeID) bool
 }
 
 // MailServerDiscoveryTopic topic name for mailserver discovery.
@@ -52,7 +53,7 @@ var sendEnodeDiscovered = signal.SendEnodeDiscovered
 
 // ConfirmAdded calls base TopicPool ConfirmAdded method and sends a signal
 // confirming the enode has been discovered.
-func (t *cacheOnlyTopicPool) ConfirmAdded(server *p2p.Server, nodeID enode.ID) {
+func (t *cacheOnlyTopicPool) ConfirmAdded(server *p2p.Server, nodeID discover.NodeID) {
 	trusted := t.verifier.VerifyNode(context.TODO(), nodeID)
 	if trusted {
 		// add to cache only if trusted
@@ -61,24 +62,26 @@ func (t *cacheOnlyTopicPool) ConfirmAdded(server *p2p.Server, nodeID enode.ID) {
 		t.subtractToLimits()
 	}
 
+	id := discv5.NodeID(nodeID)
+
 	// If a peer was trusted, it was moved to connectedPeers,
 	// signal was sent and we can safely remove it.
-	if peer, ok := t.connectedPeers[nodeID]; ok {
+	if peer, ok := t.connectedPeers[id]; ok {
 		t.removeServerPeer(server, peer)
 		// Delete it from `connectedPeers` immediately to
 		// prevent removing it from the cache which logic is
 		// implemented in TopicPool.
-		delete(t.connectedPeers, nodeID)
+		delete(t.connectedPeers, id)
 	}
 
 	// It a peer was not trusted, it is still in pendingPeers.
 	// We should remove it from the p2p.Server.
-	if peer, ok := t.pendingPeers[nodeID]; ok {
+	if peer, ok := t.pendingPeers[id]; ok {
 		t.removeServerPeer(server, peer.peerInfo)
 		// Delete it from `connectedPeers` immediately to
 		// prevent removing it from the cache which logic is
 		// implemented in TopicPool.
-		delete(t.pendingPeers, nodeID)
+		delete(t.pendingPeers, id)
 	}
 }
 

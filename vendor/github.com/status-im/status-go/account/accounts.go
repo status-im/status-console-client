@@ -1,7 +1,6 @@
 package account
 
 import (
-	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,8 +14,6 @@ import (
 	gethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/pborman/uuid"
-
 	"github.com/status-im/status-go/extkeys"
 )
 
@@ -38,9 +35,8 @@ type GethServiceProvider interface {
 type Manager struct {
 	geth GethServiceProvider
 
-	mu                    sync.RWMutex
-	selectedWalletAccount *SelectedExtKey // account that was processed during the last call to SelectAccount()
-	selectedChatAccount   *SelectedExtKey // account that was processed during the last call to SelectAccount()
+	mu              sync.RWMutex
+	selectedAccount *SelectedExtKey // account that was processed during the last call to SelectAccount()
 }
 
 // NewManager returns new node account manager.
@@ -54,13 +50,12 @@ func NewManager(geth GethServiceProvider) *Manager {
 // BIP44-compatible keys are generated: CKD#1 is stored as account key, CKD#2 stored as sub-account root
 // Public key of CKD#1 is returned, with CKD#2 securely encoded into account key file (to be used for
 // sub-account derivations)
-func (m *Manager) CreateAccount(password string) (Info, string, error) {
-	info := Info{}
+func (m *Manager) CreateAccount(password string) (address, pubKey, mnemonic string, err error) {
 	// generate mnemonic phrase
 	mn := extkeys.NewMnemonic()
-	mnemonic, err := mn.MnemonicPhrase(extkeys.EntropyStrength128, extkeys.EnglishLanguage)
+	mnemonic, err = mn.MnemonicPhrase(extkeys.EntropyStrength128, extkeys.EnglishLanguage)
 	if err != nil {
-		return info, "", fmt.Errorf("can not create mnemonic seed: %v", err)
+		return "", "", "", fmt.Errorf("can not create mnemonic seed: %v", err)
 	}
 
 	// Generate extended master key (see BIP32)
@@ -70,19 +65,16 @@ func (m *Manager) CreateAccount(password string) (Info, string, error) {
 	// for expert users, to be able to add a passphrase to the generation of the seed.
 	extKey, err := extkeys.NewMaster(mn.MnemonicSeed(mnemonic, ""))
 	if err != nil {
-		return info, "", fmt.Errorf("can not create master extended key: %v", err)
+		return "", "", "", fmt.Errorf("can not create master extended key: %v", err)
 	}
 
 	// import created key into account keystore
-	info.WalletAddress, info.WalletPubKey, err = m.importExtendedKey(extkeys.KeyPurposeWallet, extKey, password)
+	address, pubKey, err = m.importExtendedKey(extKey, password)
 	if err != nil {
-		return info, "", err
+		return "", "", "", err
 	}
 
-	info.ChatAddress = info.WalletAddress
-	info.ChatPubKey = info.WalletPubKey
-
-	return info, mnemonic, nil
+	return address, pubKey, mnemonic, nil
 }
 
 // CreateChildAccount creates sub-account for an account identified by parent address.
@@ -97,8 +89,8 @@ func (m *Manager) CreateChildAccount(parentAddress, password string) (address, p
 		return "", "", err
 	}
 
-	if parentAddress == "" && m.selectedWalletAccount != nil { // derive from selected account by default
-		parentAddress = m.selectedWalletAccount.Address.Hex()
+	if parentAddress == "" && m.selectedAccount != nil { // derive from selected account by default
+		parentAddress = m.selectedAccount.Address.Hex()
 	}
 
 	if parentAddress == "" {
@@ -132,14 +124,14 @@ func (m *Manager) CreateChildAccount(parentAddress, password string) (address, p
 	accountKey.SubAccountIndex++
 
 	// import derived key into account keystore
-	address, pubKey, err = m.importExtendedKey(extkeys.KeyPurposeWallet, childKey, password)
+	address, pubKey, err = m.importExtendedKey(childKey, password)
 	if err != nil {
 		return
 	}
 
 	// update in-memory selected account
-	if m.selectedWalletAccount != nil {
-		m.selectedWalletAccount.AccountKey = accountKey
+	if m.selectedAccount != nil {
+		m.selectedAccount.AccountKey = accountKey
 	}
 
 	return address, pubKey, nil
@@ -147,25 +139,21 @@ func (m *Manager) CreateChildAccount(parentAddress, password string) (address, p
 
 // RecoverAccount re-creates master key using given details.
 // Once master key is re-generated, it is inserted into keystore (if not already there).
-func (m *Manager) RecoverAccount(password, mnemonic string) (Info, error) {
-	info := Info{}
+func (m *Manager) RecoverAccount(password, mnemonic string) (address, pubKey string, err error) {
 	// re-create extended key (see BIP32)
 	mn := extkeys.NewMnemonic()
 	extKey, err := extkeys.NewMaster(mn.MnemonicSeed(mnemonic, ""))
 	if err != nil {
-		return info, ErrInvalidMasterKeyCreated
+		return "", "", ErrInvalidMasterKeyCreated
 	}
 
 	// import re-created key into account keystore
-	info.WalletAddress, info.WalletPubKey, err = m.importExtendedKey(extkeys.KeyPurposeWallet, extKey, password)
+	address, pubKey, err = m.importExtendedKey(extKey, password)
 	if err != nil {
-		return info, err
+		return
 	}
 
-	info.ChatAddress = info.WalletAddress
-	info.ChatPubKey = info.WalletPubKey
-
-	return info, nil
+	return address, pubKey, nil
 }
 
 // VerifyAccountPassword tries to decrypt a given account key file, with a provided password.
@@ -228,86 +216,68 @@ func (m *Manager) VerifyAccountPassword(keyStoreDir, address, password string) (
 
 // SelectAccount selects current account, by verifying that address has corresponding account which can be decrypted
 // using provided password. Once verification is done, all previous identities are removed).
-func (m *Manager) SelectAccount(walletAddress, chatAddress, password string) error {
+func (m *Manager) SelectAccount(address, password string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	selectedWalletAccount, err := m.unlockExtendedKey(walletAddress, password)
+	keyStore, err := m.geth.AccountKeyStore()
 	if err != nil {
 		return err
 	}
 
-	selectedChatAccount, err := m.unlockExtendedKey(chatAddress, password)
+	account, err := ParseAccountString(address)
+	if err != nil {
+		return ErrAddressToAccountMappingFailure
+	}
+
+	account, accountKey, err := keyStore.AccountDecryptedKey(account, password)
+	if err != nil {
+		return fmt.Errorf("%s: %v", ErrAccountToKeyMappingFailure.Error(), err)
+	}
+
+	// persist account key for easier recovery of currently selected key
+	subAccounts, err := m.findSubAccounts(accountKey.ExtendedKey, accountKey.SubAccountIndex)
 	if err != nil {
 		return err
 	}
-
-	m.selectedWalletAccount = selectedWalletAccount
-	m.selectedChatAccount = selectedChatAccount
+	m.selectedAccount = &SelectedExtKey{
+		Address:     account.Address,
+		AccountKey:  accountKey,
+		SubAccounts: subAccounts,
+	}
 
 	return nil
 }
 
-// SetChatAccount initializes selectedChatAccount with privKey
-func (m *Manager) SetChatAccount(privKey *ecdsa.PrivateKey) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	address := crypto.PubkeyToAddress(privKey.PublicKey)
-	id := uuid.NewRandom()
-	key := &keystore.Key{
-		Id:         id,
-		Address:    address,
-		PrivateKey: privKey,
-	}
-
-	m.selectedChatAccount = &SelectedExtKey{
-		Address:    address,
-		AccountKey: key,
-	}
-}
-
-// SelectedWalletAccount returns currently selected wallet account
-func (m *Manager) SelectedWalletAccount() (*SelectedExtKey, error) {
+// SelectedAccount returns currently selected account
+func (m *Manager) SelectedAccount() (*SelectedExtKey, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	if m.selectedWalletAccount == nil {
+	if m.selectedAccount == nil {
 		return nil, ErrNoAccountSelected
 	}
-	return m.selectedWalletAccount, nil
+	return m.selectedAccount, nil
 }
 
-// SelectedChatAccount returns currently selected chat account
-func (m *Manager) SelectedChatAccount() (*SelectedExtKey, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if m.selectedChatAccount == nil {
-		return nil, ErrNoAccountSelected
-	}
-	return m.selectedChatAccount, nil
-}
-
-// Logout clears selectedWalletAccount.
+// Logout clears selectedAccount.
 func (m *Manager) Logout() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.selectedWalletAccount = nil
-	m.selectedChatAccount = nil
+	m.selectedAccount = nil
 }
 
 // importExtendedKey processes incoming extended key, extracts required info and creates corresponding account key.
 // Once account key is formed, that key is put (if not already) into keystore i.e. key is *encoded* into key file.
-func (m *Manager) importExtendedKey(keyPurpose extkeys.KeyPurpose, extKey *extkeys.ExtendedKey, password string) (address, pubKey string, err error) {
+func (m *Manager) importExtendedKey(extKey *extkeys.ExtendedKey, password string) (address, pubKey string, err error) {
 	keyStore, err := m.geth.AccountKeyStore()
 	if err != nil {
 		return "", "", err
 	}
 
 	// imports extended key, create key file (if necessary)
-	account, err := keyStore.ImportExtendedKeyForPurpose(keyPurpose, extKey, password)
+	account, err := keyStore.ImportExtendedKey(extKey, password)
 	if err != nil {
 		return "", "", err
 	}
@@ -341,20 +311,20 @@ func (m *Manager) Accounts() ([]gethcommon.Address, error) {
 		}
 	}
 
-	if m.selectedWalletAccount == nil {
+	if m.selectedAccount == nil {
 		return []gethcommon.Address{}, nil
 	}
 
-	m.refreshSelectedWalletAccount()
+	m.refreshSelectedAccount()
 
 	filtered := make([]gethcommon.Address, 0)
 	for _, account := range addresses {
 		// main account
-		if m.selectedWalletAccount.Address.Hex() == account.Hex() {
+		if m.selectedAccount.Address.Hex() == account.Hex() {
 			filtered = append(filtered, account)
 		} else {
 			// sub accounts
-			for _, subAccount := range m.selectedWalletAccount.SubAccounts {
+			for _, subAccount := range m.selectedAccount.SubAccounts {
 				if subAccount.Address.Hex() == account.Hex() {
 					filtered = append(filtered, account)
 				}
@@ -365,13 +335,13 @@ func (m *Manager) Accounts() ([]gethcommon.Address, error) {
 	return filtered, nil
 }
 
-// refreshSelectedWalletAccount re-populates list of sub-accounts of the currently selected account (if any)
-func (m *Manager) refreshSelectedWalletAccount() {
-	if m.selectedWalletAccount == nil {
+// refreshSelectedAccount re-populates list of sub-accounts of the currently selected account (if any)
+func (m *Manager) refreshSelectedAccount() {
+	if m.selectedAccount == nil {
 		return
 	}
 
-	accountKey := m.selectedWalletAccount.AccountKey
+	accountKey := m.selectedAccount.AccountKey
 	if accountKey == nil {
 		return
 	}
@@ -381,9 +351,9 @@ func (m *Manager) refreshSelectedWalletAccount() {
 	if err != nil {
 		return
 	}
-	m.selectedWalletAccount = &SelectedExtKey{
-		Address:     m.selectedWalletAccount.Address,
-		AccountKey:  m.selectedWalletAccount.AccountKey,
+	m.selectedAccount = &SelectedExtKey{
+		Address:     m.selectedAccount.Address,
+		AccountKey:  m.selectedAccount.AccountKey,
 		SubAccounts: subAccounts,
 	}
 }
@@ -436,33 +406,5 @@ func (m *Manager) AddressToDecryptedAccount(address, password string) (accounts.
 		return accounts.Account{}, nil, ErrAddressToAccountMappingFailure
 	}
 
-	var key *keystore.Key
-
-	account, key, err = keyStore.AccountDecryptedKey(account, password)
-	if err != nil {
-		err = fmt.Errorf("%s: %s", ErrAccountToKeyMappingFailure, err)
-	}
-
-	return account, key, err
-}
-
-func (m *Manager) unlockExtendedKey(address, password string) (*SelectedExtKey, error) {
-	account, accountKey, err := m.AddressToDecryptedAccount(address, password)
-	if err != nil {
-		return nil, err
-	}
-
-	// persist account key for easier recovery of currently selected key
-	subAccounts, err := m.findSubAccounts(accountKey.ExtendedKey, accountKey.SubAccountIndex)
-	if err != nil {
-		return nil, err
-	}
-
-	selectedExtendedKey := &SelectedExtKey{
-		Address:     account.Address,
-		AccountKey:  accountKey,
-		SubAccounts: subAccounts,
-	}
-
-	return selectedExtendedKey, nil
+	return keyStore.AccountDecryptedKey(account, password)
 }

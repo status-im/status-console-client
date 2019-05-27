@@ -18,12 +18,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-// MobileSignalHandler is a simple callback function that gets called when any signal is received
-type MobileSignalHandler func([]byte)
-
-// storing the current signal handler here
-var mobileSignalHandler MobileSignalHandler
-
 // All general log messages in this package should be routed through this logger.
 var logger = log.New("package", "status-go/signal")
 
@@ -50,15 +44,9 @@ func send(typ string, event interface{}) {
 		return
 	}
 
-	// If a Go implementation of signal handler is set, let's use it.
-	if mobileSignalHandler != nil {
-		mobileSignalHandler(data)
-	} else {
-		// ...and fallback to C implementation otherwise.
-		str := C.CString(string(data))
-		C.StatusServiceSignalEvent(str)
-		C.free(unsafe.Pointer(str))
-	}
+	str := C.CString(string(data))
+	C.StatusServiceSignalEvent(str)
+	C.free(unsafe.Pointer(str))
 }
 
 // NodeNotificationHandler defines a handler able to process incoming node events.
@@ -105,14 +93,7 @@ func TriggerTestSignal() {
 	C.free(unsafe.Pointer(str))
 }
 
-// SetMobileSignalHandler sets new handler for geth events
-// this function uses pure go implementation
-func SetMobileSignalHandler(handler MobileSignalHandler) {
-	mobileSignalHandler = handler
-}
-
 // SetSignalEventCallback set callback
-// this function uses C implementation (see `signals.c` file)
 func SetSignalEventCallback(cb unsafe.Pointer) {
 	C.SetEventCallback(cb)
 }

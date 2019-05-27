@@ -87,6 +87,8 @@ type Mode_t C.mode_t
 
 type Timespec C.struct_timespec
 
+type StTimespec C.struct_st_timespec
+
 type Timeval C.struct_timeval
 
 type Timeval32 C.struct_timeval32

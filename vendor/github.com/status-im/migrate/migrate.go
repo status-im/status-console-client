@@ -82,13 +82,13 @@ type Migrate struct {
 func New(sourceUrl, databaseUrl string) (*Migrate, error) {
 	m := newCommon()
 
-	sourceName, err := sourceSchemeFromUrl(sourceUrl)
+	sourceName, err := schemeFromUrl(sourceUrl)
 	if err != nil {
 		return nil, err
 	}
 	m.sourceName = sourceName
 
-	databaseName, err := databaseSchemeFromUrl(databaseUrl)
+	databaseName, err := schemeFromUrl(databaseUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -395,16 +395,16 @@ func (m *Migrate) read(from int, to int, ret chan<- interface{}) {
 
 	// check if from version exists
 	if from >= 0 {
-		if err := m.versionExists(suint(from)); err != nil {
-			ret <- err
+		if m.versionExists(suint(from)) != nil {
+			ret <- os.ErrNotExist
 			return
 		}
 	}
 
 	// check if to version exists
 	if to >= 0 {
-		if err := m.versionExists(suint(to)); err != nil {
-			ret <- err
+		if m.versionExists(suint(to)) != nil {
+			ret <- os.ErrNotExist
 			return
 		}
 	}
@@ -507,8 +507,8 @@ func (m *Migrate) readUp(from int, limit int, ret chan<- interface{}) {
 
 	// check if from version exists
 	if from >= 0 {
-		if err := m.versionExists(suint(from)); err != nil {
-			ret <- err
+		if m.versionExists(suint(from)) != nil {
+			ret <- os.ErrNotExist
 			return
 		}
 	}
@@ -599,8 +599,8 @@ func (m *Migrate) readDown(from int, limit int, ret chan<- interface{}) {
 
 	// check if from version exists
 	if from >= 0 {
-		if err := m.versionExists(suint(from)); err != nil {
-			ret <- err
+		if m.versionExists(suint(from)) != nil {
+			ret <- os.ErrNotExist
 			return
 		}
 	}

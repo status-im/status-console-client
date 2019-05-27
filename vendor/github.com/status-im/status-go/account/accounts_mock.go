@@ -36,7 +36,6 @@ func (m *MockGethServiceProvider) EXPECT() *MockGethServiceProviderMockRecorder 
 
 // AccountManager mocks base method
 func (m *MockGethServiceProvider) AccountManager() (*accounts.Manager, error) {
-	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AccountManager")
 	ret0, _ := ret[0].(*accounts.Manager)
 	ret1, _ := ret[1].(error)
@@ -45,13 +44,11 @@ func (m *MockGethServiceProvider) AccountManager() (*accounts.Manager, error) {
 
 // AccountManager indicates an expected call of AccountManager
 func (mr *MockGethServiceProviderMockRecorder) AccountManager() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AccountManager", reflect.TypeOf((*MockGethServiceProvider)(nil).AccountManager))
 }
 
 // AccountKeyStore mocks base method
 func (m *MockGethServiceProvider) AccountKeyStore() (*keystore.KeyStore, error) {
-	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AccountKeyStore")
 	ret0, _ := ret[0].(*keystore.KeyStore)
 	ret1, _ := ret[1].(error)
@@ -60,6 +57,5 @@ func (m *MockGethServiceProvider) AccountKeyStore() (*keystore.KeyStore, error) 
 
 // AccountKeyStore indicates an expected call of AccountKeyStore
 func (mr *MockGethServiceProviderMockRecorder) AccountKeyStore() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AccountKeyStore", reflect.TypeOf((*MockGethServiceProvider)(nil).AccountKeyStore))
 }

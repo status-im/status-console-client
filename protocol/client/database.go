@@ -71,7 +71,10 @@ type Database interface {
 	Contacts() ([]Contact, error)
 	SaveContacts(contacts []Contact) error
 	DeleteContact(Contact) error
+	ContactExist(Contact) (bool, error)
 	PublicContactExist(Contact) (bool, error)
+	Histories() ([]History, error)
+	UpdateHistories([]History) error
 }
 
 // Migrate applies migrations.
@@ -176,7 +179,11 @@ func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
 	if err != nil {
 		return err
 	}
-	stmt, err = tx.Prepare("INSERT OR REPLACE INTO user_contacts(id, name, type, state, topic, public_key) VALUES (?, ?, ?, ?, ?, ?)")
+	stmt, err = tx.Prepare("INSERT INTO user_contacts(id, name, type, state, topic, public_key) VALUES (?, ?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	history, err := tx.Prepare("INSERT INTO history_user_contact_topic(contact_id) VALUES (?)")
 	if err != nil {
 		return err
 	}
@@ -195,8 +202,13 @@ func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
 				return err
 			}
 		}
-		id := fmt.Sprintf("%s:%d", contacts[i].Name, contacts[i].Type)
+		id := contactID(contacts[i])
 		_, err = stmt.Exec(id, contacts[i].Name, contacts[i].Type, contacts[i].State, contacts[i].Topic, pkey)
+		if err != nil {
+			return err
+		}
+		// to avoid unmarshalling null into sql.NullInt64
+		_, err = history.Exec(id)
 		if err != nil {
 			return err
 		}
@@ -234,12 +246,72 @@ func (db SQLLiteDatabase) Contacts() ([]Contact, error) {
 	return rst, nil
 }
 
+func (db SQLLiteDatabase) Histories() ([]History, error) {
+	rows, err := db.db.Query("SELECT synced, u.name, u.type, u.state, u.topic, u.public_key FROM history_user_contact_topic JOIN user_contacts u ON contact_id = u.id")
+	if err != nil {
+		return nil, err
+	}
+	rst := []History{}
+	for rows.Next() {
+		h := History{
+			Contact: Contact{},
+		}
+		pkey := []byte{}
+		err = rows.Scan(&h.Synced, &h.Contact.Name, &h.Contact.Type, &h.Contact.State, &h.Contact.Topic, &pkey)
+		if err != nil {
+			return nil, err
+		}
+		if len(pkey) != 0 {
+			h.Contact.PublicKey, err = unmarshalEcdsaPub(pkey)
+			if err != nil {
+				return nil, err
+			}
+		}
+		rst = append(rst, h)
+	}
+	return rst, nil
+}
+
+func (db SQLLiteDatabase) UpdateHistories(histories []History) (err error) {
+	var (
+		tx   *sql.Tx
+		stmt *sql.Stmt
+	)
+	tx, err = db.db.BeginTx(context.Background(), &sql.TxOptions{})
+	if err != nil {
+		return err
+	}
+	stmt, err = tx.Prepare("UPDATE history_user_contact_topic SET synced = ? WHERE contact_Id = ?")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err == nil {
+			err = tx.Commit()
+		} else {
+			_ = tx.Rollback()
+		}
+	}()
+	for i := range histories {
+		_, err = stmt.Exec(histories[i].Synced, contactID(histories[i].Contact))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (db SQLLiteDatabase) DeleteContact(c Contact) error {
 	_, err := db.db.Exec("DELETE FROM user_contacts WHERE id = ?", fmt.Sprintf("%s:%d", c.Name, c.Type))
 	if err != nil {
 		return errors.Wrap(err, "error deleting contact from db")
 	}
 	return nil
+}
+
+func (db SQLLiteDatabase) ContactExist(c Contact) (exists bool, err error) {
+	err = db.db.QueryRow("SELECT EXISTS(SELECT id FROM user_contacts WHERE id = ?)", contactID(c)).Scan(&exists)
+	return
 }
 
 func (db SQLLiteDatabase) PublicContactExist(c Contact) (exists bool, err error) {
@@ -253,7 +325,7 @@ func (db SQLLiteDatabase) PublicContactExist(c Contact) (exists bool, err error)
 		return false, errors.New("no public key")
 	}
 	err = db.db.QueryRow("SELECT EXISTS(SELECT id FROM user_contacts WHERE public_key = ?)", pkey).Scan(&exists)
-	return exists, err
+	return
 }
 
 func (db SQLLiteDatabase) LastMessageClock(c Contact) (int64, error) {

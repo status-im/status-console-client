@@ -34,17 +34,10 @@ func PublicMessageToWhisper(rpcMsg SendPublicMessageRPC, payload []byte) whisper
 }
 
 func DirectMessageToWhisper(rpcMsg SendDirectMessageRPC, payload []byte) whisper.NewMessage {
-	var topicBytes whisper.TopicType
-
-	if rpcMsg.Chat == "" {
-		topicBytes = discoveryTopicBytes
-	} else {
-		topicBytes = toTopic(rpcMsg.Chat)
-	}
 
 	msg := defaultWhisperMessage()
 
-	msg.Topic = topicBytes
+	msg.Topic = discoveryTopicBytes
 
 	msg.Payload = payload
 	msg.Sig = rpcMsg.Sig

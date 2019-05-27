@@ -3,11 +3,10 @@ package ff
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // Parse the flags in the flag set from the provided (presumably commandline)
@@ -20,7 +19,7 @@ func Parse(fs *flag.FlagSet, args []string, options ...Option) error {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return errors.Wrap(err, "error parsing commandline args")
+		return fmt.Errorf("error parsing commandline args: %v", err)
 	}
 
 	provided := map[string]bool{}
@@ -29,11 +28,9 @@ func Parse(fs *flag.FlagSet, args []string, options ...Option) error {
 	})
 
 	if c.configFile == "" && c.configFileFlagName != "" {
-		fs.VisitAll(func(f *flag.Flag) {
-			if f.Name == c.configFileFlagName {
-				c.configFile = f.Value.String()
-			}
-		})
+		if f := fs.Lookup(c.configFileFlagName); f != nil {
+			c.configFile = f.Value.String()
+		}
 	}
 
 	if c.configFile != "" && c.configFileParser != nil {
@@ -43,9 +40,9 @@ func Parse(fs *flag.FlagSet, args []string, options ...Option) error {
 		}
 		defer f.Close()
 
-		c.configFileParser(f, func(name, value string) error {
+		err = c.configFileParser(f, func(name, value string) error {
 			if fs.Lookup(name) == nil {
-				return errors.Errorf("config file flag %q not defined in flag set", name)
+				return fmt.Errorf("config file flag %q not defined in flag set", name)
 			}
 
 			if provided[name] {
@@ -53,18 +50,21 @@ func Parse(fs *flag.FlagSet, args []string, options ...Option) error {
 			}
 
 			if err := fs.Set(name, value); err != nil {
-				return errors.Wrapf(err, "error setting flag %q from config file", name)
+				return fmt.Errorf("error setting flag %q from config file: %v", name, err)
 			}
 
 			return nil
 		})
+		if err != nil {
+			return err
+		}
 	}
 
 	fs.Visit(func(f *flag.Flag) {
 		provided[f.Name] = true
 	})
 
-	if c.envVarPrefix != "" {
+	if c.envVarPrefix != "" || c.envVarNoPrefix {
 		var errs []string
 		fs.VisitAll(func(f *flag.Flag) {
 			if provided[f.Name] {
@@ -75,18 +75,20 @@ func Parse(fs *flag.FlagSet, args []string, options ...Option) error {
 			{
 				key = strings.ToUpper(f.Name)
 				key = envVarReplacer.Replace(key)
-				key = strings.ToUpper(c.envVarPrefix) + "_" + key
+				if !c.envVarNoPrefix {
+					key = strings.ToUpper(c.envVarPrefix) + "_" + key
+				}
 			}
 			if value := os.Getenv(key); value != "" {
 				for _, individual := range strings.Split(value, ",") {
 					if err := fs.Set(f.Name, strings.TrimSpace(individual)); err != nil {
-						errs = append(errs, errors.Wrapf(err, "error setting flag %q from env var %q", f.Name, key).Error())
+						errs = append(errs, fmt.Sprintf("error setting flag %q from env var %q: %v", f.Name, key, err))
 					}
 				}
 			}
 		})
 		if len(errs) > 0 {
-			return errors.Errorf("error parsing env vars: %s", strings.Join(errs, "; "))
+			return fmt.Errorf("error parsing env vars: %s", strings.Join(errs, "; "))
 		}
 	}
 
@@ -99,6 +101,7 @@ type Context struct {
 	configFileFlagName string
 	configFileParser   ConfigFileParser
 	envVarPrefix       string
+	envVarNoPrefix     bool
 }
 
 // Option controls some aspect of parse behavior.
@@ -140,6 +143,15 @@ func WithEnvVarPrefix(prefix string) Option {
 	}
 }
 
+// WithEnvVarNoPrefix tells parse to look in the environment for variables with
+// no prefix. See WithEnvVarPrefix for an explanation of how flag names are
+// converted to environment variables names.
+func WithEnvVarNoPrefix() Option {
+	return func(c *Context) {
+		c.envVarNoPrefix = true
+	}
+}
+
 // ConfigFileParser interprets the config file represented by the reader
 // and calls the set function for each parsed flag pair.
 type ConfigFileParser func(r io.Reader, set func(name, value string) error) error
@@ -172,7 +184,7 @@ func PlainParser(r io.Reader, set func(name, value string) error) error {
 			name, value = line[:index], strings.TrimSpace(line[index:])
 		}
 
-		if i := strings.IndexRune(value, '#'); i >= 0 {
+		if i := strings.Index(value, " #"); i >= 0 {
 			value = strings.TrimSpace(value[:i])
 		}
 

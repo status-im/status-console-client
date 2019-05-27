@@ -3,11 +3,11 @@ package dedup
 import (
 	"time"
 
+	"github.com/ethereum/go-ethereum/crypto/sha3"
 	"github.com/status-im/status-go/db"
 	whisper "github.com/status-im/whisper/whisperv6"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/util"
-	"golang.org/x/crypto/sha3"
 )
 
 // cache represents a cache of whisper messages with a limit of 2 days.
@@ -22,7 +22,7 @@ func newCache(db *leveldb.DB) *cache {
 }
 
 func (d *cache) Has(filterID string, message *whisper.Message) (bool, error) {
-	has, err := d.db.Has(d.KeyToday(filterID, message), nil)
+	has, err := d.db.Has(d.keyToday(filterID, message), nil)
 
 	if err != nil {
 		return false, err
@@ -38,22 +38,7 @@ func (d *cache) Put(filterID string, messages []*whisper.Message) error {
 	batch := leveldb.Batch{}
 
 	for _, msg := range messages {
-		batch.Put(d.KeyToday(filterID, msg), []byte{})
-	}
-
-	err := d.db.Write(&batch, nil)
-	if err != nil {
-		return err
-	}
-
-	return d.cleanOldEntries()
-}
-
-func (d *cache) PutIDs(messageIDs [][]byte) error {
-	batch := leveldb.Batch{}
-
-	for _, id := range messageIDs {
-		batch.Put(id, []byte{})
+		batch.Put(d.keyToday(filterID, msg), []byte{})
 	}
 
 	err := d.db.Write(&batch, nil)
@@ -93,7 +78,7 @@ func (d *cache) keyYesterday(filterID string, message *whisper.Message) []byte {
 	return prefixedKey(d.yesterdayDateString(), filterID, message)
 }
 
-func (d *cache) KeyToday(filterID string, message *whisper.Message) []byte {
+func (d *cache) keyToday(filterID string, message *whisper.Message) []byte {
 	return prefixedKey(d.todayDateString(), filterID, message)
 }
 

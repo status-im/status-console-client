@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -37,10 +38,12 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/syndtr/goleveldb/leveldb/errors"
 	"golang.org/x/crypto/pbkdf2"
 	"golang.org/x/sync/syncmap"
 )
+
+// TimeSyncError error for clock skew errors.
+type TimeSyncError error
 
 // Statistics holds several message-related counter for analytics
 // purposes.
@@ -87,9 +90,9 @@ type Whisper struct {
 	peerMu sync.RWMutex       // Mutex to sync the active peer set
 	peers  map[*Peer]struct{} // Set of currently active peers
 
-	messageQueue chan *Envelope // Message queue for normal whisper messages
-	p2pMsgQueue  chan *Envelope // Message queue for peer-to-peer messages (not to be forwarded any further)
-	quit         chan struct{}  // Channel used for graceful exit
+	messageQueue chan *Envelope   // Message queue for normal whisper messages
+	p2pMsgQueue  chan interface{} // Message queue for peer-to-peer messages (not to be forwarded any further) and history delivery confirmations.
+	quit         chan struct{}    // Channel used for graceful exit
 
 	settings syncmap.Map // holds configuration settings that can be dynamically changed
 
@@ -101,6 +104,8 @@ type Whisper struct {
 	stats   Statistics // Statistics of whisper node
 
 	mailServer MailServer // MailServer interface
+
+	messageStoreFabric func() MessageStore
 
 	envelopeFeed event.Feed
 
@@ -120,7 +125,7 @@ func New(cfg *Config) *Whisper {
 		expirations:          make(map[uint32]mapset.Set),
 		peers:                make(map[*Peer]struct{}),
 		messageQueue:         make(chan *Envelope, messageQueueLimit),
-		p2pMsgQueue:          make(chan *Envelope, messageQueueLimit),
+		p2pMsgQueue:          make(chan interface{}, messageQueueLimit),
 		quit:                 make(chan struct{}),
 		syncAllowance:        DefaultSyncAllowance,
 		timeSource:           time.Now,
@@ -150,6 +155,19 @@ func New(cfg *Config) *Whisper {
 	}
 
 	return whisper
+}
+
+// NewMessageStore returns object that implements MessageStore.
+func (whisper *Whisper) NewMessageStore() MessageStore {
+	if whisper.messageStoreFabric != nil {
+		return whisper.messageStoreFabric()
+	}
+	return NewMemoryMessageStore()
+}
+
+// SetMessageStore allows to inject custom implementation of the message store.
+func (whisper *Whisper) SetMessageStore(fabric func() MessageStore) {
+	whisper.messageStoreFabric = fabric
 }
 
 // SetTimeSource assigns a particular source of time to a whisper object.
@@ -475,6 +493,11 @@ func (whisper *Whisper) SendSyncResponse(p *Peer, data SyncResponse) error {
 	return p2p.Send(p.ws, p2pSyncResponseCode, data)
 }
 
+// SendRawSyncResponse sends a response to a Mail Server with a slice of envelopes.
+func (whisper *Whisper) SendRawSyncResponse(p *Peer, data RawSyncResponse) error {
+	return p2p.Send(p.ws, p2pSyncResponseCode, data)
+}
+
 // SendP2PMessage sends a peer-to-peer message to a specific peer.
 func (whisper *Whisper) SendP2PMessage(peerID []byte, envelopes ...*Envelope) error {
 	p, err := whisper.getPeer(peerID)
@@ -489,6 +512,17 @@ func (whisper *Whisper) SendP2PMessage(peerID []byte, envelopes ...*Envelope) er
 // rather than a slice. This is important to keep this method backward compatible
 // as it used to send only single envelopes.
 func (whisper *Whisper) SendP2PDirect(peer *Peer, envelopes ...*Envelope) error {
+	if len(envelopes) == 1 {
+		return p2p.Send(peer.ws, p2pMessageCode, envelopes[0])
+	}
+	return p2p.Send(peer.ws, p2pMessageCode, envelopes)
+}
+
+// SendRawP2PDirect sends a peer-to-peer message to a specific peer.
+// If only a single envelope is given, data is sent as a single object
+// rather than a slice. This is important to keep this method backward compatible
+// as it used to send only single envelopes.
+func (whisper *Whisper) SendRawP2PDirect(peer *Peer, envelopes ...rlp.RawValue) error {
 	if len(envelopes) == 1 {
 		return p2p.Send(peer.ws, p2pMessageCode, envelopes[0])
 	}
@@ -797,6 +831,7 @@ func (whisper *Whisper) Start(*p2p.Server) error {
 	for i := 0; i < numCPU; i++ {
 		go whisper.processQueue()
 	}
+	go whisper.processP2P()
 
 	return nil
 }
@@ -835,8 +870,13 @@ func (whisper *Whisper) HandlePeer(peer *p2p.Peer, rw p2p.MsgReadWriter) error {
 	return whisper.runMessageLoop(whisperPeer, rw)
 }
 
-func (whisper *Whisper) sendConfirmation(peer enode.ID, rw p2p.MsgReadWriter, data []byte) {
+func (whisper *Whisper) sendConfirmation(peer enode.ID, rw p2p.MsgReadWriter, data []byte,
+	envelopeErrors []EnvelopeError) {
 	batchHash := crypto.Keccak256Hash(data)
+	if err := p2p.Send(rw, messageResponseCode, NewMessagesResponse(batchHash, envelopeErrors)); err != nil {
+		log.Warn("failed to deliver messages response", "hash", batchHash, "envelopes errors", envelopeErrors,
+			"peer", peer, "error", err)
+	}
 	if err := p2p.Send(rw, batchAcknowledgedCode, batchHash); err != nil {
 		log.Warn("failed to deliver confirmation", "hash", batchHash, "peer", peer, "error", err)
 	}
@@ -867,9 +907,6 @@ func (whisper *Whisper) runMessageLoop(p *Peer, rw p2p.MsgReadWriter) error {
 				log.Warn("failed to read envelopes data", "peer", p.peer.ID(), "error", err)
 				return errors.New("invalid enveloopes")
 			}
-			if !whisper.disableConfirmations {
-				go whisper.sendConfirmation(p.peer.ID(), rw, data)
-			}
 
 			var envelopes []*Envelope
 			if err := rlp.DecodeBytes(data, &envelopes); err != nil {
@@ -877,12 +914,18 @@ func (whisper *Whisper) runMessageLoop(p *Peer, rw p2p.MsgReadWriter) error {
 				return errors.New("invalid envelopes")
 			}
 			trouble := false
+			envelopeErrors := []EnvelopeError{}
 			for _, env := range envelopes {
 				cached, err := whisper.add(env, whisper.LightClientMode())
 				if err != nil {
-					trouble = true
-					log.Error("bad envelope received, peer will be disconnected", "peer", p.peer.ID(), "err", err)
+					_, isTimeSyncError := err.(TimeSyncError)
+					if !isTimeSyncError {
+						trouble = true
+						log.Error("bad envelope received, peer will be disconnected", "peer", p.peer.ID(), "err", err)
+					}
+					envelopeErrors = append(envelopeErrors, ErrorToEnvelopeError(env.Hash(), err))
 				}
+
 				whisper.envelopeFeed.Send(EnvelopeEvent{
 					Event: EventEnvelopeReceived,
 					Hash:  env.Hash(),
@@ -892,14 +935,37 @@ func (whisper *Whisper) runMessageLoop(p *Peer, rw p2p.MsgReadWriter) error {
 					p.mark(env)
 				}
 			}
+			if !whisper.disableConfirmations {
+				go whisper.sendConfirmation(p.peer.ID(), rw, data, envelopeErrors)
+			}
 
 			if trouble {
 				return errors.New("invalid envelope")
 			}
+		case messageResponseCode:
+			var multiResponse MultiVersionResponse
+			if err := packet.Decode(&multiResponse); err != nil {
+				log.Error("failed to decode messages response", "peer", p.peer.ID(), "error", err)
+				return errors.New("invalid response message")
+			}
+			if multiResponse.Version == 1 {
+				response, err := multiResponse.DecodeResponse1()
+				if err != nil {
+					log.Error("failed to decode messages response into first version of response", "peer", p.peer.ID(), "error", err)
+				}
+				whisper.envelopeFeed.Send(EnvelopeEvent{
+					Batch: response.Hash,
+					Event: EventBatchAcknowledged,
+					Peer:  p.peer.ID(),
+					Data:  response.Errors,
+				})
+			} else {
+				log.Warn("unknown version of the messages response was received. response is ignored", "peer", p.peer.ID(), "version", multiResponse.Version)
+			}
 		case batchAcknowledgedCode:
 			var batchHash common.Hash
 			if err := packet.Decode(&batchHash); err != nil {
-				log.Warn("failed to decode confirmation into common.Hash", "peer", p.peer.ID(), "error", err)
+				log.Error("failed to decode confirmation into common.Hash", "peer", p.peer.ID(), "error", err)
 				return errors.New("invalid confirmation message")
 			}
 			whisper.envelopeFeed.Send(EnvelopeEvent{
@@ -956,7 +1022,7 @@ func (whisper *Whisper) runMessageLoop(p *Peer, rw p2p.MsgReadWriter) error {
 
 				if err = packet.Decode(&envelopes); err == nil {
 					for _, envelope := range envelopes {
-						whisper.postEvent(envelope, true)
+						whisper.postP2P(envelope)
 					}
 					continue
 				}
@@ -970,7 +1036,7 @@ func (whisper *Whisper) runMessageLoop(p *Peer, rw p2p.MsgReadWriter) error {
 				}
 
 				if err = packet.Decode(&envelope); err == nil {
-					whisper.postEvent(envelope, true)
+					whisper.postP2P(envelope)
 					continue
 				}
 
@@ -1054,7 +1120,7 @@ func (whisper *Whisper) runMessageLoop(p *Peer, rw p2p.MsgReadWriter) error {
 				}
 
 				if event != nil {
-					whisper.envelopeFeed.Send(*event)
+					whisper.postP2P(*event)
 				}
 
 			}
@@ -1076,11 +1142,11 @@ func (whisper *Whisper) add(envelope *Envelope, isP2P bool) (bool, error) {
 	sent := envelope.Expiry - envelope.TTL
 
 	envelopeAddedCounter.Inc(1)
-
 	if sent > now {
 		if sent-DefaultSyncAllowance > now {
 			envelopeErrFromFutureCounter.Inc(1)
-			return false, fmt.Errorf("envelope created in the future [%x]", envelope.Hash())
+			log.Warn("envelope created in the future", "hash", envelope.Hash())
+			return false, TimeSyncError(errors.New("envelope from future"))
 		}
 		// recalculate PoW, adjusted for the time difference, plus one second for latency
 		envelope.calculatePoW(sent - now + 1)
@@ -1089,7 +1155,8 @@ func (whisper *Whisper) add(envelope *Envelope, isP2P bool) (bool, error) {
 	if envelope.Expiry < now {
 		if envelope.Expiry+DefaultSyncAllowance*2 < now {
 			envelopeErrVeryOldCounter.Inc(1)
-			return false, fmt.Errorf("very old message")
+			log.Warn("very old envelope", "hash", envelope.Hash())
+			return false, TimeSyncError(errors.New("very old envelope"))
 		}
 		log.Debug("expired envelope dropped", "hash", envelope.Hash().Hex())
 		envelopeErrExpiredCounter.Inc(1)
@@ -1158,14 +1225,19 @@ func (whisper *Whisper) add(envelope *Envelope, isP2P bool) (bool, error) {
 	return true, nil
 }
 
+func (whisper *Whisper) postP2P(event interface{}) {
+	whisper.p2pMsgQueue <- event
+}
+
 // postEvent queues the message for further processing.
 func (whisper *Whisper) postEvent(envelope *Envelope, isP2P bool) {
 	if isP2P {
-		whisper.p2pMsgQueue <- envelope
+		whisper.postP2P(envelope)
 	} else {
 		whisper.checkOverflow()
 		whisper.messageQueue <- envelope
 	}
+
 }
 
 // checkOverflow checks if message queue overflow occurs and reports it if necessary.
@@ -1187,25 +1259,36 @@ func (whisper *Whisper) checkOverflow() {
 
 // processQueue delivers the messages to the watchers during the lifetime of the whisper node.
 func (whisper *Whisper) processQueue() {
-	var e *Envelope
 	for {
 		select {
 		case <-whisper.quit:
 			return
-
-		case e = <-whisper.messageQueue:
+		case e := <-whisper.messageQueue:
 			whisper.filters.NotifyWatchers(e, false)
 			whisper.envelopeFeed.Send(EnvelopeEvent{
 				Hash:  e.Hash(),
 				Event: EventEnvelopeAvailable,
 			})
+		}
+	}
+}
 
-		case e = <-whisper.p2pMsgQueue:
-			whisper.filters.NotifyWatchers(e, true)
-			whisper.envelopeFeed.Send(EnvelopeEvent{
-				Hash:  e.Hash(),
-				Event: EventEnvelopeAvailable,
-			})
+func (whisper *Whisper) processP2P() {
+	for {
+		select {
+		case <-whisper.quit:
+			return
+		case e := <-whisper.p2pMsgQueue:
+			switch event := e.(type) {
+			case *Envelope:
+				whisper.filters.NotifyWatchers(event, true)
+				whisper.envelopeFeed.Send(EnvelopeEvent{
+					Hash:  event.Hash(),
+					Event: EventEnvelopeAvailable,
+				})
+			case EnvelopeEvent:
+				whisper.envelopeFeed.Send(event)
+			}
 		}
 	}
 }
