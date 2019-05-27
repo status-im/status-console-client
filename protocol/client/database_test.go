@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestContactReplacedBySameName(t *testing.T) {
+func TestContactUniqueConstraint(t *testing.T) {
 	db, err := InitializeTmpDB()
 	require.NoError(t, err)
 	defer db.Close()
@@ -23,7 +23,7 @@ func TestContactReplacedBySameName(t *testing.T) {
 		Topic:     "first",
 	}
 	require.NoError(t, db.SaveContacts([]Contact{contact}))
-	require.NoError(t, db.SaveContacts([]Contact{contact}))
+	require.EqualError(t, db.SaveContacts([]Contact{contact}), "UNIQUE constraint failed: user_contacts.id")
 	rst, err := db.Contacts()
 	require.NoError(t, err)
 	require.Len(t, rst, 1)
@@ -137,6 +137,44 @@ func TestPublicContactExist(t *testing.T) {
 	exists, err := db.PublicContactExist(contact)
 	require.NoError(t, err)
 	require.True(t, exists, "contact expected to exist in database")
+}
+
+func TestLoadHistories(t *testing.T) {
+	db, err := InitializeTmpDB()
+	require.NoError(t, err)
+	defer db.Close()
+	c1 := Contact{
+		Name: "first",
+		Type: ContactPublicRoom,
+	}
+	c2 := Contact{
+		Name: "second",
+		Type: ContactPublicRoom,
+	}
+	require.NoError(t, db.SaveContacts([]Contact{c1, c2}))
+	histories, err := db.Histories()
+	require.NoError(t, err)
+	require.Len(t, histories, 2)
+}
+
+func TestUpdateHistories(t *testing.T) {
+	db, err := InitializeTmpDB()
+	require.NoError(t, err)
+	defer db.Close()
+	c1 := Contact{
+		Name: "first",
+		Type: ContactPublicRoom,
+	}
+	require.NoError(t, db.SaveContacts([]Contact{c1}))
+	h := History{
+		Synced:  100,
+		Contact: c1,
+	}
+	require.NoError(t, db.UpdateHistories([]History{h}))
+	histories, err := db.Histories()
+	require.NoError(t, err)
+	require.Len(t, histories, 1)
+	require.Equal(t, h.Synced, histories[0].Synced)
 }
 
 func BenchmarkLoadMessages(b *testing.B) {

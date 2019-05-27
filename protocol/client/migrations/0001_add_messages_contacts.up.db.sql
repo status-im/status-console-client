@@ -21,3 +21,9 @@ type INT NOT NULL,
 state INT,
 public_key BLOB
 ) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS history_user_contact_topic (
+synced BIGINT DEFAULT 0 NOT NULL,
+contact_id VARCHAR UNIQUE NOT NULL,
+FOREIGN KEY(contact_id) REFERENCES user_contacts(id) ON DELETE CASCADE
+);

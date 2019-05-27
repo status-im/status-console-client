@@ -5,11 +5,13 @@ import (
 	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
+	whisper "github.com/status-im/whisper/whisperv6"
 )
 
 const (
 	// DBKeyLength is a size of the envelope key.
-	DBKeyLength = common.HashLength + timestampLength
+	DBKeyLength  = common.HashLength + timestampLength + whisper.TopicLength
+	CursorLength = common.HashLength + timestampLength
 )
 
 var (
@@ -20,9 +22,7 @@ var (
 
 // DBKey key to be stored in a db.
 type DBKey struct {
-	timestamp uint32
-	hash      common.Hash
-	raw       []byte
+	raw []byte
 }
 
 // Bytes returns a bytes representation of the DBKey.
@@ -30,36 +30,25 @@ func (k *DBKey) Bytes() []byte {
 	return k.raw
 }
 
+func (k *DBKey) Topic() whisper.TopicType {
+	return whisper.BytesToTopic(k.raw[timestampLength+common.HashLength:])
+}
+
+func (k *DBKey) EnvelopeHash() common.Hash {
+	return common.BytesToHash(k.raw[timestampLength : common.HashLength+timestampLength])
+}
+
+func (k *DBKey) Cursor() []byte {
+	// We don't use the whole cursor for backward compatibility (also it's not needed)
+	return k.raw[:CursorLength]
+}
+
 // NewDBKey creates a new DBKey with the given values.
-func NewDBKey(timestamp uint32, h common.Hash) *DBKey {
+func NewDBKey(timestamp uint32, topic whisper.TopicType, h common.Hash) *DBKey {
 	var k DBKey
-	k.timestamp = timestamp
-	k.hash = h
 	k.raw = make([]byte, DBKeyLength)
-	binary.BigEndian.PutUint32(k.raw, k.timestamp)
-	copy(k.raw[4:], k.hash[:])
+	binary.BigEndian.PutUint32(k.raw, timestamp)
+	copy(k.raw[timestampLength:], h[:])
+	copy(k.raw[timestampLength+common.HashLength:], topic[:])
 	return &k
-}
-
-// NewDBKeyFromBytes creates a DBKey from a byte slice.
-func NewDBKeyFromBytes(b []byte) (*DBKey, error) {
-	if len(b) != DBKeyLength {
-		return nil, ErrInvalidByteSize
-	}
-
-	return &DBKey{
-		raw:       b,
-		timestamp: binary.BigEndian.Uint32(b),
-		hash:      common.BytesToHash(b[4:]),
-	}, nil
-}
-
-// mustNewDBKeyFromBytes panics if creating a key from a byte slice fails.
-// Check if a byte slice has DBKeyLength length before using it.
-func mustNewDBKeyFromBytes(b []byte) *DBKey {
-	k, err := NewDBKeyFromBytes(b)
-	if err != nil {
-		panic(err)
-	}
-	return k
 }
