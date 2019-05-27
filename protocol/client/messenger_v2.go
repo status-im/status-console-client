@@ -31,7 +31,7 @@ type MessengerV2 struct {
 	proto    protocol.Protocol
 	db       Database
 
-	mu      sync.RWMutex
+	mu      sync.Mutex
 	public  map[string]AsyncStream
 	private map[string]AsyncStream
 
@@ -39,6 +39,8 @@ type MessengerV2 struct {
 }
 
 func (m *MessengerV2) Start() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	contacts, err := m.db.Contacts()
 	if err != nil {
 		return errors.Wrap(err, "unable to read contacts from database")
@@ -51,9 +53,7 @@ func (m *MessengerV2) Start() error {
 		}
 
 		if contacts[i].Type == ContactPublicKey {
-			m.mu.RLock()
 			_, exist := m.private[contacts[i].Topic]
-			m.mu.RUnlock()
 
 			if exist {
 				continue
@@ -65,13 +65,9 @@ func (m *MessengerV2) Start() error {
 				return errors.Wrap(err, "unable to start private stream")
 			}
 
-			m.mu.Lock()
 			m.private[contacts[i].Topic] = stream
-			m.mu.Unlock()
 		} else {
-			m.mu.RLock()
 			_, exist := m.public[contacts[i].Topic]
-			m.mu.RUnlock()
 
 			if exist {
 				return fmt.Errorf("multiple public chats with same topic: %s", contacts[i].Topic)
@@ -83,9 +79,7 @@ func (m *MessengerV2) Start() error {
 				return errors.Wrap(err, "unable to start stream")
 			}
 
-			m.mu.Lock()
 			m.public[contacts[i].Topic] = stream
-			m.mu.Unlock()
 		}
 	}
 

@@ -197,10 +197,6 @@ func exitErr(err error) {
 		g.Close()
 	}
 
-	if err == nil {
-		return
-	}
-
 	fmt.Println(err)
 	os.Exit(1)
 }
