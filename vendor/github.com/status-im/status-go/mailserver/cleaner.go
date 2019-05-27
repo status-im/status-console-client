@@ -4,11 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/iterator"
-	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 const (
@@ -20,7 +16,7 @@ const (
 type dbCleaner struct {
 	sync.RWMutex
 
-	db        dbImpl
+	db        DB
 	batchSize int
 	retention time.Duration
 
@@ -29,7 +25,7 @@ type dbCleaner struct {
 }
 
 // newDBCleaner returns a new cleaner for db.
-func newDBCleaner(db dbImpl, retention time.Duration) *dbCleaner {
+func newDBCleaner(db DB, retention time.Duration) *dbCleaner {
 	return &dbCleaner{
 		db:        db,
 		retention: retention,
@@ -85,39 +81,5 @@ func (c *dbCleaner) schedule(period time.Duration, cancel <-chan struct{}) {
 // PruneEntriesOlderThan removes messages sent between lower and upper timestamps
 // and returns how many have been removed.
 func (c *dbCleaner) PruneEntriesOlderThan(t time.Time) (int, error) {
-	var zero common.Hash
-	kl := NewDBKey(0, zero)
-	ku := NewDBKey(uint32(t.Unix()), zero)
-	i := c.db.NewIterator(&util.Range{Start: kl.Bytes(), Limit: ku.Bytes()}, nil)
-	defer i.Release()
-
-	return c.prune(i)
-}
-
-func (c *dbCleaner) prune(i iterator.Iterator) (int, error) {
-	batch := leveldb.Batch{}
-	removed := 0
-
-	for i.Next() {
-		batch.Delete(i.Key())
-
-		if batch.Len() == c.batchSize {
-			if err := c.db.Write(&batch, nil); err != nil {
-				return removed, err
-			}
-
-			removed = removed + batch.Len()
-			batch.Reset()
-		}
-	}
-
-	if batch.Len() > 0 {
-		if err := c.db.Write(&batch, nil); err != nil {
-			return removed, err
-		}
-
-		removed = removed + batch.Len()
-	}
-
-	return removed, nil
+	return c.db.Prune(t, c.batchSize)
 }

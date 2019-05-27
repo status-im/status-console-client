@@ -63,7 +63,7 @@ type WhisperConfig struct {
 	// MinimumPoW minimum PoW for Whisper messages
 	MinimumPoW float64
 
-	// MailServerPassword for symmetric encryption with MailServer.
+	// MailServerPassword for symmetric encryption of whisper message history requests.
 	// (if no account file selected, then this password is used for symmetric encryption).
 	MailServerPassword string
 
@@ -85,12 +85,54 @@ type WhisperConfig struct {
 	// MaxMessageSize is a maximum size of a devp2p packet handled by the Whisper protocol,
 	// not only the size of envelopes sent in that packet.
 	MaxMessageSize uint32
+
+	// DatabaseConfig is configuration for which datastore we use
+	DatabaseConfig DatabaseConfig
+}
+
+type DatabaseConfig struct {
+	PGConfig PGConfig
+}
+
+type PGConfig struct {
+	// Enabled whether we should use a posgres instance
+	Enabled bool
+	// The URI of the server
+	URI string
 }
 
 // String dumps config object as nicely indented JSON
 func (c *WhisperConfig) String() string {
 	data, _ := json.MarshalIndent(c, "", "    ") // nolint: gas
 	return string(data)
+}
+
+// IncentivisationConfig holds incentivisation-related configuration
+type IncentivisationConfig struct {
+	// Enabled flag specifies whether protocol is enabled
+	Enabled bool `validate:"required"`
+	// Endpoint for the RPC calls
+	RPCEndpoint string `validate:"required"`
+	// Contract address
+	ContractAddress string `validate:"required"`
+	// IP address that is used
+	IP string `validate:"required"`
+	// Port
+	Port uint16 `validate:"required"`
+}
+
+// String dumps config object as nicely indented JSON
+func (c *IncentivisationConfig) String() string {
+	data, _ := json.MarshalIndent(c, "", "    ") // nolint: gas
+	return string(data)
+}
+
+// Validate validates the IncentivisationConfig struct and returns an error if inconsistent values are found
+func (c *IncentivisationConfig) Validate(validate *validator.Validate) error {
+	if err := validate.Struct(c); err != nil {
+		return err
+	}
+	return nil
 }
 
 // ----------
@@ -271,7 +313,7 @@ type NodeConfig struct {
 	// LogMaxBackups defines number of rotated log files that will be stored.
 	LogMaxBackups int
 
-	// LogMaxSize after current size is reached log file will be rotated
+	// LogMaxSize in megabytes after current size is reached log file will be rotated.
 	LogMaxSize int
 
 	// LogCompressRotated if true all rotated files will be gzipped.
@@ -294,6 +336,9 @@ type NodeConfig struct {
 
 	// WhisperConfig extra configuration for SHH
 	WhisperConfig WhisperConfig `json:"WhisperConfig," validate:"structonly"`
+
+	// IncentivisationConfig extra configuration for incentivisation service
+	IncentivisationConfig IncentivisationConfig `json:"IncentivisationConfig," validate:"structonly"`
 
 	// ShhextConfig keeps configuration for service running under shhext namespace.
 	ShhextConfig ShhextConfig `json:"ShhextConfig," validate:"structonly"`
@@ -336,6 +381,10 @@ type ShhextConfig struct {
 
 	// MaxMessageDeliveryAttempts defines how many times we will try to deliver not-acknowledged envelopes.
 	MaxMessageDeliveryAttempts int
+
+	// WhisperCacheDir is a folder where whisper filters may persist messages before delivering them
+	// to a client.
+	WhisperCacheDir string
 }
 
 // Validate validates the ShhextConfig struct and returns an error if inconsistent values are found
@@ -631,6 +680,11 @@ func (c *NodeConfig) validateChildStructs(validate *validator.Validate) error {
 	if err := c.ShhextConfig.Validate(validate); err != nil {
 		return err
 	}
+	if c.IncentivisationConfig.Enabled {
+		if err := c.IncentivisationConfig.Validate(validate); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -726,6 +780,8 @@ func getUpstreamURL(networkID uint64) string {
 		return RopstenEthereumNetworkURL
 	case RinkebyNetworkID:
 		return RinkebyEthereumNetworkURL
+	case GoerliNetworkID:
+		return GoerliEthereumNetworkURL
 	}
 
 	return ""

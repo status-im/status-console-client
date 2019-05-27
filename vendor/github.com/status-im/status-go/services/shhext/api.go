@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/status-im/status-go/db"
 	"github.com/status-im/status-go/mailserver"
 	"github.com/status-im/status-go/services/shhext/chat"
 	"github.com/status-im/status-go/services/shhext/dedup"
@@ -154,6 +155,15 @@ type SyncMessagesResponse struct {
 	Error string `json:"error"`
 }
 
+// InitiateHistoryRequestParams type for initiating history requests from a peer.
+type InitiateHistoryRequestParams struct {
+	Peer     string
+	SymKeyID string
+	Requests []TopicRequest
+	Force    bool
+	Timeout  time.Duration
+}
+
 // -----
 // PUBLIC API
 // -----
@@ -207,22 +217,24 @@ func (api *PublicAPI) RequestMessagesSync(conf RetryConfig, r MessagesRequest) (
 
 	shh := api.service.w
 	events := make(chan whisper.EnvelopeEvent, 10)
-	sub := shh.SubscribeEnvelopeEvents(events)
-	defer sub.Unsubscribe()
 	var (
 		requestID hexutil.Bytes
 		err       error
 		retries   int
 	)
 	for retries <= conf.MaxRetries {
+		sub := shh.SubscribeEnvelopeEvents(events)
 		r.Timeout = conf.BaseTimeout + conf.StepTimeout*time.Duration(retries)
+		timeout := r.Timeout
 		// FIXME this weird conversion is required because MessagesRequest expects seconds but defines time.Duration
 		r.Timeout = time.Duration(int(r.Timeout.Seconds()))
 		requestID, err = api.RequestMessages(context.Background(), r)
 		if err != nil {
+			sub.Unsubscribe()
 			return resp, err
 		}
-		mailServerResp, err := waitForExpiredOrCompleted(common.BytesToHash(requestID), events)
+		mailServerResp, err := waitForExpiredOrCompleted(common.BytesToHash(requestID), events, timeout)
+		sub.Unsubscribe()
 		if err == nil {
 			resp.Cursor = hex.EncodeToString(mailServerResp.Cursor)
 			resp.Error = mailServerResp.Error
@@ -234,9 +246,17 @@ func (api *PublicAPI) RequestMessagesSync(conf RetryConfig, r MessagesRequest) (
 	return resp, fmt.Errorf("failed to request messages after %d retries", retries)
 }
 
-func waitForExpiredOrCompleted(requestID common.Hash, events chan whisper.EnvelopeEvent) (*whisper.MailServerResponse, error) {
+func waitForExpiredOrCompleted(requestID common.Hash, events chan whisper.EnvelopeEvent, timeout time.Duration) (*whisper.MailServerResponse, error) {
+	expired := fmt.Errorf("request %x expired", requestID)
+	after := time.NewTimer(timeout)
+	defer after.Stop()
 	for {
-		ev := <-events
+		var ev whisper.EnvelopeEvent
+		select {
+		case ev = <-events:
+		case <-after.C:
+			return nil, expired
+		}
 		if ev.Hash != requestID {
 			continue
 		}
@@ -248,7 +268,7 @@ func waitForExpiredOrCompleted(requestID common.Hash, events chan whisper.Envelo
 			}
 			return nil, errors.New("invalid event data type")
 		case whisper.EventMailServerRequestExpired:
-			return nil, errors.New("request expired")
+			return nil, expired
 		}
 	}
 }
@@ -417,8 +437,24 @@ func (api *PublicAPI) GetNewFilterMessages(filterID string) ([]dedup.Deduplicate
 
 // ConfirmMessagesProcessed is a method to confirm that messages was consumed by
 // the client side.
-func (api *PublicAPI) ConfirmMessagesProcessed(messages []*whisper.Message) error {
-	return api.service.deduplicator.AddMessages(messages)
+func (api *PublicAPI) ConfirmMessagesProcessed(messages []*whisper.Message) (err error) {
+	tx := api.service.storage.NewTx()
+	defer func() {
+		if err == nil {
+			err = tx.Commit()
+		}
+	}()
+	ctx := NewContextFromService(context.Background(), api.service, tx)
+	for _, msg := range messages {
+		if msg.P2P {
+			err = api.service.historyUpdates.UpdateTopicHistory(ctx, msg.Topic, time.Unix(int64(msg.Timestamp), 0))
+			if err != nil {
+				return err
+			}
+		}
+	}
+	err = api.service.deduplicator.AddMessages(messages)
+	return err
 }
 
 // ConfirmMessagesProcessedByID is a method to confirm that messages was consumed by
@@ -491,6 +527,114 @@ func (api *PublicAPI) SendDirectMessage(ctx context.Context, msg chat.SendDirect
 
 	// And dispatch
 	return api.Post(ctx, whisperMessage)
+}
+
+func (api *PublicAPI) requestMessagesUsingPayload(request db.HistoryRequest, peer, symkeyID string, payload []byte, force bool, timeout time.Duration, topics []whisper.TopicType) (hash common.Hash, err error) {
+	shh := api.service.w
+	now := api.service.w.GetCurrentTime()
+
+	mailServerNode, err := api.getPeer(peer)
+	if err != nil {
+		return hash, fmt.Errorf("%v: %v", ErrInvalidMailServerPeer, err)
+	}
+
+	var (
+		symKey    []byte
+		publicKey *ecdsa.PublicKey
+	)
+
+	if symkeyID != "" {
+		symKey, err = shh.GetSymKey(symkeyID)
+		if err != nil {
+			return hash, fmt.Errorf("%v: %v", ErrInvalidSymKeyID, err)
+		}
+	} else {
+		publicKey = mailServerNode.Pubkey()
+	}
+
+	envelope, err := makeEnvelop(
+		payload,
+		symKey,
+		publicKey,
+		api.service.nodeID,
+		shh.MinPow(),
+		now,
+	)
+	if err != nil {
+		return hash, err
+	}
+	hash = envelope.Hash()
+
+	err = request.Replace(hash)
+	if err != nil {
+		return hash, err
+	}
+
+	if !force {
+		err = api.service.requestsRegistry.Register(hash, topics)
+		if err != nil {
+			return hash, err
+		}
+	}
+
+	if err := shh.RequestHistoricMessagesWithTimeout(mailServerNode.ID().Bytes(), envelope, timeout); err != nil {
+		if !force {
+			api.service.requestsRegistry.Unregister(hash)
+		}
+		return hash, err
+	}
+
+	return hash, nil
+
+}
+
+// InitiateHistoryRequests is a stateful API for initiating history request for each topic.
+// Caller of this method needs to define only two parameters per each TopicRequest:
+// - Topic
+// - Duration in nanoseconds. Will be used to determine starting time for history request.
+// After that status-go will guarantee that request for this topic and date will be performed.
+func (api *PublicAPI) InitiateHistoryRequests(parent context.Context, request InitiateHistoryRequestParams) (rst []hexutil.Bytes, err error) {
+	tx := api.service.storage.NewTx()
+	defer func() {
+		if err == nil {
+			err = tx.Commit()
+		}
+	}()
+	ctx := NewContextFromService(parent, api.service, tx)
+	requests, err := api.service.historyUpdates.CreateRequests(ctx, request.Requests)
+	if err != nil {
+		return nil, err
+	}
+	var (
+		payload []byte
+		hash    common.Hash
+	)
+	for i := range requests {
+		req := requests[i]
+		options := CreateTopicOptionsFromRequest(req)
+		bloom := options.ToBloomFilterOption()
+		payload, err = bloom.ToMessagesRequestPayload()
+		if err != nil {
+			return rst, err
+		}
+		hash, err = api.requestMessagesUsingPayload(req, request.Peer, request.SymKeyID, payload, request.Force, request.Timeout, options.Topics())
+		if err != nil {
+			return rst, err
+		}
+		rst = append(rst, hash.Bytes())
+	}
+	return rst, err
+}
+
+// CompleteRequest client must mark request completed when all envelopes were processed.
+func (api *PublicAPI) CompleteRequest(parent context.Context, hex string) (err error) {
+	tx := api.service.storage.NewTx()
+	ctx := NewContextFromService(parent, api.service, tx)
+	err = api.service.historyUpdates.UpdateFinishedRequest(ctx, common.HexToHash(hex))
+	if err == nil {
+		return tx.Commit()
+	}
+	return err
 }
 
 // DEPRECATED: use SendDirectMessage with DH flag
@@ -616,8 +760,9 @@ func makeMessagesRequestPayload(r MessagesRequest) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid cursor: %v", err)
 	}
-	if len(cursor) > 0 && len(cursor) != mailserver.DBKeyLength {
-		return nil, fmt.Errorf("invalid cursor size: expected %d but got %d", mailserver.DBKeyLength, len(cursor))
+
+	if len(cursor) > 0 && len(cursor) != mailserver.CursorLength {
+		return nil, fmt.Errorf("invalid cursor size: expected %d but got %d", mailserver.CursorLength, len(cursor))
 	}
 
 	payload := mailserver.MessagesRequestPayload{
