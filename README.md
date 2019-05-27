@@ -33,7 +33,7 @@ $ ./bin/status-term-client -h
 
 `/contact add <topic>`
 
-## Adding a Contact
+## Adding a contact
 
 `/contact add <public-key> <name>`
 
