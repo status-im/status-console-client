@@ -22,7 +22,7 @@ require (
 	github.com/jessevdk/go-flags v1.4.0 // indirect
 	github.com/jroimartin/gocui v0.4.0
 	github.com/karalabe/hid v0.0.0-20190524082611-12a701bced72 // indirect
-	github.com/kkdai/bstream v0.0.0-20181106074824-b3251f7901ec // indirect
+	github.com/kkdai/bstream v1.0.0 // indirect
 	github.com/kr/pty v1.1.4 // indirect
 	github.com/leodido/go-urn v1.1.0 // indirect
 	github.com/mattn/go-runewidth v0.0.4 // indirect
@@ -43,7 +43,7 @@ require (
 	github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24 // indirect
 	github.com/status-im/doubleratchet v2.0.0+incompatible // indirect
 	github.com/status-im/migrate v0.0.0-20181227113212-3bde36291b5c
-	github.com/status-im/mvds v0.0.0-20190523103939-32c047d636e7
+	github.com/status-im/mvds v0.0.0-20190527024356-53ee35748c58
 	github.com/status-im/rendezvous v1.2.0 // indirect
 	github.com/status-im/status-go v0.23.0-beta.9
 	github.com/status-im/whisper v1.4.8
@@ -51,7 +51,7 @@ require (
 	github.com/stretchr/testify v1.3.0
 	golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f
 	golang.org/x/net v0.0.0-20190522155817-f3200d17e092 // indirect
-	golang.org/x/sys v0.0.0-20190524152521-dbbf3f1254d4 // indirect
+	golang.org/x/sys v0.0.0-20190526052359-791d8a0f4d09 // indirect
 	golang.org/x/text v0.3.2 // indirect
 	golang.org/x/tools v0.0.0-20190525145741-7be61e1b0e51 // indirect
 	google.golang.org/genproto v0.0.0-20180831171423-11092d34479b // indirect

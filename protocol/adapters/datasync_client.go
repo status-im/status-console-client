@@ -103,8 +103,13 @@ func NewDataSyncWhisperTransport(shh *whisper.Whisper, privateKey *ecdsa.Private
 	}
 }
 
-func (t *DataSyncWhisperTransport) Watch() mvds.Packet {
-	return <-t.packets
+func (t *DataSyncWhisperTransport) Watch() *mvds.Packet {
+	select {
+	case p := <-t.packets:
+		return &p
+	default:
+		return nil
+	}
 }
 
 // Send sends a new message using the Whisper service.

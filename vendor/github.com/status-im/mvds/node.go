@@ -29,7 +29,7 @@ type Node struct {
 	ms MessageStore
 	st Transport
 
-	syncState       map[GroupID]map[MessageID]map[PeerId]*State
+	s               syncState
 	offeredMessages map[GroupID]map[PeerId][]MessageID
 	sharing         map[GroupID][]PeerId
 	peers           map[GroupID][]PeerId
@@ -45,7 +45,7 @@ func NewNode(ms MessageStore, st Transport, nextEpoch calculateNextEpoch, id Pee
 	return &Node{
 		ms:              ms,
 		st:              st,
-		syncState:       make(map[GroupID]map[MessageID]map[PeerId]*State),
+		s:               syncState{state: make(map[GroupID]map[MessageID]map[PeerId]state)},
 		offeredMessages: make(map[GroupID]map[PeerId][]MessageID),
 		sharing:         make(map[GroupID][]PeerId),
 		peers:           make(map[GroupID][]PeerId),
@@ -62,6 +62,7 @@ func (n *Node) Run() {
 
 	// @todo maybe some waiting?
 
+
 	for {
 		<-time.After(1 * time.Second)
 
@@ -69,6 +70,10 @@ func (n *Node) Run() {
 		// @todo this is done very badly
 		go func() {
 			p := n.st.Watch()
+			if p == nil {
+				return
+			}
+
 			n.onPayload(p.Group, p.Sender, p.Payload)
 		}()
 
@@ -79,9 +84,6 @@ func (n *Node) Run() {
 
 // AppendMessage sends a message to a given group.
 func (n *Node) AppendMessage(group GroupID, data []byte) (MessageID, error) {
-	n.Lock()
-	defer n.Unlock()
-
 	m := Message{
 		GroupId:   group[:],
 		Timestamp: time.Now().Unix(),
@@ -101,7 +103,9 @@ func (n *Node) AppendMessage(group GroupID, data []byte) (MessageID, error) {
 				continue
 			}
 
-			n.state(g, id, p).SendEpoch = n.epoch + 1
+			s := n.s.Get(g, id, p)
+			s.SendEpoch = n.epoch + 1
+			n.s.Set(g, id, p, s)
 		}
 	}
 
@@ -156,37 +160,53 @@ func (n *Node) onOffer(group GroupID, sender PeerId, msg Offer) {
 	for _, raw := range msg.Id {
 		id := toMessageID(raw)
 		n.offerMessage(group, sender, id)
-		n.state(group, id, sender).HoldFlag = true
-		log.Printf("[%s] OFFER (%x -> %x): %x received.\n", group[:4], sender.toBytes()[:4], n.ID.toBytes()[:4], id[:4])
+
+		s := n.s.Get(group, id, sender)
+		s.HoldFlag = true
+		n.s.Set(group, id, sender, s)
+
+		log.Printf("[%x] OFFER (%x -> %x): %x received.\n", group[:4], sender.toBytes()[:4], n.ID.toBytes()[:4], id[:4])
 	}
 }
 
 func (n *Node) onRequest(group GroupID, sender PeerId, msg Request) {
-	for _, id := range msg.Id {
-		n.state(group, toMessageID(id), sender).RequestFlag = true
-		log.Printf("[%s] REQUEST (%x -> %x): %x received.\n", group[:4], sender.toBytes()[:4], n.ID.toBytes()[:4], id[:4])
+	for _, raw := range msg.Id {
+		id := toMessageID(raw)
+
+		s := n.s.Get(group, id, sender)
+		s.RequestFlag = true
+		n.s.Set(group, id, sender, s)
+
+		log.Printf("[%x] REQUEST (%x -> %x): %x received.\n", group[:4], sender.toBytes()[:4], n.ID.toBytes()[:4], id[:4])
 	}
 }
 
 func (n *Node) onAck(group GroupID, sender PeerId, msg Ack) {
-	for _, id := range msg.Id {
-		n.state(group, toMessageID(id), sender).HoldFlag = true
-		log.Printf("[%s] ACK (%x -> %x): %x received.\n", group[:4], sender.toBytes()[:4], n.ID.toBytes()[:4], id[:4])
+	for _, raw := range msg.Id {
+		id := toMessageID(raw)
+
+		s := n.s.Get(group, id, sender)
+		s.HoldFlag = true
+		n.s.Set(group, id, sender, s)
+
+		log.Printf("[%x] ACK (%x -> %x): %x received.\n", group[:4], sender.toBytes()[:4], n.ID.toBytes()[:4], id[:4])
 	}
 }
 
 func (n *Node) onMessage(group GroupID, sender PeerId, msg Message) {
 	id := msg.ID()
-	s := n.state(group, id, sender)
+
+	s := n.s.Get(group, id, sender)
 	s.HoldFlag = true
 	s.AckFlag = true
+	n.s.Set(group, id, sender, s)
 
 	err := n.ms.SaveMessage(msg)
 	if err != nil {
 		// @todo process, should this function ever even have an error?
 	}
 
-	log.Printf("[%s] MESSAGE (%x -> %x): %x received.\n", group[:4], sender.toBytes()[:4], n.ID.toBytes()[:4], id[:4])
+	log.Printf("[%x] MESSAGE (%x -> %x): %x received.\n", group[:4], sender.toBytes()[:4], n.ID.toBytes()[:4], id[:4])
 
 	// @todo push message somewhere for end user
 }
@@ -198,7 +218,8 @@ func (n *Node) payloads() map[GroupID]map[PeerId]*Payload {
 	pls := make(map[GroupID]map[PeerId]*Payload)
 
 	// Ack offered Messages
-	for group, offers := range n.offeredMessages {
+	o := n.offeredMessages
+	for group, offers := range o {
 		for peer, messages := range offers {
 			// @todo do we need this?
 			if _, ok := pls[group]; !ok {
@@ -211,22 +232,30 @@ func (n *Node) payloads() map[GroupID]map[PeerId]*Payload {
 
 			for _, id := range messages {
 				// Ack offered Messages
-				if n.ms.HasMessage(id) && n.syncState[group][id][peer].AckFlag {
-					n.syncState[group][id][peer].AckFlag = false
+				if n.ms.HasMessage(id) && n.s.Get(group, id, peer).AckFlag {
+
+					s := n.s.Get(group, id, peer)
+					s.AckFlag = true
+					n.s.Set(group, id, peer, s)
+
 					pls[group][peer].Ack.Id = append(pls[group][peer].Ack.Id, id[:])
 				}
 
 				// Request offered Messages
-				if !n.ms.HasMessage(id) && n.state(group, id, peer).SendEpoch <= n.epoch {
+				if !n.ms.HasMessage(id) && n.s.Get(group, id, peer).SendEpoch <= n.epoch {
 					pls[group][peer].Request.Id = append(pls[group][peer].Request.Id, id[:])
-					n.syncState[group][id][peer].HoldFlag = true
+
+					s := n.s.Get(group, id, peer)
+					s.HoldFlag = true
+					n.s.Set(group, id, peer, s)
+
 					n.updateSendEpoch(group, id, peer)
 				}
 			}
 		}
 	}
 
-	for group, syncstate := range n.syncState {
+	for group, syncstate := range n.s.Iterate() {
 		for id, peers := range syncstate {
 			for peer, s := range peers {
 				if _, ok := pls[group]; !ok {
@@ -241,6 +270,7 @@ func (n *Node) payloads() map[GroupID]map[PeerId]*Payload {
 				if s.AckFlag {
 					pls[group][peer].Ack.Id = append(pls[group][peer].Ack.Id, id[:])
 					s.AckFlag = false
+					n.s.Set(group, id, peer, s)
 				}
 
 				if n.IsPeerInGroup(group, peer) && s.SendEpoch <= n.epoch {
@@ -262,6 +292,7 @@ func (n *Node) payloads() map[GroupID]map[PeerId]*Payload {
 						pls[group][peer].Messages = append(pls[group][peer].Messages, &m)
 						n.updateSendEpoch(group, id, peer)
 						s.RequestFlag = false
+						n.s.Set(group, id, peer, s)
 					}
 				}
 			}
@@ -271,27 +302,10 @@ func (n *Node) payloads() map[GroupID]map[PeerId]*Payload {
 	return pls
 }
 
-func (n *Node) state(group GroupID, id MessageID, sender PeerId) *State {
-	//n.Lock()
-	//defer n.Unlock()
-
-	// @todo check if we need this
-	if _, ok := n.syncState[group]; !ok {
-		n.syncState[group] = make(map[MessageID]map[PeerId]*State)
-	}
-
-	if _, ok := n.syncState[group][id]; !ok {
-		n.syncState[group][id] = make(map[PeerId]*State)
-	}
-
-	if _, ok := n.syncState[group][id][sender]; !ok {
-		n.syncState[group][id][sender] = &State{}
-	}
-
-	return n.syncState[group][id][sender]
-}
-
 func (n *Node) offerMessage(group GroupID, sender PeerId, id MessageID) {
+	n.Lock()
+	defer n.Unlock()
+
 	if _, ok := n.offeredMessages[group]; !ok {
 		n.offeredMessages[group] = make(map[PeerId][]MessageID)
 	}
@@ -304,9 +318,10 @@ func (n *Node) offerMessage(group GroupID, sender PeerId, id MessageID) {
 }
 
 func (n *Node) updateSendEpoch(g GroupID, m MessageID, p PeerId) {
-	s := n.state(g, m, p)
+	s := n.s.Get(g, m, p)
 	s.SendCount += 1
-	s.SendEpoch = n.nextEpoch(s.SendCount, n.epoch)
+	s.SendEpoch += n.nextEpoch(s.SendCount, n.epoch)
+	n.s.Set(g, m, p, s)
 }
 
 func (n Node) IsPeerInGroup(g GroupID, p PeerId) bool {
