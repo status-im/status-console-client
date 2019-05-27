@@ -84,6 +84,9 @@ func (n *Node) Run() {
 
 // AppendMessage sends a message to a given group.
 func (n *Node) AppendMessage(group GroupID, data []byte) (MessageID, error) {
+
+	// @todo because we don't lock here we seem to get to a point where we can no longer append?
+
 	m := Message{
 		GroupId:   group[:],
 		Timestamp: time.Now().Unix(),
@@ -286,7 +289,8 @@ func (n *Node) payloads() map[GroupID]map[PeerId]*Payload {
 					if s.RequestFlag {
 						m, err := n.ms.GetMessage(id)
 						if err != nil {
-							// @todo
+							log.Printf("error retreiving message: %s", err)
+							continue
 						}
 
 						pls[group][peer].Messages = append(pls[group][peer].Messages, &m)
