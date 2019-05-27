@@ -29,7 +29,7 @@ $ ./bin/status-term-client -h
 
 # Commands
 
-## Adding a Chat
+## Adding a public chat
 
 `/contact add <topic>`
 
