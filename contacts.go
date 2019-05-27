@@ -105,7 +105,7 @@ func (c *ContactsViewController) refreshOnChanges() error {
 	return nil
 }
 
-func (c *ContactsViewController) changes(contacts []client.Contact) bool {
+func (c *ContactsViewController) containsChanges(contacts []client.Contact) bool {
 	if len(contacts) != len(c.contacts) {
 		return true
 	}
