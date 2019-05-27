@@ -97,7 +97,7 @@ func (c *ContactsViewController) refreshOnChanges() error {
 	if err != nil {
 		return err
 	}
-	if c.changes(contacts) {
+	if c.containsChanges(contacts) {
 		log.Printf("[CONTACTS] new contacts %v", contacts)
 		c.contacts = contacts
 		c.refresh()
