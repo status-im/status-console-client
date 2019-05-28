@@ -3,20 +3,31 @@ package mvds
 import "sync"
 
 type state struct {
-	HoldFlag    bool
-	AckFlag     bool
-	RequestFlag bool
 	SendCount   uint64
 	SendEpoch   int64
 }
 
 type syncState struct {
-	sync.RWMutex
+	sync.Mutex
 
 	state map[GroupID]map[MessageID]map[PeerId]state
 }
 
+func newSyncState() syncState {
+	return syncState{
+		state: make(map[GroupID]map[MessageID]map[PeerId]state),
+	}
+}
+
 func (s syncState) Get(group GroupID, id MessageID, sender PeerId) state {
+	s.Lock()
+	defer s.Unlock()
+
+	state, _ := s.state[group][id][sender]
+	return state
+}
+
+func (s *syncState) Set(group GroupID, id MessageID, sender PeerId, newState state) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -28,25 +39,17 @@ func (s syncState) Get(group GroupID, id MessageID, sender PeerId) state {
 		s.state[group][id] = make(map[PeerId]state)
 	}
 
-	if _, ok := s.state[group][id][sender]; !ok {
-		s.state[group][id][sender] = state{}
-	}
-
-	return s.state[group][id][sender]
+	s.state[group][id][sender] = newState
 }
 
-func (s *syncState) Set(group GroupID, id MessageID, sender PeerId, state state) {
+func (s *syncState) Remove(group GroupID, id MessageID, sender PeerId) {
 	s.Lock()
 	defer s.Unlock()
 
-	s.state[group][id][sender] = state
+	delete(s.state[group][id], sender)
 }
 
-func (s syncState) Iterate() map[GroupID]map[MessageID]map[PeerId]state {
-	return s.state
-}
-
-func (s syncState) Map(process func(g GroupID, m MessageID, p PeerId, s state) state) {
+func (s *syncState) Map(process func(g GroupID, m MessageID, p PeerId, s state) state) {
 	s.Lock()
 	defer s.Unlock()
 
