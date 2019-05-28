@@ -2,12 +2,14 @@ package params
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -31,6 +33,12 @@ type LightEthConfig struct {
 
 	// DatabaseCache is memory (in MBs) allocated to internal caching (min 16MB / database forced)
 	DatabaseCache int
+
+	// TrustedNodes is a list of trusted servers
+	TrustedNodes []string
+
+	//MinTrustedFraction is minimum percentage of connected trusted servers to validate header(1-100)
+	MinTrustedFraction int
 }
 
 // ----------
@@ -55,18 +63,18 @@ type WhisperConfig struct {
 	// MinimumPoW minimum PoW for Whisper messages
 	MinimumPoW float64
 
-	// MailServerPassword for symmetric encryption with MailServer.
+	// MailServerPassword for symmetric encryption of whisper message history requests.
 	// (if no account file selected, then this password is used for symmetric encryption).
 	MailServerPassword string
 
 	// MailServerAsymKey is an hex-encoded asymmetric key to decrypt messages sent to MailServer.
 	MailServerAsymKey string
 
-	// RateLimit minimum time between queries to mail server per peer
+	// MailServerRateLimit minimum time between queries to mail server per peer.
 	MailServerRateLimit int
 
-	// MailServerCleanupPeriod time in seconds to wait to run mail server cleanup
-	MailServerCleanupPeriod int
+	// MailServerDataRetention is a number of days data should be stored by MailServer.
+	MailServerDataRetention int
 
 	// TTL time to live for messages, in seconds
 	TTL int
@@ -77,12 +85,54 @@ type WhisperConfig struct {
 	// MaxMessageSize is a maximum size of a devp2p packet handled by the Whisper protocol,
 	// not only the size of envelopes sent in that packet.
 	MaxMessageSize uint32
+
+	// DatabaseConfig is configuration for which datastore we use
+	DatabaseConfig DatabaseConfig
+}
+
+type DatabaseConfig struct {
+	PGConfig PGConfig
+}
+
+type PGConfig struct {
+	// Enabled whether we should use a posgres instance
+	Enabled bool
+	// The URI of the server
+	URI string
 }
 
 // String dumps config object as nicely indented JSON
 func (c *WhisperConfig) String() string {
 	data, _ := json.MarshalIndent(c, "", "    ") // nolint: gas
 	return string(data)
+}
+
+// IncentivisationConfig holds incentivisation-related configuration
+type IncentivisationConfig struct {
+	// Enabled flag specifies whether protocol is enabled
+	Enabled bool `validate:"required"`
+	// Endpoint for the RPC calls
+	RPCEndpoint string `validate:"required"`
+	// Contract address
+	ContractAddress string `validate:"required"`
+	// IP address that is used
+	IP string `validate:"required"`
+	// Port
+	Port uint16 `validate:"required"`
+}
+
+// String dumps config object as nicely indented JSON
+func (c *IncentivisationConfig) String() string {
+	data, _ := json.MarshalIndent(c, "", "    ") // nolint: gas
+	return string(data)
+}
+
+// Validate validates the IncentivisationConfig struct and returns an error if inconsistent values are found
+func (c *IncentivisationConfig) Validate(validate *validator.Validate) error {
+	if err := validate.Struct(c); err != nil {
+		return err
+	}
+	return nil
 }
 
 // ----------
@@ -174,9 +224,6 @@ type NodeConfig struct {
 
 	// DataDir is the file system folder the node should use for any data storage needs.
 	DataDir string `validate:"required"`
-	// BackupDisabledDataDir is the file system folder the node should use for any data storage needs that it doesn't want backed up.
-	BackupDisabledDataDir string `validate:"required"`
-	PFSEnabled            bool
 
 	// KeyStoreDir is the file system folder that contains private keys.
 	KeyStoreDir string `validate:"required"`
@@ -254,14 +301,29 @@ type NodeConfig struct {
 	// LogEnabled enables the logger
 	LogEnabled bool `json:"LogEnabled"`
 
+	// LogMobileSystem enables log redirection to android/ios system logger.
+	LogMobileSystem bool
+
 	// LogFile is filename where exposed logs get written to
 	LogFile string
 
 	// LogLevel defines minimum log level. Valid names are "ERROR", "WARN", "INFO", "DEBUG", and "TRACE".
 	LogLevel string `validate:"eq=ERROR|eq=WARN|eq=INFO|eq=DEBUG|eq=TRACE"`
 
+	// LogMaxBackups defines number of rotated log files that will be stored.
+	LogMaxBackups int
+
+	// LogMaxSize in megabytes after current size is reached log file will be rotated.
+	LogMaxSize int
+
+	// LogCompressRotated if true all rotated files will be gzipped.
+	LogCompressRotated bool
+
 	// LogToStderr defines whether logged info should also be output to os.Stderr
 	LogToStderr bool
+
+	// EnableStatusService should be true to enable methods under status namespace.
+	EnableStatusService bool
 
 	// UpstreamConfig extra config for providing upstream infura server.
 	UpstreamConfig UpstreamRPCConfig `json:"UpstreamConfig"`
@@ -275,6 +337,12 @@ type NodeConfig struct {
 	// WhisperConfig extra configuration for SHH
 	WhisperConfig WhisperConfig `json:"WhisperConfig," validate:"structonly"`
 
+	// IncentivisationConfig extra configuration for incentivisation service
+	IncentivisationConfig IncentivisationConfig `json:"IncentivisationConfig," validate:"structonly"`
+
+	// ShhextConfig keeps configuration for service running under shhext namespace.
+	ShhextConfig ShhextConfig `json:"ShhextConfig," validate:"structonly"`
+
 	// SwarmConfig extra configuration for Swarm and ENS
 	SwarmConfig SwarmConfig `json:"SwarmConfig," validate:"structonly"`
 
@@ -286,17 +354,48 @@ type NodeConfig struct {
 	// discoverable peers with the discovery limits.
 	RequireTopics map[discv5.Topic]Limits `json:"RequireTopics"`
 
-	// StatusServiceEnabled enables status service api
-	StatusServiceEnabled bool
-
-	// InstallationId id of the current installation
-	InstallationID string
-
-	// DebugAPIEnabled enables debug api
-	DebugAPIEnabled bool
-
 	// MailServerRegistryAddress is the MailServerRegistry contract address
 	MailServerRegistryAddress string
+}
+
+// ShhextConfig defines options used by shhext service.
+type ShhextConfig struct {
+	PFSEnabled bool
+	// BackupDisabledDataDir is the file system folder the node should use for any data storage needs that it doesn't want backed up.
+	BackupDisabledDataDir string
+	// InstallationId id of the current installation
+	InstallationID string
+	// MailServerConfirmations should be true if client wants to receive confirmatons only from a selected mail servers.
+	MailServerConfirmations bool
+	// EnableConnectionManager turns on management of the mail server connections if true.
+	EnableConnectionManager bool
+	// EnableLastUsedMonitor guarantees that last used mail server will be tracked and persisted into the storage.
+	EnableLastUsedMonitor bool
+	// ConnectionTarget will be used by connection manager. It will ensure that we connected with configured number of servers.
+	ConnectionTarget int
+	// RequestsDelay used to ensure that no similar requests are sent within short periods of time.
+	RequestsDelay time.Duration
+
+	// MaxServerFailures defines maximum allowed expired requests before server will be swapped to another one.
+	MaxServerFailures int
+
+	// MaxMessageDeliveryAttempts defines how many times we will try to deliver not-acknowledged envelopes.
+	MaxMessageDeliveryAttempts int
+
+	// WhisperCacheDir is a folder where whisper filters may persist messages before delivering them
+	// to a client.
+	WhisperCacheDir string
+}
+
+// Validate validates the ShhextConfig struct and returns an error if inconsistent values are found
+func (c *ShhextConfig) Validate(validate *validator.Validate) error {
+	if err := validate.Struct(c); err != nil {
+		return err
+	}
+	if c.PFSEnabled && len(c.BackupDisabledDataDir) == 0 {
+		return errors.New("field BackupDisabledDataDir is required if PFSEnabled is true")
+	}
+	return nil
 }
 
 // Option is an additional setting when creating a NodeConfig
@@ -309,6 +408,7 @@ func WithFleet(fleet string) Option {
 		if fleet == FleetUndefined {
 			return nil
 		}
+		c.NoDiscovery = false
 		c.ClusterConfig.Enabled = true
 		return loadConfigFromAsset(fmt.Sprintf("../config/cli/fleet-%s.json", fleet), c)
 	}
@@ -336,11 +436,14 @@ func NewNodeConfigWithDefaults(dataDir string, networkID uint64, opts ...Option)
 		return nil, err
 	}
 
-	c.NoDiscovery = false
+	c.NoDiscovery = true
 	c.HTTPHost = ""
 	c.ListenAddr = ":30303"
 	c.LogEnabled = true
 	c.LogLevel = "INFO"
+	c.LogMaxSize = 100
+	c.LogCompressRotated = true
+	c.LogMaxBackups = 3
 	c.LogToStderr = true
 	c.WhisperConfig.Enabled = true
 	c.WhisperConfig.EnableNTPSync = true
@@ -399,7 +502,8 @@ func (c *NodeConfig) updatePeerLimits() {
 	}
 }
 
-// NewNodeConfig creates new node configuration object with bare-minimum defaults
+// NewNodeConfig creates new node configuration object with bare-minimum defaults.
+// Important: the returned config is not validated.
 func NewNodeConfig(dataDir string, networkID uint64) (*NodeConfig, error) {
 	var keyStoreDir, wnodeDir string
 
@@ -411,23 +515,22 @@ func NewNodeConfig(dataDir string, networkID uint64) (*NodeConfig, error) {
 	}
 
 	config := &NodeConfig{
-		NetworkID:             networkID,
-		DataDir:               dataDir,
-		KeyStoreDir:           keyStoreDir,
-		BackupDisabledDataDir: dataDir,
-		Version:               Version,
-		HTTPHost:              "localhost",
-		HTTPPort:              8545,
-		HTTPVirtualHosts:      []string{"localhost"},
-		ListenAddr:            ":0",
-		APIModules:            "eth,net,web3,peer",
-		MaxPeers:              25,
-		MaxPendingPeers:       0,
-		IPCFile:               "geth.ipc",
-		log:                   log.New("package", "status-go/params.NodeConfig"),
-		LogFile:               "",
-		LogLevel:              "ERROR",
-		NoDiscovery:           true,
+		NetworkID:        networkID,
+		DataDir:          dataDir,
+		KeyStoreDir:      keyStoreDir,
+		Version:          Version,
+		HTTPHost:         "localhost",
+		HTTPPort:         8545,
+		HTTPVirtualHosts: []string{"localhost"},
+		ListenAddr:       ":0",
+		APIModules:       "eth,net,web3,peer",
+		MaxPeers:         25,
+		MaxPendingPeers:  0,
+		IPCFile:          "geth.ipc",
+		log:              log.New("package", "status-go/params.NodeConfig"),
+		LogFile:          "",
+		LogLevel:         "ERROR",
+		NoDiscovery:      true,
 		UpstreamConfig: UpstreamRPCConfig{
 			URL: getUpstreamURL(networkID),
 		},
@@ -439,6 +542,9 @@ func NewNodeConfig(dataDir string, networkID uint64) (*NodeConfig, error) {
 			MinimumPoW:     WhisperMinimumPoW,
 			TTL:            WhisperTTL,
 			MaxMessageSize: whisper.DefaultMaxMessageSize,
+		},
+		ShhextConfig: ShhextConfig{
+			BackupDisabledDataDir: dataDir,
 		},
 		SwarmConfig:    SwarmConfig{},
 		RegisterTopics: []discv5.Topic{},
@@ -503,6 +609,7 @@ func loadConfigFromAsset(name string, config *NodeConfig) error {
 //
 //   Key: 'TestStruct.TestField' Error:Field validation for 'TestField' failed on the 'required' tag
 //
+// nolint: gocyclo
 func (c *NodeConfig) Validate() error {
 	validate := NewValidator()
 
@@ -524,13 +631,21 @@ func (c *NodeConfig) Validate() error {
 		return err
 	}
 
+	// Whisper's data directory must be relative to the main data directory
+	// if EnableMailServer is true.
+	if c.WhisperConfig.Enabled && c.WhisperConfig.EnableMailServer {
+		if !strings.HasPrefix(c.WhisperConfig.DataDir, c.DataDir) {
+			return fmt.Errorf("WhisperConfig.DataDir must start with DataDir fragment")
+		}
+	}
+
 	if !c.NoDiscovery && len(c.ClusterConfig.BootNodes) == 0 {
 		// No point in running discovery if we don't have bootnodes.
 		// In case we do have bootnodes, NoDiscovery should be true.
 		return fmt.Errorf("NoDiscovery is false, but ClusterConfig.BootNodes is empty")
 	}
 
-	if c.PFSEnabled && len(c.InstallationID) == 0 {
+	if c.ShhextConfig.PFSEnabled && len(c.ShhextConfig.InstallationID) == 0 {
 		return fmt.Errorf("PFSEnabled is true, but InstallationID is empty")
 	}
 
@@ -562,7 +677,14 @@ func (c *NodeConfig) validateChildStructs(validate *validator.Validate) error {
 	if err := c.SwarmConfig.Validate(validate); err != nil {
 		return err
 	}
-
+	if err := c.ShhextConfig.Validate(validate); err != nil {
+		return err
+	}
+	if c.IncentivisationConfig.Enabled {
+		if err := c.IncentivisationConfig.Validate(validate); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -623,10 +745,10 @@ func (c *WhisperConfig) Validate(validate *validator.Validate) error {
 		if c.DataDir == "" {
 			return fmt.Errorf("WhisperConfig.DataDir must be specified when WhisperConfig.EnableMailServer is true")
 		}
+
 		if c.MailServerPassword == "" && c.MailServerAsymKey == "" {
 			return fmt.Errorf("WhisperConfig.MailServerPassword or WhisperConfig.MailServerAsymKey must be specified when WhisperConfig.EnableMailServer is true")
 		}
-
 		if c.MailServerAsymKey != "" {
 			if _, err := crypto.HexToECDSA(c.MailServerAsymKey); err != nil {
 				return fmt.Errorf("WhisperConfig.MailServerAsymKey is invalid: %s", c.MailServerAsymKey)
@@ -658,6 +780,8 @@ func getUpstreamURL(networkID uint64) string {
 		return RopstenEthereumNetworkURL
 	case RinkebyNetworkID:
 		return RinkebyEthereumNetworkURL
+	case GoerliNetworkID:
+		return GoerliEthereumNetworkURL
 	}
 
 	return ""

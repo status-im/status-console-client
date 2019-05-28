@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,19 +9,22 @@ import (
 	"path/filepath"
 	"time"
 
+	gethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/downloader"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/les"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/discv5"
+	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/status-im/status-go/mailserver"
 	"github.com/status-im/status-go/params"
+	"github.com/status-im/status-go/services/incentivisation"
 	"github.com/status-im/status-go/services/peer"
 	"github.com/status-im/status-go/services/personal"
 	"github.com/status-im/status-go/services/shhext"
@@ -40,6 +44,7 @@ var (
 	ErrPersonalServiceRegistrationFailure         = errors.New("failed to register the personal api service")
 	ErrStatusServiceRegistrationFailure           = errors.New("failed to register the Status service")
 	ErrPeerServiceRegistrationFailure             = errors.New("failed to register the Peer service")
+	ErrIncentivisationServiceRegistrationFailure  = errors.New("failed to register the Incentivisation service")
 )
 
 // All general log messages in this package should be routed through this logger.
@@ -96,6 +101,11 @@ func MakeNode(config *params.NodeConfig, db *leveldb.DB) (*node.Node, error) {
 	// start Whisper service.
 	if err := activateShhService(stack, config, db); err != nil {
 		return nil, fmt.Errorf("%v: %v", ErrWhisperServiceRegistrationFailure, err)
+	}
+
+	// start incentivisation service
+	if err := activateIncentivisationService(stack, config); err != nil {
+		return nil, fmt.Errorf("%v: %v", ErrIncentivisationServiceRegistrationFailure, err)
 	}
 
 	// start status service.
@@ -174,6 +184,8 @@ func calculateGenesis(networkID uint64) (*core.Genesis, error) {
 		genesis = core.DefaultTestnetGenesisBlock()
 	case params.RinkebyNetworkID:
 		genesis = core.DefaultRinkebyGenesisBlock()
+	case params.GoerliNetworkID:
+		genesis = core.DefaultGoerliGenesisBlock()
 	case params.StatusChainNetworkID:
 		var err error
 		if genesis, err = defaultStatusChainGenesisBlock(); err != nil {
@@ -218,6 +230,10 @@ func activateLightEthService(stack *node.Node, config *params.NodeConfig) error 
 	ethConf.SyncMode = downloader.LightSync
 	ethConf.NetworkId = config.NetworkID
 	ethConf.DatabaseCache = config.LightEthConfig.DatabaseCache
+	ethConf.ULC = &eth.ULCConfig{
+		TrustedServers:     config.LightEthConfig.TrustedNodes,
+		MinTrustedFraction: config.LightEthConfig.MinTrustedFraction,
+	}
 	return stack.Register(func(ctx *node.ServiceContext) (node.Service, error) {
 		return les.New(ctx, &ethConf)
 	})
@@ -231,7 +247,7 @@ func activatePersonalService(stack *node.Node, config *params.NodeConfig) error 
 }
 
 func activateStatusService(stack *node.Node, config *params.NodeConfig) error {
-	if !config.StatusServiceEnabled {
+	if !config.EnableStatusService {
 		logger.Info("Status service api is disabled")
 		return nil
 	}
@@ -323,28 +339,62 @@ func activateShhService(stack *node.Node, config *params.NodeConfig, db *leveldb
 		if err := ctx.Service(&whisper); err != nil {
 			return nil, err
 		}
-
-		config := &shhext.ServiceConfig{
-			DataDir:        config.BackupDisabledDataDir,
-			InstallationID: config.InstallationID,
-			Debug:          config.DebugAPIEnabled,
-			PFSEnabled:     config.PFSEnabled,
-		}
-
-		svc := shhext.New(whisper, shhext.EnvelopeSignalHandler{}, db, config)
-		return svc, nil
+		return shhext.New(whisper, shhext.EnvelopeSignalHandler{}, db, config.ShhextConfig), nil
 	})
 }
 
-// parseNodes creates list of discover.Node out of enode strings.
-func parseNodes(enodes []string) []*discover.Node {
-	var nodes []*discover.Node
-	for _, enode := range enodes {
-		parsedPeer, err := discover.ParseNode(enode)
+// activateIncentivisationService configures Whisper and adds it to the given node.
+func activateIncentivisationService(stack *node.Node, config *params.NodeConfig) (err error) {
+	if !config.WhisperConfig.Enabled {
+		logger.Info("SHH protocol is disabled")
+		return nil
+	}
+
+	if !config.IncentivisationConfig.Enabled {
+		logger.Info("Incentivisation is disabled")
+		return nil
+	}
+
+	logger.Info("activating incentivisation")
+	// TODO(dshulyak) add a config option to enable it by default, but disable if app is started from statusd
+	return stack.Register(func(ctx *node.ServiceContext) (node.Service, error) {
+		var w *whisper.Whisper
+		if err := ctx.Service(&w); err != nil {
+			return nil, err
+		}
+		incentivisationConfig := &incentivisation.ServiceConfig{
+			ContractAddress: config.IncentivisationConfig.ContractAddress,
+			RPCEndpoint:     config.IncentivisationConfig.RPCEndpoint,
+			IP:              config.IncentivisationConfig.IP,
+			Port:            config.IncentivisationConfig.Port,
+		}
+		privateKey, err := crypto.HexToECDSA(config.NodeKey)
+		if err != nil {
+			return nil, err
+		}
+		client, err := ethclient.DialContext(context.TODO(), incentivisationConfig.RPCEndpoint)
+		if err != nil {
+			return nil, err
+		}
+
+		contract, err := incentivisation.NewContract(gethcommon.HexToAddress(incentivisationConfig.ContractAddress), client, client)
+		if err != nil {
+			return nil, err
+		}
+
+		return incentivisation.New(privateKey, whisper.NewPublicWhisperAPI(w), incentivisationConfig, contract), nil
+	})
+}
+
+// parseNodes creates list of enode.Node out of enode strings.
+func parseNodes(enodes []string) []*enode.Node {
+	var nodes []*enode.Node
+	for _, item := range enodes {
+		parsedPeer, err := enode.ParseV4(item)
 		if err == nil {
 			nodes = append(nodes, parsedPeer)
 		} else {
-			logger.Error("Failed to parse enode", "enode", enode, "err", err)
+			logger.Error("Failed to parse enode", "enode", item, "err", err)
 		}
 
 	}
@@ -366,10 +416,10 @@ func parseNodesV5(enodes []string) []*discv5.Node {
 	return nodes
 }
 
-func parseNodesToNodeID(enodes []string) []discover.NodeID {
-	nodeIDs := make([]discover.NodeID, 0, len(enodes))
+func parseNodesToNodeID(enodes []string) []enode.ID {
+	nodeIDs := make([]enode.ID, 0, len(enodes))
 	for _, node := range parseNodes(enodes) {
-		nodeIDs = append(nodeIDs, node.ID)
+		nodeIDs = append(nodeIDs, node.ID())
 	}
 	return nodeIDs
 }

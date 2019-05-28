@@ -3,11 +3,13 @@ package chat
 import (
 	"crypto/ecdsa"
 	"database/sql"
-	"time"
+	"fmt"
+	"os"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
 
-	_ "github.com/mutecomm/go-sqlcipher" // We require go sqlcipher that overrides default implementation
+	sqlite "github.com/mutecomm/go-sqlcipher" // We require go sqlcipher that overrides default implementation
 	dr "github.com/status-im/doubleratchet"
 	"github.com/status-im/migrate"
 	"github.com/status-im/migrate/database/sqlcipher"
@@ -15,6 +17,22 @@ import (
 	ecrypto "github.com/status-im/status-go/services/shhext/chat/crypto"
 	"github.com/status-im/status-go/services/shhext/chat/migrations"
 )
+
+// A safe max number of rows
+const maxNumberOfRows = 100000000
+
+// The default number of kdf iterations in sqlcipher (from version 3.0.0)
+// https://github.com/sqlcipher/sqlcipher/blob/fda4c68bb474da7e955be07a2b807bda1bb19bd2/CHANGELOG.md#300---2013-11-05
+// https://www.zetetic.net/sqlcipher/sqlcipher-api/#kdf_iter
+const defaultKdfIterationsNumber = 64000
+
+// The reduced number of kdf iterations (for performance reasons) which is
+// currently used for derivation of the database key
+// https://github.com/status-im/status-go/pull/1343
+// https://notes.status.im/i8Y_l7ccTiOYq09HVgoFwA
+const kdfIterationsNumber = 3200
+
+const exportDB = "SELECT sqlcipher_export('newdb')"
 
 // SQLLitePersistence represents a persistence service tied to an SQLite database
 type SQLLitePersistence struct {
@@ -48,6 +66,184 @@ func NewSQLLitePersistence(path string, key string) (*SQLLitePersistence, error)
 	return s, nil
 }
 
+func MigrateDBFile(oldPath string, newPath string, oldKey string, newKey string) error {
+	_, err := os.Stat(oldPath)
+
+	// No files, nothing to do
+	if os.IsNotExist(err) {
+		return nil
+	}
+
+	// Any other error, throws
+	if err != nil {
+		return err
+	}
+
+	if err := os.Rename(oldPath, newPath); err != nil {
+		return err
+	}
+
+	db, err := openDB(newPath, oldKey, defaultKdfIterationsNumber)
+	if err != nil {
+		return err
+	}
+
+	keyString := fmt.Sprintf("PRAGMA rekey = '%s'", newKey)
+
+	if _, err = db.Exec(keyString); err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+// MigrateDBKeyKdfIterations changes the number of kdf iterations executed
+// during the database key derivation. This change is necessary because
+// of performance reasons.
+// https://github.com/status-im/status-go/pull/1343
+// `sqlcipher_export` is used for migration, check out this link for details:
+// https://www.zetetic.net/sqlcipher/sqlcipher-api/#sqlcipher_export
+func MigrateDBKeyKdfIterations(oldPath string, newPath string, key string) error {
+	_, err := os.Stat(oldPath)
+
+	// No files, nothing to do
+	if os.IsNotExist(err) {
+		return nil
+	}
+
+	// Any other error, throws
+	if err != nil {
+		return err
+	}
+
+	isEncrypted, err := sqlite.IsEncrypted(oldPath)
+	if err != nil {
+		return err
+	}
+
+	// Nothing to do, move db to the next migration
+	if !isEncrypted {
+		return os.Rename(oldPath, newPath)
+	}
+
+	db, err := openDB(oldPath, key, defaultKdfIterationsNumber)
+	if err != nil {
+		return err
+	}
+
+	attach := fmt.Sprintf(
+		"ATTACH DATABASE '%s' AS newdb KEY '%s'",
+		newPath,
+		key)
+
+	if _, err = db.Exec(attach); err != nil {
+		return err
+	}
+
+	changeKdfIter := fmt.Sprintf(
+		"PRAGMA newdb.kdf_iter = %d",
+		kdfIterationsNumber)
+
+	if _, err = db.Exec(changeKdfIter); err != nil {
+		return err
+	}
+
+	if _, err = db.Exec(exportDB); err != nil {
+		return err
+	}
+
+	if err = db.Close(); err != nil {
+		return err
+	}
+
+	return os.Remove(oldPath)
+}
+
+// EncryptDatabase encrypts an unencrypted database with key
+func EncryptDatabase(oldPath string, newPath string, key string) error {
+	_, err := os.Stat(oldPath)
+
+	// No files, nothing to do
+	if os.IsNotExist(err) {
+		return nil
+	}
+
+	// Any other error, throws
+	if err != nil {
+		return err
+	}
+
+	isEncrypted, err := sqlite.IsEncrypted(oldPath)
+	if err != nil {
+		return err
+	}
+
+	// Nothing to do, already encrypted
+	if isEncrypted {
+		return os.Rename(oldPath, newPath)
+	}
+
+	db, err := openDB(oldPath, "", defaultKdfIterationsNumber)
+	if err != nil {
+		return err
+	}
+
+	attach := fmt.Sprintf(
+		"ATTACH DATABASE '%s' AS newdb KEY '%s'",
+		newPath,
+		key)
+
+	if _, err = db.Exec(attach); err != nil {
+		return err
+	}
+
+	changeKdfIter := fmt.Sprintf(
+		"PRAGMA newdb.kdf_iter = %d",
+		kdfIterationsNumber)
+
+	if _, err = db.Exec(changeKdfIter); err != nil {
+		return err
+	}
+
+	if _, err = db.Exec(exportDB); err != nil {
+		return err
+	}
+
+	if err = db.Close(); err != nil {
+		return err
+	}
+
+	return os.Remove(oldPath)
+}
+
+func openDB(path string, key string, kdfIter int) (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		return nil, err
+	}
+
+	keyString := fmt.Sprintf("PRAGMA key = '%s'", key)
+
+	// Disable concurrent access as not supported by the driver
+	db.SetMaxOpenConns(1)
+
+	if _, err = db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		return nil, err
+	}
+
+	if _, err = db.Exec(keyString); err != nil {
+		return nil, err
+	}
+
+	kdfString := fmt.Sprintf("PRAGMA kdf_iter = '%d'", kdfIter)
+
+	if _, err = db.Exec(kdfString); err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
 // NewSQLLiteKeysStorage creates a new SQLLiteKeysStorage instance associated with the specified database
 func NewSQLLiteKeysStorage(db *sql.DB) *SQLLiteKeysStorage {
 	return &SQLLiteKeysStorage{
@@ -74,23 +270,8 @@ func (s *SQLLitePersistence) GetSessionStorage() dr.SessionStorage {
 
 // Open opens a file at the specified path
 func (s *SQLLitePersistence) Open(path string, key string) error {
-	db, err := sql.Open("sqlite3", path)
+	db, err := openDB(path, key, kdfIterationsNumber)
 	if err != nil {
-		return err
-	}
-
-	// Disable concurrent access as not supported by the driver
-	db.SetMaxOpenConns(1)
-
-	if _, err = db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		return err
-	}
-
-	if _, err = db.Exec("PRAGMA key=ON"); err != nil {
-		return err
-	}
-
-	if _, err = db.Exec("PRAGMA cypher_page_size=4096"); err != nil {
 		return err
 	}
 
@@ -100,25 +281,44 @@ func (s *SQLLitePersistence) Open(path string, key string) error {
 }
 
 // AddPrivateBundle adds the specified BundleContainer to the database
-func (s *SQLLitePersistence) AddPrivateBundle(b *BundleContainer) error {
+func (s *SQLLitePersistence) AddPrivateBundle(bc *BundleContainer) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 
-	for installationID, signedPreKey := range b.GetBundle().GetSignedPreKeys() {
-		stmt, err := tx.Prepare("INSERT INTO bundles(identity, private_key, signed_pre_key, installation_id, timestamp) VALUES(?, ?, ?, ?, ?)")
+	for installationID, signedPreKey := range bc.GetBundle().GetSignedPreKeys() {
+		var version uint32
+		stmt, err := tx.Prepare(`SELECT version
+					 FROM bundles
+					 WHERE installation_id = ? AND identity = ?
+					 ORDER BY version DESC
+					 LIMIT 1`)
+		if err != nil {
+			return err
+		}
+
+		defer stmt.Close()
+
+		err = stmt.QueryRow(installationID, bc.GetBundle().GetIdentity()).Scan(&version)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+
+		stmt, err = tx.Prepare(`INSERT INTO bundles(identity, private_key, signed_pre_key, installation_id, version, timestamp)
+					VALUES(?, ?, ?, ?, ?, ?)`)
 		if err != nil {
 			return err
 		}
 		defer stmt.Close()
 
 		_, err = stmt.Exec(
-			b.GetBundle().GetIdentity(),
-			b.GetPrivateSignedPreKey(),
+			bc.GetBundle().GetIdentity(),
+			bc.GetPrivateSignedPreKey(),
 			signedPreKey.GetSignedPreKey(),
 			installationID,
-			time.Now().UnixNano(),
+			version+1,
+			bc.GetBundle().GetTimestamp(),
 		)
 		if err != nil {
 			_ = tx.Rollback()
@@ -144,23 +344,29 @@ func (s *SQLLitePersistence) AddPublicBundle(b *Bundle) error {
 
 	for installationID, signedPreKeyContainer := range b.GetSignedPreKeys() {
 		signedPreKey := signedPreKeyContainer.GetSignedPreKey()
-		insertStmt, err := tx.Prepare("INSERT INTO bundles(identity, signed_pre_key, installation_id, timestamp) VALUES( ?, ?, ?, ?)")
+		version := signedPreKeyContainer.GetVersion()
+		insertStmt, err := tx.Prepare(`INSERT INTO bundles(identity, signed_pre_key, installation_id, version, timestamp)
+					       VALUES( ?, ?, ?, ?, ?)`)
 		if err != nil {
 			return err
 		}
 		defer insertStmt.Close()
+
 		_, err = insertStmt.Exec(
 			b.GetIdentity(),
 			signedPreKey,
 			installationID,
-			time.Now().UnixNano(),
+			version,
+			b.GetTimestamp(),
 		)
 		if err != nil {
 			_ = tx.Rollback()
 			return err
 		}
 		// Mark old bundles as expired
-		updateStmt, err := tx.Prepare("UPDATE bundles SET expired = 1 WHERE identity = ? AND installation_id = ? AND signed_pre_key != ?")
+		updateStmt, err := tx.Prepare(`UPDATE bundles
+					       SET expired = 1
+					       WHERE identity = ? AND installation_id = ? AND version < ?`)
 		if err != nil {
 			return err
 		}
@@ -169,7 +375,7 @@ func (s *SQLLitePersistence) AddPublicBundle(b *Bundle) error {
 		_, err = updateStmt.Exec(
 			b.GetIdentity(),
 			installationID,
-			signedPreKey,
+			version,
 		)
 		if err != nil {
 			_ = tx.Rollback()
@@ -182,8 +388,13 @@ func (s *SQLLitePersistence) AddPublicBundle(b *Bundle) error {
 }
 
 // GetAnyPrivateBundle retrieves any bundle from the database containing a private key
-func (s *SQLLitePersistence) GetAnyPrivateBundle(myIdentityKey []byte) (*BundleContainer, error) {
-	stmt, err := s.db.Prepare("SELECT identity, private_key, signed_pre_key, installation_id, timestamp FROM bundles WHERE identity = ? AND expired = 0")
+func (s *SQLLitePersistence) GetAnyPrivateBundle(myIdentityKey []byte, installationIDs []string) (*BundleContainer, error) {
+
+	/* #nosec */
+	statement := `SELECT identity, private_key, signed_pre_key, installation_id, timestamp, version
+	              FROM bundles
+		      WHERE expired = 0 AND identity = ? AND installation_id IN (?` + strings.Repeat(",?", len(installationIDs)-1) + ")"
+	stmt, err := s.db.Prepare(statement)
 	if err != nil {
 		return nil, err
 	}
@@ -192,8 +403,15 @@ func (s *SQLLitePersistence) GetAnyPrivateBundle(myIdentityKey []byte) (*BundleC
 	var timestamp int64
 	var identity []byte
 	var privateKey []byte
+	var version uint32
 
-	rows, err := stmt.Query(myIdentityKey)
+	args := make([]interface{}, len(installationIDs)+1)
+	args[0] = myIdentityKey
+	for i, installationID := range installationIDs {
+		args[i+1] = installationID
+	}
+
+	rows, err := stmt.Query(args...)
 	rowCount := 0
 
 	if err != nil {
@@ -220,21 +438,22 @@ func (s *SQLLitePersistence) GetAnyPrivateBundle(myIdentityKey []byte) (*BundleC
 			&signedPreKey,
 			&installationID,
 			&timestamp,
+			&version,
 		)
 		if err != nil {
 			return nil, err
 		}
 		// If there is a private key, we set the timestamp of the bundle container
 		if privateKey != nil {
-			bundleContainer.Timestamp = timestamp
+			bundle.Timestamp = timestamp
 		}
 
-		bundle.SignedPreKeys[installationID] = &SignedPreKey{SignedPreKey: signedPreKey}
+		bundle.SignedPreKeys[installationID] = &SignedPreKey{SignedPreKey: signedPreKey, Version: version}
 		bundle.Identity = identity
 	}
 
 	// If no records are found or no record with private key, return nil
-	if rowCount == 0 || bundleContainer.Timestamp == 0 {
+	if rowCount == 0 || bundleContainer.GetBundle().Timestamp == 0 {
 		return nil, nil
 	}
 
@@ -244,7 +463,9 @@ func (s *SQLLitePersistence) GetAnyPrivateBundle(myIdentityKey []byte) (*BundleC
 
 // GetPrivateKeyBundle retrieves a private key for a bundle from the database
 func (s *SQLLitePersistence) GetPrivateKeyBundle(bundleID []byte) ([]byte, error) {
-	stmt, err := s.db.Prepare("SELECT private_key FROM bundles WHERE expired = 0 AND signed_pre_key = ? LIMIT 1")
+	stmt, err := s.db.Prepare(`SELECT private_key
+				   FROM bundles
+				   WHERE signed_pre_key = ? LIMIT 1`)
 	if err != nil {
 		return nil, err
 	}
@@ -263,10 +484,11 @@ func (s *SQLLitePersistence) GetPrivateKeyBundle(bundleID []byte) ([]byte, error
 	}
 }
 
-// RatchetInfoConfirmed clears the ephemeral key in the RatchetInfo
-// associated with the specified bundle ID and interlocutor identity public key
+// MarkBundleExpired expires any private bundle for a given identity
 func (s *SQLLitePersistence) MarkBundleExpired(identity []byte) error {
-	stmt, err := s.db.Prepare("UPDATE bundles SET expired = 1 WHERE identity = ?")
+	stmt, err := s.db.Prepare(`UPDATE bundles
+				   SET expired = 1
+				   WHERE identity = ? AND private_key IS NOT NULL`)
 	if err != nil {
 		return err
 	}
@@ -278,16 +500,32 @@ func (s *SQLLitePersistence) MarkBundleExpired(identity []byte) error {
 }
 
 // GetPublicBundle retrieves an existing Bundle for the specified public key from the database
-func (s *SQLLitePersistence) GetPublicBundle(publicKey *ecdsa.PublicKey) (*Bundle, error) {
+func (s *SQLLitePersistence) GetPublicBundle(publicKey *ecdsa.PublicKey, installationIDs []string) (*Bundle, error) {
+
+	if len(installationIDs) == 0 {
+		return nil, nil
+	}
 
 	identity := crypto.CompressPubkey(publicKey)
-	stmt, err := s.db.Prepare("SELECT signed_pre_key,installation_id FROM bundles WHERE expired = 0 AND identity = ? ORDER BY timestamp DESC")
+
+	/* #nosec */
+	statement := `SELECT signed_pre_key,installation_id, version
+		      FROM bundles
+		      WHERE expired = 0 AND identity = ? AND installation_id IN (?` + strings.Repeat(",?", len(installationIDs)-1) + `)
+		      ORDER BY version DESC`
+	stmt, err := s.db.Prepare(statement)
 	if err != nil {
 		return nil, err
 	}
 	defer stmt.Close()
 
-	rows, err := stmt.Query(identity)
+	args := make([]interface{}, len(installationIDs)+1)
+	args[0] = identity
+	for i, installationID := range installationIDs {
+		args[i+1] = installationID
+	}
+
+	rows, err := stmt.Query(args...)
 	rowCount := 0
 
 	if err != nil {
@@ -304,16 +542,21 @@ func (s *SQLLitePersistence) GetPublicBundle(publicKey *ecdsa.PublicKey) (*Bundl
 	for rows.Next() {
 		var signedPreKey []byte
 		var installationID string
+		var version uint32
 		rowCount++
 		err = rows.Scan(
 			&signedPreKey,
 			&installationID,
+			&version,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		bundle.SignedPreKeys[installationID] = &SignedPreKey{SignedPreKey: signedPreKey}
+		bundle.SignedPreKeys[installationID] = &SignedPreKey{
+			SignedPreKey: signedPreKey,
+			Version:      version,
+		}
 
 	}
 
@@ -327,7 +570,8 @@ func (s *SQLLitePersistence) GetPublicBundle(publicKey *ecdsa.PublicKey) (*Bundl
 
 // AddRatchetInfo persists the specified ratchet info into the database
 func (s *SQLLitePersistence) AddRatchetInfo(key []byte, identity []byte, bundleID []byte, ephemeralKey []byte, installationID string) error {
-	stmt, err := s.db.Prepare("INSERT INTO ratchet_info_v2(symmetric_key, identity, bundle_id, ephemeral_key, installation_id) VALUES(?, ?, ?, ?, ?)")
+	stmt, err := s.db.Prepare(`INSERT INTO ratchet_info_v2(symmetric_key, identity, bundle_id, ephemeral_key, installation_id)
+				   VALUES(?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -346,7 +590,10 @@ func (s *SQLLitePersistence) AddRatchetInfo(key []byte, identity []byte, bundleI
 
 // GetRatchetInfo retrieves the existing RatchetInfo for a specified bundle ID and interlocutor public key from the database
 func (s *SQLLitePersistence) GetRatchetInfo(bundleID []byte, theirIdentity []byte, installationID string) (*RatchetInfo, error) {
-	stmt, err := s.db.Prepare("SELECT ratchet_info_v2.identity, ratchet_info_v2.symmetric_key, bundles.private_key, bundles.signed_pre_key, ratchet_info_v2.ephemeral_key, ratchet_info_v2.installation_id FROM ratchet_info_v2 JOIN bundles ON bundle_id = signed_pre_key WHERE ratchet_info_v2.identity = ? AND ratchet_info_v2.installation_id = ? AND bundle_id = ? LIMIT 1")
+	stmt, err := s.db.Prepare(`SELECT ratchet_info_v2.identity, ratchet_info_v2.symmetric_key, bundles.private_key, bundles.signed_pre_key, ratchet_info_v2.ephemeral_key, ratchet_info_v2.installation_id
+				   FROM ratchet_info_v2 JOIN bundles ON bundle_id = signed_pre_key
+				   WHERE ratchet_info_v2.identity = ? AND ratchet_info_v2.installation_id = ? AND bundle_id = ?
+				   LIMIT 1`)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +624,10 @@ func (s *SQLLitePersistence) GetRatchetInfo(bundleID []byte, theirIdentity []byt
 
 // GetAnyRatchetInfo retrieves any existing RatchetInfo for a specified interlocutor public key from the database
 func (s *SQLLitePersistence) GetAnyRatchetInfo(identity []byte, installationID string) (*RatchetInfo, error) {
-	stmt, err := s.db.Prepare("SELECT symmetric_key, bundles.private_key, signed_pre_key, bundle_id, ephemeral_key FROM ratchet_info_v2 JOIN bundles ON bundle_id = signed_pre_key WHERE expired = 0 AND ratchet_info_v2.identity = ? AND ratchet_info_v2.installation_id = ? LIMIT 1")
+	stmt, err := s.db.Prepare(`SELECT symmetric_key, bundles.private_key, signed_pre_key, bundle_id, ephemeral_key
+				   FROM ratchet_info_v2 JOIN bundles ON bundle_id = signed_pre_key
+				   WHERE expired = 0 AND ratchet_info_v2.identity = ? AND ratchet_info_v2.installation_id = ?
+				   LIMIT 1`)
 	if err != nil {
 		return nil, err
 	}
@@ -409,7 +659,9 @@ func (s *SQLLitePersistence) GetAnyRatchetInfo(identity []byte, installationID s
 // RatchetInfoConfirmed clears the ephemeral key in the RatchetInfo
 // associated with the specified bundle ID and interlocutor identity public key
 func (s *SQLLitePersistence) RatchetInfoConfirmed(bundleID []byte, theirIdentity []byte, installationID string) error {
-	stmt, err := s.db.Prepare("UPDATE ratchet_info_v2 SET ephemeral_key = NULL WHERE identity = ? AND bundle_id = ? AND installation_id = ?")
+	stmt, err := s.db.Prepare(`UPDATE ratchet_info_v2
+	                           SET ephemeral_key = NULL
+				   WHERE identity = ? AND bundle_id = ? AND installation_id = ?`)
 	if err != nil {
 		return err
 	}
@@ -428,7 +680,10 @@ func (s *SQLLitePersistence) RatchetInfoConfirmed(bundleID []byte, theirIdentity
 func (s *SQLLiteKeysStorage) Get(pubKey dr.Key, msgNum uint) (dr.Key, bool, error) {
 	var keyBytes []byte
 	var key [32]byte
-	stmt, err := s.db.Prepare("SELECT message_key FROM keys WHERE public_key = ? AND msg_num = ? LIMIT 1")
+	stmt, err := s.db.Prepare(`SELECT message_key
+	                           FROM keys
+				   WHERE public_key = ? AND msg_num = ?
+				   LIMIT 1`)
 
 	if err != nil {
 		return key, false, err
@@ -448,17 +703,56 @@ func (s *SQLLiteKeysStorage) Get(pubKey dr.Key, msgNum uint) (dr.Key, bool, erro
 }
 
 // Put stores a key with the specified public key, message number and message key
-func (s *SQLLiteKeysStorage) Put(pubKey dr.Key, msgNum uint, mk dr.Key) error {
-	stmt, err := s.db.Prepare("insert into keys(public_key, msg_num, message_key) values(?, ?, ?)")
+func (s *SQLLiteKeysStorage) Put(sessionID []byte, pubKey dr.Key, msgNum uint, mk dr.Key, seqNum uint) error {
+	stmt, err := s.db.Prepare(`INSERT INTO keys(session_id, public_key, msg_num, message_key, seq_num)
+	                           VALUES(?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	_, err = stmt.Exec(
+		sessionID,
 		pubKey[:],
 		msgNum,
 		mk[:],
+		seqNum,
+	)
+
+	return err
+}
+
+// DeleteOldMks caps remove any key < seq_num, included
+func (s *SQLLiteKeysStorage) DeleteOldMks(sessionID []byte, deleteUntil uint) error {
+	stmt, err := s.db.Prepare(`DELETE FROM keys
+	                           WHERE session_id = ? AND seq_num <= ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(
+		sessionID,
+		deleteUntil,
+	)
+
+	return err
+}
+
+// TruncateMks caps the number of keys to maxKeysPerSession deleting them in FIFO fashion
+func (s *SQLLiteKeysStorage) TruncateMks(sessionID []byte, maxKeysPerSession int) error {
+	stmt, err := s.db.Prepare(`DELETE FROM keys
+				   WHERE rowid IN (SELECT rowid FROM keys WHERE session_id = ? ORDER BY seq_num DESC LIMIT ? OFFSET ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(
+		sessionID,
+		// We LIMIT to the max number of rows here, as OFFSET can't be used without a LIMIT
+		maxNumberOfRows,
+		maxKeysPerSession,
 	)
 
 	return err
@@ -466,7 +760,8 @@ func (s *SQLLiteKeysStorage) Put(pubKey dr.Key, msgNum uint, mk dr.Key) error {
 
 // DeleteMk deletes the key with the specified public key and message key
 func (s *SQLLiteKeysStorage) DeleteMk(pubKey dr.Key, msgNum uint) error {
-	stmt, err := s.db.Prepare("DELETE FROM keys WHERE public_key = ? AND msg_num = ?")
+	stmt, err := s.db.Prepare(`DELETE FROM keys
+				   WHERE public_key = ? AND msg_num = ?`)
 	if err != nil {
 		return err
 	}
@@ -480,24 +775,11 @@ func (s *SQLLiteKeysStorage) DeleteMk(pubKey dr.Key, msgNum uint) error {
 	return err
 }
 
-// DeletePk deletes the keys with the specified public key
-func (s *SQLLiteKeysStorage) DeletePk(pubKey dr.Key) error {
-	stmt, err := s.db.Prepare("DELETE FROM keys WHERE public_key = ?")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	_, err = stmt.Exec(
-		pubKey[:],
-	)
-
-	return err
-}
-
 // Count returns the count of keys with the specified public key
 func (s *SQLLiteKeysStorage) Count(pubKey dr.Key) (uint, error) {
-	stmt, err := s.db.Prepare("SELECT COUNT(1) FROM keys WHERE public_key = ?")
+	stmt, err := s.db.Prepare(`SELECT COUNT(1)
+				   FROM keys
+				   WHERE public_key = ?`)
 	if err != nil {
 		return 0, err
 	}
@@ -505,6 +787,24 @@ func (s *SQLLiteKeysStorage) Count(pubKey dr.Key) (uint, error) {
 
 	var count uint
 	err = stmt.QueryRow(pubKey[:]).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// CountAll returns the count of keys with the specified public key
+func (s *SQLLiteKeysStorage) CountAll() (uint, error) {
+	stmt, err := s.db.Prepare(`SELECT COUNT(1)
+				   FROM keys`)
+	if err != nil {
+		return 0, err
+	}
+	defer stmt.Close()
+
+	var count uint
+	err = stmt.QueryRow().Scan(&count)
 	if err != nil {
 		return 0, err
 	}
@@ -525,6 +825,7 @@ func (s *SQLLiteSessionStorage) Save(id []byte, state *dr.State) error {
 	dhsPrivate := dhs.PrivateKey()
 	pn := state.PN
 	step := state.Step
+	keysCount := state.KeysCount
 
 	rootChainKey := state.RootCh.CK[:]
 
@@ -534,7 +835,8 @@ func (s *SQLLiteSessionStorage) Save(id []byte, state *dr.State) error {
 	recvChainKey := state.RecvCh.CK[:]
 	recvChainN := state.RecvCh.N
 
-	stmt, err := s.db.Prepare("insert into sessions(id, dhr, dhs_public, dhs_private, root_chain_key, send_chain_key, send_chain_n, recv_chain_key, recv_chain_n, pn, step) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+	stmt, err := s.db.Prepare(`INSERT INTO sessions(id, dhr, dhs_public, dhs_private, root_chain_key, send_chain_key, send_chain_n, recv_chain_key, recv_chain_n, pn, step, keys_count)
+				   VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -552,6 +854,7 @@ func (s *SQLLiteSessionStorage) Save(id []byte, state *dr.State) error {
 		recvChainN,
 		pn,
 		step,
+		keysCount,
 	)
 
 	return err
@@ -559,7 +862,9 @@ func (s *SQLLiteSessionStorage) Save(id []byte, state *dr.State) error {
 
 // Load retrieves the double ratchet state for a given ID
 func (s *SQLLiteSessionStorage) Load(id []byte) (*dr.State, error) {
-	stmt, err := s.db.Prepare("SELECT dhr, dhs_public, dhs_private, root_chain_key, send_chain_key, send_chain_n, recv_chain_key, recv_chain_n, pn, step FROM sessions WHERE id = ?")
+	stmt, err := s.db.Prepare(`SELECT dhr, dhs_public, dhs_private, root_chain_key, send_chain_key, send_chain_n, recv_chain_key, recv_chain_n, pn, step, keys_count
+				   FROM sessions
+				   WHERE id = ?`)
 	if err != nil {
 		return nil, err
 	}
@@ -577,6 +882,7 @@ func (s *SQLLiteSessionStorage) Load(id []byte) (*dr.State, error) {
 		recvChainN   uint
 		pn           uint
 		step         uint
+		keysCount    uint
 	)
 
 	err = stmt.QueryRow(id).Scan(
@@ -590,6 +896,7 @@ func (s *SQLLiteSessionStorage) Load(id []byte) (*dr.State, error) {
 		&recvChainN,
 		&pn,
 		&step,
+		&keysCount,
 	)
 	switch err {
 	case sql.ErrNoRows:
@@ -599,6 +906,7 @@ func (s *SQLLiteSessionStorage) Load(id []byte) (*dr.State, error) {
 
 		state.PN = uint32(pn)
 		state.Step = step
+		state.KeysCount = keysCount
 
 		state.DHs = ecrypto.DHPair{
 			PrvKey: toKey(dhsPrivate),
@@ -617,6 +925,143 @@ func (s *SQLLiteSessionStorage) Load(id []byte) (*dr.State, error) {
 	default:
 		return nil, err
 	}
+}
+
+// GetActiveInstallations returns the active installations for a given identity
+func (s *SQLLitePersistence) GetActiveInstallations(maxInstallations int, identity []byte) ([]string, error) {
+	stmt, err := s.db.Prepare(`SELECT installation_id
+				   FROM installations
+				   WHERE enabled = 1 AND identity = ?
+				   ORDER BY timestamp DESC
+				   LIMIT ?`)
+	if err != nil {
+		return nil, err
+	}
+
+	var installations []string
+	rows, err := stmt.Query(identity, maxInstallations)
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {
+		var installationID string
+		err = rows.Scan(
+			&installationID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		installations = append(installations, installationID)
+	}
+
+	return installations, nil
+
+}
+
+// AddInstallations adds the installations for a given identity, maintaining the enabled flag
+func (s *SQLLitePersistence) AddInstallations(identity []byte, timestamp int64, installationIDs []string, defaultEnabled bool) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil
+	}
+
+	for _, installationID := range installationIDs {
+		stmt, err := tx.Prepare(`SELECT enabled
+					 FROM installations
+					 WHERE identity = ? AND installation_id = ?
+					 LIMIT 1`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+
+		var oldEnabled bool
+
+		err = stmt.QueryRow(identity, installationID).Scan(&oldEnabled)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+
+		// We update timestamp if present without changing enabled, only if this is a new bundle
+		if err != sql.ErrNoRows {
+			stmt, err = tx.Prepare(`UPDATE installations
+					        SET timestamp = ?,  enabled = ?
+						WHERE identity = ?
+						AND installation_id = ?
+						AND timestamp < ?`)
+			if err != nil {
+				return err
+			}
+
+			_, err = stmt.Exec(
+				timestamp,
+				oldEnabled,
+				identity,
+				installationID,
+				timestamp,
+			)
+			if err != nil {
+				return err
+			}
+			defer stmt.Close()
+
+		} else {
+			stmt, err = tx.Prepare(`INSERT INTO installations(identity, installation_id, timestamp, enabled)
+						VALUES (?, ?, ?, ?)`)
+			if err != nil {
+				return err
+			}
+
+			_, err = stmt.Exec(
+				identity,
+				installationID,
+				timestamp,
+				defaultEnabled,
+			)
+			if err != nil {
+				return err
+			}
+			defer stmt.Close()
+		}
+
+	}
+
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	return nil
+
+}
+
+// EnableInstallation enables the installation
+func (s *SQLLitePersistence) EnableInstallation(identity []byte, installationID string) error {
+	stmt, err := s.db.Prepare(`UPDATE installations
+				   SET enabled = 1
+				   WHERE identity = ? AND installation_id = ?`)
+	if err != nil {
+		return err
+	}
+
+	_, err = stmt.Exec(identity, installationID)
+	return err
+
+}
+
+// DisableInstallation disable the installation
+func (s *SQLLitePersistence) DisableInstallation(identity []byte, installationID string) error {
+
+	stmt, err := s.db.Prepare(`UPDATE installations
+				   SET enabled = 0
+				   WHERE identity = ? AND installation_id = ?`)
+	if err != nil {
+		return err
+	}
+
+	_, err = stmt.Exec(identity, installationID)
+	return err
 }
 
 func toKey(a []byte) dr.Key {

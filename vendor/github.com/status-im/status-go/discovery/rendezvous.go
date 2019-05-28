@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/discv5"
+	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/status-im/rendezvous"
@@ -29,7 +29,7 @@ var (
 	errDiscoveryIsStopped = errors.New("discovery is stopped")
 )
 
-func NewRendezvous(servers []ma.Multiaddr, identity *ecdsa.PrivateKey, node *discover.Node) (*Rendezvous, error) {
+func NewRendezvous(servers []ma.Multiaddr, identity *ecdsa.PrivateKey, node *enode.Node) (*Rendezvous, error) {
 	r := new(Rendezvous)
 	r.node = node
 	r.identity = identity
@@ -62,7 +62,7 @@ type Rendezvous struct {
 	servers            []ma.Multiaddr
 	registrationPeriod time.Duration
 	bucketSize         int
-	node               *discover.Node
+	node               *enode.Node
 	identity           *ecdsa.PrivateKey
 
 	recordMu sync.Mutex
@@ -92,7 +92,13 @@ func (r *Rendezvous) Start() error {
 func (r *Rendezvous) Stop() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.client == nil {
+		return nil
+	}
 	r.cancelRootCtx()
+	if err := r.client.Close(); err != nil {
+		return err
+	}
 	r.client = nil
 	return nil
 }
@@ -109,11 +115,11 @@ func (r *Rendezvous) MakeRecord() (record enr.Record, err error) {
 	if r.identity == nil {
 		return record, errIdentityIsNil
 	}
-	record.Set(enr.IP(r.node.IP))
-	record.Set(enr.TCP(r.node.TCP))
-	record.Set(enr.UDP(r.node.UDP))
+	record.Set(enr.IP(r.node.IP()))
+	record.Set(enr.TCP(r.node.TCP()))
+	record.Set(enr.UDP(r.node.UDP()))
 	// public key is added to ENR when ENR is signed
-	if err := enr.SignV4(&record, r.identity); err != nil {
+	if err := enode.SignV4(&record, r.identity); err != nil {
 		return record, err
 	}
 	r.record = &record
@@ -226,22 +232,17 @@ func (r *Rendezvous) Discover(
 
 func enrToNode(record enr.Record) (*discv5.Node, error) {
 	var (
-		key     enr.Secp256k1
-		ip      enr.IP
-		tport   enr.TCP
-		uport   enr.UDP
-		proxied Proxied
-		nodeID  discv5.NodeID
+		key    enode.Secp256k1
+		ip     enr.IP
+		tport  enr.TCP
+		uport  enr.UDP
+		nodeID discv5.NodeID
 	)
-	if err := record.Load(&proxied); err == nil {
-		nodeID = discv5.NodeID(proxied)
-	} else {
-		if err := record.Load(&key); err != nil {
-			return nil, err
-		}
-		ecdsaKey := ecdsa.PublicKey(key)
-		nodeID = discv5.PubkeyID(&ecdsaKey)
+	if err := record.Load(&key); err != nil {
+		return nil, err
 	}
+	ecdsaKey := ecdsa.PublicKey(key)
+	nodeID = discv5.PubkeyID(&ecdsaKey)
 	if err := record.Load(&ip); err != nil {
 		return nil, err
 	}

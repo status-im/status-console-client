@@ -1,6 +1,8 @@
 package signal
 
 import (
+	"encoding/hex"
+
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -11,6 +13,9 @@ const (
 	// EventEnvelopeExpired is triggered when envelop was dropped by a whisper without being sent
 	// to any peer
 	EventEnvelopeExpired = "envelope.expired"
+
+	// EventEnvelopeDiscarded is triggerd when envelope was discarded by a peer for some reason.
+	EventEnvelopeDiscarded = "envelope.discarded"
 
 	// EventMailServerRequestCompleted is triggered when whisper receives a message ack from the mailserver
 	EventMailServerRequestCompleted = "mailserver.request.completed"
@@ -30,7 +35,8 @@ const (
 
 // EnvelopeSignal includes hash of the envelope.
 type EnvelopeSignal struct {
-	Hash common.Hash `json:"hash"`
+	Hash    common.Hash `json:"hash"`
+	Message string      `json:"message"`
 }
 
 // MailServerResponseSignal holds the data received in the response from the mailserver.
@@ -54,12 +60,16 @@ type BundleAddedSignal struct {
 
 // SendEnvelopeSent triggered when envelope delivered at least to 1 peer.
 func SendEnvelopeSent(hash common.Hash) {
-	send(EventEnvelopeSent, EnvelopeSignal{hash})
+	send(EventEnvelopeSent, EnvelopeSignal{Hash: hash})
 }
 
 // SendEnvelopeExpired triggered when envelope delivered at least to 1 peer.
-func SendEnvelopeExpired(hash common.Hash) {
-	send(EventEnvelopeExpired, EnvelopeSignal{hash})
+func SendEnvelopeExpired(hash common.Hash, err error) {
+	var message string
+	if err != nil {
+		message = err.Error()
+	}
+	send(EventEnvelopeExpired, EnvelopeSignal{Hash: hash, Message: message})
 }
 
 // SendMailServerRequestCompleted triggered when mail server response has been received
@@ -71,7 +81,7 @@ func SendMailServerRequestCompleted(requestID common.Hash, lastEnvelopeHash comm
 	sig := MailServerResponseSignal{
 		RequestID:        requestID,
 		LastEnvelopeHash: lastEnvelopeHash,
-		Cursor:           string(cursor),
+		Cursor:           hex.EncodeToString(cursor),
 		ErrorMsg:         errorMsg,
 	}
 	send(EventMailServerRequestCompleted, sig)
@@ -79,7 +89,7 @@ func SendMailServerRequestCompleted(requestID common.Hash, lastEnvelopeHash comm
 
 // SendMailServerRequestExpired triggered when mail server request expires
 func SendMailServerRequestExpired(hash common.Hash) {
-	send(EventMailServerRequestExpired, EnvelopeSignal{hash})
+	send(EventMailServerRequestExpired, EnvelopeSignal{Hash: hash})
 }
 
 // EnodeDiscoveredSignal includes enode address and topic

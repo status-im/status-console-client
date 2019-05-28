@@ -19,7 +19,7 @@ package hid
 #cgo windows LDFLAGS: -lsetupapi
 
 #ifdef OS_LINUX
-	#include <poll.h>
+	#include <sys/poll.h>
 	#include "os/threads_posix.c"
 	#include "os/poll_posix.c"
 

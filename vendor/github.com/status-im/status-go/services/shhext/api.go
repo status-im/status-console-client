@@ -15,8 +15,12 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/p2p/discover"
+	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/status-im/status-go/db"
+	"github.com/status-im/status-go/mailserver"
 	"github.com/status-im/status-go/services/shhext/chat"
+	"github.com/status-im/status-go/services/shhext/dedup"
+	"github.com/status-im/status-go/services/shhext/mailservers"
 	whisper "github.com/status-im/whisper/whisperv6"
 )
 
@@ -44,7 +48,7 @@ var (
 // PAYLOADS
 // -----
 
-// MessagesRequest is a payload send to a MailServer to get messages.
+// MessagesRequest is a RequestMessages() request payload.
 type MessagesRequest struct {
 	// MailServerPeer is MailServer's enode address.
 	MailServerPeer string `json:"mailServerPeer"`
@@ -73,14 +77,14 @@ type MessagesRequest struct {
 
 	// SymKeyID is an ID of a symmetric key to authenticate to MailServer.
 	// It's derived from MailServer password.
-	//
-	// It's also possible to authenticate request with MailServerPeer
-	// public key.
 	SymKeyID string `json:"symKeyID"`
 
 	// Timeout is the time to live of the request specified in seconds.
 	// Default is 10 seconds
 	Timeout time.Duration `json:"timeout"`
+
+	// Force ensures that requests will bypass enforced delay.
+	Force bool `json:"force"`
 }
 
 func (r *MessagesRequest) setDefaults(now time.Time) {
@@ -103,20 +107,61 @@ func (r *MessagesRequest) setDefaults(now time.Time) {
 	}
 }
 
-// MessagesRequestPayload is a payload sent to the Mail Server.
-type MessagesRequestPayload struct {
-	// Lower is a lower bound of time range for which messages are requested.
-	Lower uint32
-	// Upper is a lower bound of time range for which messages are requested.
-	Upper uint32
-	// Bloom is a bloom filter to filter envelopes.
-	Bloom []byte
-	// Limit is the max number of envelopes to return.
-	Limit uint32
-	// Cursor is used for pagination of the results.
-	Cursor []byte
-	// Batch set to true indicates that the client supports batched response.
-	Batch bool
+// MessagesResponse is a response for shhext_requestMessages2 method.
+type MessagesResponse struct {
+	// Cursor from the response can be used to retrieve more messages
+	// for the previous request.
+	Cursor string `json:"cursor"`
+
+	// Error indicates that something wrong happened when sending messages
+	// to the requester.
+	Error error `json:"error"`
+}
+
+// SyncMessagesRequest is a SyncMessages() request payload.
+type SyncMessagesRequest struct {
+	// MailServerPeer is MailServer's enode address.
+	MailServerPeer string `json:"mailServerPeer"`
+
+	// From is a lower bound of time range (optional).
+	// Default is 24 hours back from now.
+	From uint32 `json:"from"`
+
+	// To is a upper bound of time range (optional).
+	// Default is now.
+	To uint32 `json:"to"`
+
+	// Limit determines the number of messages sent by the mail server
+	// for the current paginated request
+	Limit uint32 `json:"limit"`
+
+	// Cursor is used as starting point for paginated requests
+	Cursor string `json:"cursor"`
+
+	// Topics is a list of Whisper topics.
+	// If empty, a full bloom filter will be used.
+	Topics []whisper.TopicType `json:"topics"`
+}
+
+// SyncMessagesResponse is a response from the mail server
+// to which SyncMessagesRequest was sent.
+type SyncMessagesResponse struct {
+	// Cursor from the response can be used to retrieve more messages
+	// for the previous request.
+	Cursor string `json:"cursor"`
+
+	// Error indicates that something wrong happened when sending messages
+	// to the requester.
+	Error string `json:"error"`
+}
+
+// InitiateHistoryRequestParams type for initiating history requests from a peer.
+type InitiateHistoryRequestParams struct {
+	Peer     string
+	SymKeyID string
+	Requests []TopicRequest
+	Force    bool
+	Timeout  time.Duration
 }
 
 // -----
@@ -140,14 +185,92 @@ func NewPublicAPI(s *Service) *PublicAPI {
 }
 
 // Post shamelessly copied from whisper codebase with slight modifications.
-func (api *PublicAPI) Post(ctx context.Context, req whisper.NewMessage) (hash hexutil.Bytes, err error) {
-	hash, err = api.publicAPI.Post(ctx, req)
+func (api *PublicAPI) Post(ctx context.Context, req whisper.NewMessage) (hexutil.Bytes, error) {
+	hexID, err := api.publicAPI.Post(ctx, req)
 	if err == nil {
-		var envHash common.Hash
-		copy(envHash[:], hash[:]) // slice can't be used as key
-		api.service.tracker.Add(envHash)
+		api.service.envelopesMonitor.Add(common.BytesToHash(hexID), req)
+	} else {
+		return nil, err
 	}
-	return hash, err
+	mID := messageID(req)
+	return mID[:], err
+}
+
+func (api *PublicAPI) getPeer(rawurl string) (*enode.Node, error) {
+	if len(rawurl) == 0 {
+		return mailservers.GetFirstConnected(api.service.server, api.service.peerStore)
+	}
+	return enode.ParseV4(rawurl)
+}
+
+// RetryConfig specifies configuration for retries with timeout and max amount of retries.
+type RetryConfig struct {
+	BaseTimeout time.Duration
+	// StepTimeout defines duration increase per each retry.
+	StepTimeout time.Duration
+	MaxRetries  int
+}
+
+// RequestMessagesSync repeats MessagesRequest using configuration in retry conf.
+func (api *PublicAPI) RequestMessagesSync(conf RetryConfig, r MessagesRequest) (MessagesResponse, error) {
+	var resp MessagesResponse
+
+	shh := api.service.w
+	events := make(chan whisper.EnvelopeEvent, 10)
+	var (
+		requestID hexutil.Bytes
+		err       error
+		retries   int
+	)
+	for retries <= conf.MaxRetries {
+		sub := shh.SubscribeEnvelopeEvents(events)
+		r.Timeout = conf.BaseTimeout + conf.StepTimeout*time.Duration(retries)
+		timeout := r.Timeout
+		// FIXME this weird conversion is required because MessagesRequest expects seconds but defines time.Duration
+		r.Timeout = time.Duration(int(r.Timeout.Seconds()))
+		requestID, err = api.RequestMessages(context.Background(), r)
+		if err != nil {
+			sub.Unsubscribe()
+			return resp, err
+		}
+		mailServerResp, err := waitForExpiredOrCompleted(common.BytesToHash(requestID), events, timeout)
+		sub.Unsubscribe()
+		if err == nil {
+			resp.Cursor = hex.EncodeToString(mailServerResp.Cursor)
+			resp.Error = mailServerResp.Error
+			return resp, nil
+		}
+		retries++
+		api.log.Error("[RequestMessagesSync] failed", "err", err, "retries", retries)
+	}
+	return resp, fmt.Errorf("failed to request messages after %d retries", retries)
+}
+
+func waitForExpiredOrCompleted(requestID common.Hash, events chan whisper.EnvelopeEvent, timeout time.Duration) (*whisper.MailServerResponse, error) {
+	expired := fmt.Errorf("request %x expired", requestID)
+	after := time.NewTimer(timeout)
+	defer after.Stop()
+	for {
+		var ev whisper.EnvelopeEvent
+		select {
+		case ev = <-events:
+		case <-after.C:
+			return nil, expired
+		}
+		if ev.Hash != requestID {
+			continue
+		}
+		switch ev.Event {
+		case whisper.EventMailServerRequestCompleted:
+			data, ok := ev.Data.(*whisper.MailServerResponse)
+			if ok {
+				return data, nil
+			}
+			return nil, errors.New("invalid event data type")
+		case whisper.EventMailServerRequestExpired:
+			return nil, expired
+		}
+	}
 }
 
 // RequestMessages sends a request for historic messages to a MailServer.
@@ -161,9 +284,7 @@ func (api *PublicAPI) RequestMessages(_ context.Context, r MessagesRequest) (hex
 		return nil, fmt.Errorf("Query range is invalid: from > to (%d > %d)", r.From, r.To)
 	}
 
-	var err error
-
-	mailServerNode, err := discover.ParseNode(r.MailServerPeer)
+	mailServerNode, err := api.getPeer(r.MailServerPeer)
 	if err != nil {
 		return nil, fmt.Errorf("%v: %v", ErrInvalidMailServerPeer, err)
 	}
@@ -179,13 +300,10 @@ func (api *PublicAPI) RequestMessages(_ context.Context, r MessagesRequest) (hex
 			return nil, fmt.Errorf("%v: %v", ErrInvalidSymKeyID, err)
 		}
 	} else {
-		publicKey, err = mailServerNode.ID.Pubkey()
-		if err != nil {
-			return nil, fmt.Errorf("%v: %v", ErrInvalidPublicKey, err)
-		}
+		publicKey = mailServerNode.Pubkey()
 	}
 
-	payload, err := makePayload(r)
+	payload, err := makeMessagesRequestPayload(r)
 	if err != nil {
 		return nil, err
 	}
@@ -201,19 +319,102 @@ func (api *PublicAPI) RequestMessages(_ context.Context, r MessagesRequest) (hex
 	if err != nil {
 		return nil, err
 	}
-
 	hash := envelope.Hash()
-	if err := shh.RequestHistoricMessages(mailServerNode.ID[:], envelope); err != nil {
-		return nil, err
+
+	if !r.Force {
+		err = api.service.requestsRegistry.Register(hash, r.Topics)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	api.service.tracker.AddRequest(hash, time.After(r.Timeout*time.Second))
+	if err := shh.RequestHistoricMessagesWithTimeout(mailServerNode.ID().Bytes(), envelope, r.Timeout*time.Second); err != nil {
+		if !r.Force {
+			api.service.requestsRegistry.Unregister(hash)
+		}
+		return nil, err
+	}
 
 	return hash[:], nil
 }
 
+// createSyncMailRequest creates SyncMailRequest. It uses a full bloom filter
+// if no topics are given.
+func createSyncMailRequest(r SyncMessagesRequest) (whisper.SyncMailRequest, error) {
+	var bloom []byte
+	if len(r.Topics) > 0 {
+		bloom = topicsToBloom(r.Topics...)
+	} else {
+		bloom = whisper.MakeFullNodeBloom()
+	}
+
+	cursor, err := hex.DecodeString(r.Cursor)
+	if err != nil {
+		return whisper.SyncMailRequest{}, err
+	}
+
+	return whisper.SyncMailRequest{
+		Lower:  r.From,
+		Upper:  r.To,
+		Bloom:  bloom,
+		Limit:  r.Limit,
+		Cursor: cursor,
+	}, nil
+}
+
+func createSyncMessagesResponse(r whisper.SyncEventResponse) SyncMessagesResponse {
+	return SyncMessagesResponse{
+		Cursor: hex.EncodeToString(r.Cursor),
+		Error:  r.Error,
+	}
+}
+
+// SyncMessages sends a request to a given MailServerPeer to sync historic messages.
+// MailServerPeers needs to be added as a trusted peer first.
+func (api *PublicAPI) SyncMessages(ctx context.Context, r SyncMessagesRequest) (SyncMessagesResponse, error) {
+	var response SyncMessagesResponse
+
+	mailServerEnode, err := enode.ParseV4(r.MailServerPeer)
+	if err != nil {
+		return response, fmt.Errorf("invalid MailServerPeer: %v", err)
+	}
+
+	request, err := createSyncMailRequest(r)
+	if err != nil {
+		return response, fmt.Errorf("failed to create a sync mail request: %v", err)
+	}
+
+	if err := api.service.w.SyncMessages(mailServerEnode.ID().Bytes(), request); err != nil {
+		return response, fmt.Errorf("failed to send a sync request: %v", err)
+	}
+
+	// Wait for the response which is received asynchronously as a p2p packet.
+	// This packet handler will send an event which contains the response payload.
+	events := make(chan whisper.EnvelopeEvent)
+	sub := api.service.w.SubscribeEnvelopeEvents(events)
+	defer sub.Unsubscribe()
+
+	for {
+		select {
+		case event := <-events:
+			if event.Event != whisper.EventMailServerSyncFinished {
+				continue
+			}
+
+			log.Info("received EventMailServerSyncFinished event", "data", event.Data)
+
+			if resp, ok := event.Data.(whisper.SyncEventResponse); ok {
+				return createSyncMessagesResponse(resp), nil
+			}
+			return response, fmt.Errorf("did not understand the response event data")
+		case <-ctx.Done():
+			return response, ctx.Err()
+		}
+	}
+}
+
 // GetNewFilterMessages is a prototype method with deduplication
-func (api *PublicAPI) GetNewFilterMessages(filterID string) ([]*whisper.Message, error) {
+func (api *PublicAPI) GetNewFilterMessages(filterID string) ([]dedup.DeduplicateMessage, error) {
 	msgs, err := api.publicAPI.GetFilterMessages(filterID)
 	if err != nil {
 		return nil, err
@@ -223,9 +424,9 @@ func (api *PublicAPI) GetNewFilterMessages(filterID string) ([]*whisper.Message,
 
 	if api.service.pfsEnabled {
 		// Attempt to decrypt message, otherwise leave unchanged
-		for _, msg := range dedupMessages {
+		for _, dedupMessage := range dedupMessages {
 
-			if err := api.processPFSMessage(msg); err != nil {
+			if err := api.processPFSMessage(dedupMessage); err != nil {
 				return nil, err
 			}
 		}
@@ -236,8 +437,34 @@ func (api *PublicAPI) GetNewFilterMessages(filterID string) ([]*whisper.Message,
 
 // ConfirmMessagesProcessed is a method to confirm that messages was consumed by
 // the client side.
-func (api *PublicAPI) ConfirmMessagesProcessed(messages []*whisper.Message) error {
-	return api.service.deduplicator.AddMessages(messages)
+func (api *PublicAPI) ConfirmMessagesProcessed(messages []*whisper.Message) (err error) {
+	tx := api.service.storage.NewTx()
+	defer func() {
+		if err == nil {
+			err = tx.Commit()
+		}
+	}()
+	ctx := NewContextFromService(context.Background(), api.service, tx)
+	for _, msg := range messages {
+		if msg.P2P {
+			err = api.service.historyUpdates.UpdateTopicHistory(ctx, msg.Topic, time.Unix(int64(msg.Timestamp), 0))
+			if err != nil {
+				return err
+			}
+		}
+	}
+	err = api.service.deduplicator.AddMessages(messages)
+	return err
+}
+
+// ConfirmMessagesProcessedByID is a method to confirm that messages was consumed by
+// the client side.
+func (api *PublicAPI) ConfirmMessagesProcessedByID(messageIDs [][]byte) error {
+	if err := api.service.protocol.ConfirmMessagesProcessed(messageIDs); err != nil {
+		return err
+	}
+
+	return api.service.deduplicator.AddMessageByID(messageIDs)
 }
 
 // SendPublicMessage sends a public chat message to the underlying transport
@@ -267,7 +494,7 @@ func (api *PublicAPI) SendPublicMessage(ctx context.Context, msg chat.SendPublic
 }
 
 // SendDirectMessage sends a 1:1 chat message to the underlying transport
-func (api *PublicAPI) SendDirectMessage(ctx context.Context, msg chat.SendDirectMessageRPC) ([]hexutil.Bytes, error) {
+func (api *PublicAPI) SendDirectMessage(ctx context.Context, msg chat.SendDirectMessageRPC) (hexutil.Bytes, error) {
 	if !api.service.pfsEnabled {
 		return nil, ErrPFSNotEnabled
 	}
@@ -283,29 +510,134 @@ func (api *PublicAPI) SendDirectMessage(ctx context.Context, msg chat.SendDirect
 	}
 
 	// This is transport layer-agnostic
-	protocolMessages, err := api.service.protocol.BuildDirectMessage(privateKey, msg.Payload, publicKey)
+	var protocolMessage []byte
+
+	if msg.DH {
+		protocolMessage, err = api.service.protocol.BuildDHMessage(privateKey, &privateKey.PublicKey, msg.Payload)
+	} else {
+		protocolMessage, err = api.service.protocol.BuildDirectMessage(privateKey, publicKey, msg.Payload)
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
-	var response []hexutil.Bytes
+	// Enrich with transport layer info
+	whisperMessage := chat.DirectMessageToWhisper(msg, protocolMessage)
 
-	for key, message := range protocolMessages {
-		msg.PubKey = crypto.FromECDSAPub(key)
-		// Enrich with transport layer info
-		whisperMessage := chat.DirectMessageToWhisper(msg, message)
-
-		// And dispatch
-		hash, err := api.Post(ctx, whisperMessage)
-		if err != nil {
-			return nil, err
-		}
-		response = append(response, hash)
-
-	}
-	return response, nil
+	// And dispatch
+	return api.Post(ctx, whisperMessage)
 }
 
+func (api *PublicAPI) requestMessagesUsingPayload(request db.HistoryRequest, peer, symkeyID string, payload []byte, force bool, timeout time.Duration, topics []whisper.TopicType) (hash common.Hash, err error) {
+	shh := api.service.w
+	now := api.service.w.GetCurrentTime()
+
+	mailServerNode, err := api.getPeer(peer)
+	if err != nil {
+		return hash, fmt.Errorf("%v: %v", ErrInvalidMailServerPeer, err)
+	}
+
+	var (
+		symKey    []byte
+		publicKey *ecdsa.PublicKey
+	)
+
+	if symkeyID != "" {
+		symKey, err = shh.GetSymKey(symkeyID)
+		if err != nil {
+			return hash, fmt.Errorf("%v: %v", ErrInvalidSymKeyID, err)
+		}
+	} else {
+		publicKey = mailServerNode.Pubkey()
+	}
+
+	envelope, err := makeEnvelop(
+		payload,
+		symKey,
+		publicKey,
+		api.service.nodeID,
+		shh.MinPow(),
+		now,
+	)
+	if err != nil {
+		return hash, err
+	}
+	hash = envelope.Hash()
+
+	err = request.Replace(hash)
+	if err != nil {
+		return hash, err
+	}
+
+	if !force {
+		err = api.service.requestsRegistry.Register(hash, topics)
+		if err != nil {
+			return hash, err
+		}
+	}
+
+	if err := shh.RequestHistoricMessagesWithTimeout(mailServerNode.ID().Bytes(), envelope, timeout); err != nil {
+		if !force {
+			api.service.requestsRegistry.Unregister(hash)
+		}
+		return hash, err
+	}
+
+	return hash, nil
+
+}
+
+// InitiateHistoryRequests is a stateful API for initiating history request for each topic.
+// Caller of this method needs to define only two parameters per each TopicRequest:
+// - Topic
+// - Duration in nanoseconds. Will be used to determine starting time for history request.
+// After that status-go will guarantee that request for this topic and date will be performed.
+func (api *PublicAPI) InitiateHistoryRequests(parent context.Context, request InitiateHistoryRequestParams) (rst []hexutil.Bytes, err error) {
+	tx := api.service.storage.NewTx()
+	defer func() {
+		if err == nil {
+			err = tx.Commit()
+		}
+	}()
+	ctx := NewContextFromService(parent, api.service, tx)
+	requests, err := api.service.historyUpdates.CreateRequests(ctx, request.Requests)
+	if err != nil {
+		return nil, err
+	}
+	var (
+		payload []byte
+		hash    common.Hash
+	)
+	for i := range requests {
+		req := requests[i]
+		options := CreateTopicOptionsFromRequest(req)
+		bloom := options.ToBloomFilterOption()
+		payload, err = bloom.ToMessagesRequestPayload()
+		if err != nil {
+			return rst, err
+		}
+		hash, err = api.requestMessagesUsingPayload(req, request.Peer, request.SymKeyID, payload, request.Force, request.Timeout, options.Topics())
+		if err != nil {
+			return rst, err
+		}
+		rst = append(rst, hash.Bytes())
+	}
+	return rst, err
+}
+
+// CompleteRequest client must mark request completed when all envelopes were processed.
+func (api *PublicAPI) CompleteRequest(parent context.Context, hex string) (err error) {
+	tx := api.service.storage.NewTx()
+	ctx := NewContextFromService(parent, api.service, tx)
+	err = api.service.historyUpdates.UpdateFinishedRequest(ctx, common.HexToHash(hex))
+	if err == nil {
+		return tx.Commit()
+	}
+	return err
+}
+
+// DEPRECATED: use SendDirectMessage with DH flag
 // SendPairingMessage sends a 1:1 chat message to our own devices to initiate a pairing session
 func (api *PublicAPI) SendPairingMessage(ctx context.Context, msg chat.SendDirectMessageRPC) ([]hexutil.Bytes, error) {
 	if !api.service.pfsEnabled {
@@ -322,7 +654,7 @@ func (api *PublicAPI) SendPairingMessage(ctx context.Context, msg chat.SendDirec
 		return nil, err
 	}
 
-	protocolMessage, err := api.service.protocol.BuildPairingMessage(privateKey, msg.Payload)
+	protocolMessage, err := api.service.protocol.BuildDHMessage(privateKey, &privateKey.PublicKey, msg.Payload)
 	if err != nil {
 		return nil, err
 	}
@@ -342,106 +674,45 @@ func (api *PublicAPI) SendPairingMessage(ctx context.Context, msg chat.SendDirec
 	return response, nil
 }
 
-// SendGroupMessage sends a group messag chat message to the underlying transport
-func (api *PublicAPI) SendGroupMessage(ctx context.Context, msg chat.SendGroupMessageRPC) ([]hexutil.Bytes, error) {
-	if !api.service.pfsEnabled {
-		return nil, ErrPFSNotEnabled
+func (api *PublicAPI) processPFSMessage(dedupMessage dedup.DeduplicateMessage) error {
+	msg := dedupMessage.Message
+
+	privateKeyID := api.service.w.SelectedKeyPairID()
+	if privateKeyID == "" {
+		return errors.New("no key selected")
 	}
 
-	// To be completely agnostic from whisper we should not be using whisper to store the key
-	privateKey, err := api.service.w.GetPrivateKey(msg.Sig)
+	privateKey, err := api.service.w.GetPrivateKey(privateKeyID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var keys []*ecdsa.PublicKey
-
-	for _, k := range msg.PubKeys {
-		publicKey, err := crypto.UnmarshalPubkey(k)
-		if err != nil {
-			return nil, err
-		}
-		keys = append(keys, publicKey)
-	}
-
-	// This is transport layer-agnostic
-	protocolMessages, err := api.service.protocol.BuildDirectMessage(privateKey, msg.Payload, keys...)
+	publicKey, err := crypto.UnmarshalPubkey(msg.Sig)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var response []hexutil.Bytes
+	response, err := api.service.protocol.HandleMessage(privateKey, publicKey, msg.Payload, dedupMessage.DedupID)
 
-	for key, message := range protocolMessages {
-		directMessage := chat.SendDirectMessageRPC{
-			PubKey:  crypto.FromECDSAPub(key),
-			Payload: msg.Payload,
-			Sig:     msg.Sig,
+	switch err {
+	case nil:
+		// Set the decrypted payload
+		msg.Payload = response
+	case chat.ErrDeviceNotFound:
+		// Notify that someone tried to contact us using an invalid bundle
+		if privateKey.PublicKey != *publicKey {
+			api.log.Warn("Device not found, sending signal", "err", err)
+			keyString := fmt.Sprintf("0x%x", crypto.FromECDSAPub(publicKey))
+			handler := EnvelopeSignalHandler{}
+			handler.DecryptMessageFailed(keyString)
 		}
-
-		// Enrich with transport layer info
-		whisperMessage := chat.DirectMessageToWhisper(directMessage, message)
-
-		// And dispatch
-		hash, err := api.Post(ctx, whisperMessage)
-		if err != nil {
-			return nil, err
-		}
-		response = append(response, hash)
-
-	}
-	return response, nil
-}
-
-func (api *PublicAPI) processPFSMessage(msg *whisper.Message) error {
-	var privateKey *ecdsa.PrivateKey
-	var publicKey *ecdsa.PublicKey
-
-	// Msg.Dst is empty is a public message, nothing to do
-	if msg.Dst != nil {
-		// There's probably a better way to do this
-		keyBytes, err := hexutil.Bytes(msg.Dst).MarshalText()
-		if err != nil {
-			return err
-		}
-
-		privateKey, err = api.service.w.GetPrivateKey(string(keyBytes))
-		if err != nil {
-			return err
-		}
-
-		// This needs to be pushed down in the protocol message
-		publicKey, err = crypto.UnmarshalPubkey(msg.Sig)
-		if err != nil {
-			return err
-		}
-	}
-
-	response, err := api.service.protocol.HandleMessage(privateKey, publicKey, msg.Payload)
-
-	handler := EnvelopeSignalHandler{}
-
-	// Notify that someone tried to contact us using an invalid bundle
-	if err == chat.ErrSessionNotFound {
-		api.log.Warn("Session not found, sending signal", "err", err)
-		keyString := fmt.Sprintf("0x%x", crypto.FromECDSAPub(publicKey))
-		handler := EnvelopeSignalHandler{}
-		handler.DecryptMessageFailed(keyString)
-		return nil
-	} else if err != nil {
-		// Ignore errors for now as those might be non-pfs messages
+	case chat.ErrNotProtocolMessage:
+		// Not using encryption, pass directly to the layer below
+		api.log.Debug("Not a protocol message", "err", err)
+	default:
+		// Log and pass to the client, even if failed to decrypt
 		api.log.Error("Failed handling message with error", "err", err)
-		return nil
-	}
 
-	// Add unencrypted payload
-	msg.Payload = response.Message
-
-	// Notify of added bundles
-	if response.AddedBundles != nil {
-		for _, bundle := range response.AddedBundles {
-			handler.BundleAdded(bundle[0], bundle[1])
-		}
 	}
 
 	return nil
@@ -482,15 +753,19 @@ func makeEnvelop(
 	return message.Wrap(&params, now)
 }
 
-// makePayload makes a specific payload for MailServer to request historic messages.
-func makePayload(r MessagesRequest) ([]byte, error) {
-	expectedCursorSize := common.HashLength + 4
+// makeMessagesRequestPayload makes a specific payload for MailServer
+// to request historic messages.
+func makeMessagesRequestPayload(r MessagesRequest) ([]byte, error) {
 	cursor, err := hex.DecodeString(r.Cursor)
-	if err != nil || len(cursor) != expectedCursorSize {
-		cursor = nil
+	if err != nil {
+		return nil, fmt.Errorf("invalid cursor: %v", err)
 	}
 
-	payload := MessagesRequestPayload{
+	if len(cursor) > 0 && len(cursor) != mailserver.CursorLength {
+		return nil, fmt.Errorf("invalid cursor size: expected %d but got %d", mailserver.CursorLength, len(cursor))
+	}
+
+	payload := mailserver.MessagesRequestPayload{
 		Lower:  r.From,
 		Upper:  r.To,
 		Bloom:  createBloomFilter(r),
