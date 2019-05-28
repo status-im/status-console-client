@@ -57,22 +57,42 @@ type PrivateStream struct {
 }
 
 func (priv PrivateStream) Handle(msg protocol.Message) error {
-	if msg.SigPubKey == nil {
+	publicKey := msg.SigPubKey
+
+	if publicKey == nil {
 		return errors.New("message should be signed")
 	}
-	keyhex := PubkeyToHex(msg.SigPubKey)
+
 	contact := Contact{
 		Type:      ContactPublicKey,
 		State:     ContactNew,
-		Name:      keyhex, // TODO(dshulyak) replace with 3-word funny name
-		PublicKey: msg.SigPubKey,
+		Name:      PubkeyToHex(publicKey), // TODO(dshulyak) replace with 3-word funny name
+		PublicKey: publicKey,
 		Topic:     DefaultPrivateTopic(),
 	}
-	exist, err := priv.db.PublicContactExist(contact)
+
+	exists, err := priv.db.PublicContactExist(contact)
 	if err != nil {
 		return errors.Wrap(err, "error verifying if public contact exist")
 	}
-	if !exist {
+	if exists {
+		// TODO: replace with db.ContactByPublicKey()
+		contacts, err := priv.db.Contacts()
+		if err != nil {
+			return errors.Wrap(err, "error getting contacts")
+		}
+		for _, c := range contacts {
+			if c.PublicKey == nil {
+				continue
+			}
+
+			// TODO: extract
+			if publicKey.X.Cmp(c.PublicKey.X) == 0 && publicKey.Y.Cmp(c.PublicKey.Y) == 0 {
+				contact = c
+				break
+			}
+		}
+	} else {
 		err := priv.db.SaveContacts([]Contact{contact})
 		if err != nil {
 			return errors.Wrap(err, "can't add new contact")

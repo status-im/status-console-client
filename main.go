@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/ecdsa"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
@@ -40,10 +41,11 @@ var (
 	createKeyPair = fs.Bool("create-key-pair", false, "creates and prints a key pair instead of running")
 
 	// flags for in-proc node
-	dataDir    = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
-	fleet      = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
-	configFile = fs.String("node-config", "", "a JSON file with node config")
-	pfsEnabled = fs.Bool("pfs", false, "enable PFS")
+	dataDir     = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
+	noNamespace = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
+	fleet       = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
+	configFile  = fs.String("node-config", "", "a JSON file with node config")
+	pfsEnabled  = fs.Bool("pfs", false, "enable PFS")
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -52,21 +54,6 @@ var (
 func main() {
 	if err := ff.Parse(fs, os.Args[1:]); err != nil {
 		exitErr(errors.Wrap(err, "failed to parse flags"))
-	}
-	err := os.MkdirAll(*dataDir, 0777)
-	if err != nil {
-		exitErr(err)
-	}
-	logPath := filepath.Join(*dataDir, "client.log")
-	logFile, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		exitErr(err)
-	}
-	log.SetOutput(logFile)
-
-	err = logutils.OverrideRootLog(true, *logLevel, logutils.FileOptions{Filename: filepath.Join(*dataDir, "status.log")}, false)
-	if err != nil {
-		log.Fatalf("failed to override root log: %v\n", err)
 	}
 
 	if *createKeyPair {
@@ -87,19 +74,51 @@ func main() {
 		}
 		privateKey = k
 
-		log.Printf("contact address: %#x", crypto.FromECDSAPub(&privateKey.PublicKey))
+		fmt.Printf("Contact address: %#x\n", crypto.FromECDSAPub(&privateKey.PublicKey))
 	} else {
 		exitErr(errors.New("private key is required"))
 	}
 
-	// create database
-	address := crypto.PubkeyToAddress(privateKey.PublicKey)
-	dbPath := filepath.Join(*dataDir, "db.sql")
-	err = os.MkdirAll(*dataDir, 0700)
+	// Prefix data directory with a public key.
+	// This is required because it's not possible
+	// or adviced to share data between different
+	// key pairs.
+	if !*noNamespace {
+		*dataDir = filepath.Join(
+			*dataDir,
+			hex.EncodeToString(crypto.FromECDSAPub(&privateKey.PublicKey)[:20]),
+		)
+	}
+
+	err := os.MkdirAll(*dataDir, 0755)
+	if err != nil {
+		exitErr(err)
+	} else {
+		fmt.Printf("Starting in %s\n", *dataDir)
+	}
+
+	// Setup logging by splitting it into a client.log
+	// with status-console-client logs and status.log
+	// with Status Node logs.
+	clientLogPath := filepath.Join(*dataDir, "client.log")
+	clientLogFile, err := os.OpenFile(clientLogPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		exitErr(err)
 	}
-	db, err := client.InitializeDB(dbPath, address.String())
+	log.SetOutput(clientLogFile)
+
+	nodeLogPath := filepath.Join(*dataDir, "status.log")
+	err = logutils.OverrideRootLog(true, *logLevel, logutils.FileOptions{Filename: nodeLogPath}, false)
+	if err != nil {
+		exitErr(fmt.Errorf("failed to override root log: %v", err))
+	}
+
+	// Create a database.
+	// TODO(adam): currently, we use an address as a db encryption key.
+	// It should be configurable.
+	dbKey := crypto.PubkeyToAddress(privateKey.PublicKey).String()
+	dbPath := filepath.Join(*dataDir, "db.sql")
+	db, err := client.InitializeDB(dbPath, dbKey)
 	if err != nil {
 		exitErr(err)
 	}
@@ -150,14 +169,32 @@ func main() {
 			}
 		}
 	}
+
+	// run in a goroutine to show the UI faster
 	go func() {
-		err = messenger.Start()
-		if err != nil {
+		if err := messenger.Start(); err != nil {
 			exitErr(err)
 		}
 	}()
 
+	done := make(chan bool, 1)
+	sigs := make(chan os.Signal, 1)
+
+	ossignal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigs
+		log.Printf("received signal: %v", sig)
+		done <- true
+	}()
+
+	log.Printf("starting UI...")
+
 	if !*noUI {
+		go func() {
+			<-done
+			exitErr(errors.New("exit with signal"))
+		}()
+
 		if err := setupGUI(privateKey, messenger); err != nil {
 			exitErr(err)
 		}
@@ -165,19 +202,9 @@ func main() {
 		if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
 			exitErr(err)
 		}
+
 		g.Close()
 	} else {
-		sigs := make(chan os.Signal, 1)
-		done := make(chan bool, 1)
-
-		ossignal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
-		go func() {
-			sig := <-sigs
-			log.Printf("received signal: %v", sig)
-			done <- true
-		}()
-
 		<-done
 	}
 }
