@@ -79,7 +79,7 @@ func (c *ChatViewController) readEventsLoop(contact client.Contact) {
 				if len(all) != 0 {
 					clock = all[len(all)-1].Clock
 				}
-				log.Printf("[ChatViewController::readEventsLoops] retrieved %d messages", len(messages))
+				log.Printf("[ChatViewController::readEventsLoop] retrieved %d messages", len(messages))
 				c.printMessages(true, all...)
 				inorder = true
 			} else {
@@ -95,29 +95,35 @@ func (c *ChatViewController) readEventsLoop(contact client.Contact) {
 			c.onError(err)
 			return
 		case event := <-events:
-			log.Printf("[ChatViewController::readEventsLoops] received an event: %+v", event)
+			log.Printf("[ChatViewController::readEventsLoop] received an event: %+v", event)
 
 			switch ev := event.Interface.(type) {
 			case client.EventWithError:
 				c.onError(ev.GetError())
 			case client.EventWithContact:
-				log.Printf("[ChatViewController::readEventsLoops] selected contact %v, msg contact %v\n", contact, ev.GetContact())
 				if !ev.GetContact().Equal(contact) {
+					log.Printf("[ChatViewController::readEventsLoop] selected and received message contact are not equal: %s, %s", contact, ev.GetContact())
 					continue
 				}
 				msgev, ok := ev.(client.EventWithMessage)
 				if !ok {
+					log.Printf("[ChatViewController::readEventsLoop] can not convert to EventWithMessage")
 					continue
 				}
 				if !inorder {
+					log.Printf("[ChatViewController::readEventsLoop] not in order; skipping")
 					continue
 				}
+
 				msg := msgev.GetMessage()
-				log.Printf("[ChatViewController::readEventsLoops] received message current clock %v - msg clock %v\n", clock, msg.Clock)
+				log.Printf("[ChatViewController::readEventsLoop] received message %v", msg)
+
 				if msg.Clock < clock {
 					inorder = false
+					log.Printf("[ChatViewController::readEventsLoop] received message is out of order")
 					continue
 				}
+
 				messages = append(messages, msg)
 			}
 		case contact = <-c.changeContact:
@@ -162,6 +168,7 @@ func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) err
 
 // Send sends a payload as a message.
 func (c *ChatViewController) Send(data []byte) error {
+	log.Printf("[ChatViewController::Send]")
 	return c.messenger.Send(c.contact, data)
 }
 
