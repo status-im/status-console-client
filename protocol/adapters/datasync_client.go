@@ -110,6 +110,9 @@ func (t *DataSyncWhisperTransport) Watch() mvds.Packet {
 // Send sends a new message using the Whisper service.
 func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, peer mvds.PeerId, payload mvds.Payload) error {
 	data, err := proto.Marshal(&payload)
+	if err != nil {
+		return err
+	}
 
 	newMessage, err := newNewMessage(t.keysManager, data)
 	if err != nil {
