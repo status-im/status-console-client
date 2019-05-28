@@ -56,6 +56,8 @@ func main() {
 	err := os.MkdirAll(*dataDir, 0777)
 	if err != nil {
 		exitErr(err)
+	} else {
+		fmt.Printf("Starting in %s\n", *dataDir)
 	}
 	logPath := filepath.Join(*dataDir, "client.log")
 	logFile, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
@@ -150,14 +152,32 @@ func main() {
 			}
 		}
 	}
+
+	// run in a goroutine to show the UI faster
 	go func() {
-		err = messenger.Start()
-		if err != nil {
+		if err := messenger.Start(); err != nil {
 			exitErr(err)
 		}
 	}()
 
+	done := make(chan bool, 1)
+	sigs := make(chan os.Signal, 1)
+
+	ossignal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigs
+		log.Printf("received signal: %v", sig)
+		done <- true
+	}()
+
+	log.Printf("starting UI...")
+
 	if !*noUI {
+		go func() {
+			<-done
+			exitErr(errors.New("exit with signal"))
+		}()
+
 		if err := setupGUI(privateKey, messenger); err != nil {
 			exitErr(err)
 		}
@@ -165,19 +185,9 @@ func main() {
 		if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
 			exitErr(err)
 		}
+
 		g.Close()
 	} else {
-		sigs := make(chan os.Signal, 1)
-		done := make(chan bool, 1)
-
-		ossignal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
-		go func() {
-			sig := <-sigs
-			log.Printf("received signal: %v", sig)
-			done <- true
-		}()
-
 		<-done
 	}
 }
