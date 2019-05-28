@@ -518,6 +518,10 @@ github.com/status-im/mvds v0.0.0-20190527130902-5e870252c22b h1:Yx904KeeYPVP6p6K
 github.com/status-im/mvds v0.0.0-20190527130902-5e870252c22b/go.mod h1:494ln5NsMWzHRKt32IWaJIbGobUu4irQyqrJFBp2L9w=
 github.com/status-im/mvds v0.0.0-20190527152030-6cd9a31eecff h1:oD1YoRH3tUd7ldzZV15Q4///O3JwA3pd8VHoYnkmg/w=
 github.com/status-im/mvds v0.0.0-20190527152030-6cd9a31eecff/go.mod h1:494ln5NsMWzHRKt32IWaJIbGobUu4irQyqrJFBp2L9w=
+github.com/status-im/mvds v0.0.0-20190528141817-11c9c12fb8c8 h1:eWNmmh1Bis48XtVTgvIhw389YaOeORdOn2Y1Qw1nJ7E=
+github.com/status-im/mvds v0.0.0-20190528141817-11c9c12fb8c8/go.mod h1:cgNgcRbLwE4TMPMSax7xl+Ca/Q8rIklZLDwAD6iBKjo=
+github.com/status-im/mvds v0.0.0-20190528142620-31f7b382d4b8 h1:oKq6JxDCJW0Sn+b6Z8JYF2wDcuNHG6HKUEku5/Ncbu0=
+github.com/status-im/mvds v0.0.0-20190528142620-31f7b382d4b8/go.mod h1:cgNgcRbLwE4TMPMSax7xl+Ca/Q8rIklZLDwAD6iBKjo=
 github.com/status-im/rendezvous v1.2.0 h1:d3HysveJI9w3QFFIGf0rz1HHW51LMb0F0sgGDF+Qq+c=
 github.com/status-im/rendezvous v1.2.0/go.mod h1:vUZNaCYr2AsFngV2IW5NsnPBRK/h+x57nsMINkhrVCQ=
 github.com/status-im/status-go v0.16.4 h1:8pED8nOgQgHFhN+nIGDTvyK/aXA6VPQ6ZVYnEs9DlJs=
