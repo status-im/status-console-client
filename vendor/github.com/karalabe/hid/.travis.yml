@@ -18,19 +18,13 @@ matrix:
       dist: trusty
       go: 1.9.x
     - os: linux
-      dist: xenial
+      dist: precise
       go: 1.9.x
     - os: linux
-      dist: xenial
+      dist: precise
       go: 1.10.x
-    - os: linux
-      dist: xenial
-      go: 1.11.x
-    - os: linux
-      dist: xenial
-      go: 1.12.x
     - os: osx
-      go: 1.12.x
+      go: 1.10.x
 
 script:
   - go install ./...

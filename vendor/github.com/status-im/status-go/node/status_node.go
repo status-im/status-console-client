@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,7 +18,8 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/p2p/discover"
+	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 	ma "github.com/multiformats/go-multiaddr"
 	whisper "github.com/status-im/whisper/whisperv6"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -42,6 +44,7 @@ var (
 	ErrNoRunningNode          = errors.New("there is no running node")
 	ErrAccountKeyStoreMissing = errors.New("account key store is not set")
 	ErrServiceUnknown         = errors.New("service unknown")
+	ErrDiscoveryRunning       = errors.New("discovery is already running")
 )
 
 // StatusNode abstracts contained geth node and provides helper methods to
@@ -97,28 +100,24 @@ func (n *StatusNode) Server() *p2p.Server {
 	return n.gethNode.Server()
 }
 
-func (n *StatusNode) startWithDB(config *params.NodeConfig, db *leveldb.DB, services []node.ServiceConstructor) error {
-	if err := n.createNode(config, db); err != nil {
-		return err
-	}
-	n.config = config
-
-	if err := n.start(services); err != nil {
-		return err
-	}
-
-	if err := n.setupRPCClient(); err != nil {
-		return err
-	}
-
-	if n.discoveryEnabled() {
-		return n.startDiscovery()
-	}
-	return nil
+// Start starts current StatusNode, failing if it's already started.
+// It accepts a list of services that should be added to the node.
+func (n *StatusNode) Start(config *params.NodeConfig, services ...node.ServiceConstructor) error {
+	return n.StartWithOptions(config, StartOptions{
+		Services:       services,
+		StartDiscovery: true,
+	})
 }
 
-// Start starts current StatusNode, failing if it's already started.
-func (n *StatusNode) Start(config *params.NodeConfig, services ...node.ServiceConstructor) error {
+// StartOptions allows to control some parameters of Start() method.
+type StartOptions struct {
+	Services       []node.ServiceConstructor
+	StartDiscovery bool
+}
+
+// StartWithOptions starts current StatusNode, failing if it's already started.
+// It takes some options that allows to further configure starting process.
+func (n *StatusNode) StartWithOptions(config *params.NodeConfig, options StartOptions) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -136,13 +135,35 @@ func (n *StatusNode) Start(config *params.NodeConfig, services ...node.ServiceCo
 
 	n.db = db
 
-	err = n.startWithDB(config, db, services)
+	err = n.startWithDB(config, db, options.Services)
+
+	// continue only if there was no error when starting node with a db
+	if err == nil && options.StartDiscovery && n.discoveryEnabled() {
+		err = n.startDiscovery()
+	}
 
 	if err != nil {
 		if dberr := db.Close(); dberr != nil {
 			n.log.Error("error while closing leveldb after node crash", "error", dberr)
 		}
 		n.db = nil
+		return err
+	}
+
+	return nil
+}
+
+func (n *StatusNode) startWithDB(config *params.NodeConfig, db *leveldb.DB, services []node.ServiceConstructor) error {
+	if err := n.createNode(config, db); err != nil {
+		return err
+	}
+	n.config = config
+
+	if err := n.start(services); err != nil {
+		return err
+	}
+
+	if err := n.setupRPCClient(); err != nil {
 		return err
 	}
 
@@ -190,17 +211,26 @@ func (n *StatusNode) discoveryEnabled() bool {
 	return n.config != nil && (!n.config.NoDiscovery || n.config.Rendezvous) && n.config.ClusterConfig.Enabled
 }
 
-func (n *StatusNode) discoverNode() *discover.Node {
+func (n *StatusNode) discoverNode() (*enode.Node, error) {
 	if !n.isRunning() {
-		return nil
+		return nil, nil
 	}
 
-	discNode := n.gethNode.Server().Self()
-	if n.config.AdvertiseAddr != "" {
-		n.log.Info("using AdvertiseAddr for rendezvous", "addr", n.config.AdvertiseAddr)
-		discNode.IP = net.ParseIP(n.config.AdvertiseAddr)
+	server := n.gethNode.Server()
+	discNode := server.Self()
+
+	if n.config.AdvertiseAddr == "" {
+		return discNode, nil
 	}
-	return discNode
+
+	n.log.Info("Using AdvertiseAddr for rendezvous", "addr", n.config.AdvertiseAddr)
+
+	r := discNode.Record()
+	r.Set(enr.IP(net.ParseIP(n.config.AdvertiseAddr)))
+	if err := enode.SignV4(r, server.PrivateKey); err != nil {
+		return nil, err
+	}
+	return enode.New(enode.ValidSchemes[r.IdentityScheme()], r)
 }
 
 func (n *StatusNode) startRendezvous() (discovery.Discovery, error) {
@@ -218,10 +248,31 @@ func (n *StatusNode) startRendezvous() (discovery.Discovery, error) {
 			return nil, fmt.Errorf("failed to parse rendezvous node %s: %v", n.config.ClusterConfig.RendezvousNodes[0], err)
 		}
 	}
-	return discovery.NewRendezvous(maddrs, n.gethNode.Server().PrivateKey, n.discoverNode())
+	node, err := n.discoverNode()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get a discover node: %v", err)
+	}
+
+	return discovery.NewRendezvous(maddrs, n.gethNode.Server().PrivateKey, node)
+}
+
+// StartDiscovery starts the peers discovery protocols depending on the node config.
+func (n *StatusNode) StartDiscovery() error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.discoveryEnabled() {
+		return n.startDiscovery()
+	}
+
+	return nil
 }
 
 func (n *StatusNode) startDiscovery() error {
+	if n.isDiscoveryRunning() {
+		return ErrDiscoveryRunning
+	}
+
 	discoveries := []discovery.Discovery{}
 	if !n.config.NoDiscovery {
 		discoveries = append(discoveries, discovery.NewDiscV5(
@@ -286,12 +337,13 @@ func (n *StatusNode) Stop() error {
 
 // stop will stop current StatusNode. A stopped node cannot be resumed.
 func (n *StatusNode) stop() error {
-	if n.discoveryEnabled() {
+	if n.isDiscoveryRunning() {
 		if err := n.stopDiscovery(); err != nil {
-			n.log.Error("Error stopping the PeerPool", "error", err)
+			n.log.Error("Error stopping the discovery components", "error", err)
 		}
 		n.register = nil
 		n.peerPool = nil
+		n.discovery = nil
 	}
 
 	if err := n.gethNode.Stop(); err != nil {
@@ -314,6 +366,10 @@ func (n *StatusNode) stop() error {
 	}
 
 	return nil
+}
+
+func (n *StatusNode) isDiscoveryRunning() bool {
+	return n.register != nil || n.peerPool != nil || n.discovery != nil
 }
 
 func (n *StatusNode) stopDiscovery() error {
@@ -414,7 +470,7 @@ func (n *StatusNode) AddPeer(url string) error {
 
 // addPeer adds new static peer node
 func (n *StatusNode) addPeer(url string) error {
-	parsedNode, err := discover.ParseNode(url)
+	parsedNode, err := enode.ParseV4(url)
 	if err != nil {
 		return err
 	}
@@ -429,7 +485,7 @@ func (n *StatusNode) addPeer(url string) error {
 }
 
 func (n *StatusNode) removePeer(url string) error {
-	parsedNode, err := discover.ParseNode(url)
+	parsedNode, err := enode.ParseV4(url)
 	if err != nil {
 		return err
 	}
@@ -582,6 +638,35 @@ func (n *StatusNode) RPCPrivateClient() *rpc.Client {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return n.rpcPrivateClient
+}
+
+// ChaosModeCheckRPCClientsUpstreamURL updates RPCClient and RPCPrivateClient upstream URLs,
+// if defined, without restarting the node. This is required for the Chaos Unicorn Day.
+// Additionally, if the passed URL is Infura, it changes it to httpstat.us/500.
+func (n *StatusNode) ChaosModeCheckRPCClientsUpstreamURL(on bool) error {
+	url := n.config.UpstreamConfig.URL
+
+	if on {
+		if strings.Contains(url, "infura.io") {
+			url = "https://httpstat.us/500"
+		}
+	}
+
+	publicClient := n.RPCClient()
+	if publicClient != nil {
+		if err := publicClient.UpdateUpstreamURL(url); err != nil {
+			return err
+		}
+	}
+
+	privateClient := n.RPCPrivateClient()
+	if privateClient != nil {
+		if err := privateClient.UpdateUpstreamURL(url); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // EnsureSync waits until blockchain synchronization
