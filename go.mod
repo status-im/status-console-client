@@ -13,6 +13,7 @@ require (
 	github.com/fjl/memsize v0.0.0-20180929194037-2a09253e352a // indirect
 	github.com/go-playground/locales v0.12.1 // indirect
 	github.com/go-playground/universal-translator v0.16.0 // indirect
+	github.com/gogo/protobuf v1.2.1
 	github.com/golang-migrate/migrate v3.5.4+incompatible // indirect
 	github.com/golang/mock v1.3.1
 	github.com/influxdata/influxdb v1.7.6 // indirect
@@ -35,6 +36,7 @@ require (
 	github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24 // indirect
 	github.com/status-im/doubleratchet v2.0.0+incompatible // indirect
 	github.com/status-im/migrate v0.0.0-20181227113212-3bde36291b5c
+	github.com/status-im/mvds v0.0.1
 	github.com/status-im/rendezvous v1.2.0 // indirect
 	github.com/status-im/status-go v0.25.0-beta.2
 	github.com/status-im/whisper v1.4.13
@@ -44,6 +46,7 @@ require (
 	golang.org/x/net v0.0.0-20190514140710-3ec191127204 // indirect
 	golang.org/x/sys v0.0.0-20190514135907-3a4b5fb9f71f // indirect
 	golang.org/x/text v0.3.2 // indirect
+	google.golang.org/genproto v0.0.0-20180831171423-11092d34479b // indirect
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/go-playground/validator.v9 v9.24.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
@@ -53,3 +56,5 @@ require (
 )
 
 replace github.com/ethereum/go-ethereum v1.8.23 => github.com/status-im/go-ethereum v1.8.23
+
+replace github.com/status-im/mvds v0.0.1 => github.com/dshulyak/mvds v0.0.1
