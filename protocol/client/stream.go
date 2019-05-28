@@ -97,13 +97,12 @@ func streamHandlerMultiplexed(db Database, m *protocol.Message) error {
 
 // Stream converts messages subscription model to a stream of messages.
 type Stream struct {
-	sync.Mutex
-
 	proto   protocol.Protocol
 	handler StreamHandler
 
-	wg     sync.WaitGroup
-	cancel func() // context cancel
+	mu     sync.Mutex
+	cancel func()         // context cancel
+	wg     sync.WaitGroup // wait for goroutines to finish
 }
 
 // NewStream creates a new stream instance with protocol and handler.
@@ -121,14 +120,14 @@ func (s *Stream) Start(aCtx context.Context, options protocol.SubscribeOptions) 
 	}
 
 	ctx, cancel := context.WithCancel(aCtx)
-	s.Lock()
+	s.mu.Lock()
 	s.cancel = cancel
-	s.Unlock()
+	s.mu.Unlock()
 	defer func() {
 		if err != nil {
-			s.Lock()
+			s.mu.Lock()
 			s.cancel = nil
-			s.Unlock()
+			s.mu.Unlock()
 		}
 	}()
 
@@ -141,24 +140,36 @@ func (s *Stream) Start(aCtx context.Context, options protocol.SubscribeOptions) 
 
 	s.wg.Add(1)
 	go func() {
-		for {
-			select {
-			case msg := <-msgs:
-				// TODO(adam): back-propagate this error
-				err := s.handler(msg)
-				if err == ErrMsgAlreadyExist {
-					log.Printf("[Stream::Start] message with ID %x already exist", msg.ID)
-				} else if err != nil {
-					log.Printf("[Stream::Start] failed to save message with ID %x: %v", msg.ID, err)
-				}
-			case <-ctx.Done():
-				sub.Unsubscribe()
-				s.wg.Done()
-				return
-			}
-		}
+		s.processLoop(ctx, msgs)
+		// clean up after the process loop finished
+		sub.Unsubscribe()
+		s.wg.Done()
 	}()
+
 	return nil
+}
+
+func (s *Stream) processLoop(ctx context.Context, messages <-chan *protocol.Message) {
+	for {
+		select {
+		case msg := <-messages:
+			err := s.handler(msg)
+			if err != nil {
+				s.handleProcessErr(err, msg)
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// TODO(adam): back-propagate this error
+func (s *Stream) handleProcessErr(err error, msg *protocol.Message) {
+	if err == ErrMsgAlreadyExist {
+		log.Printf("[Stream::Start] message with ID %x already exist", msg.ID)
+	} else if err != nil {
+		log.Printf("[Stream::Start] failed to save message with ID %x: %v", msg.ID, err)
+	}
 }
 
 // Stop stops the current subscription to the protocol.
@@ -168,9 +179,9 @@ func (s *Stream) Stop() {
 	}
 
 	s.cancel()
-	s.Lock()
+	s.mu.Lock()
 	s.cancel = nil
-	s.Unlock()
+	s.mu.Unlock()
 
 	s.wg.Wait()
 }
