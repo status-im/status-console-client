@@ -65,8 +65,12 @@ func (m *MessengerV2) Start() error {
 		// For contacts with public key, we just need to make sure
 		// each possible topic has a stream. For a single topic
 		// for all private conversations, the map will have a len of 1.
+		// In the future, private conversations will have sharded topics,
+		// which means there will be many conversation over a particular topic
+		// but there will be more than one topic.
 		if contacts[i].Type == ContactPublicKey {
 			_, exist := m.private[contacts[i].Topic]
+
 			if exist {
 				continue
 			}
@@ -75,9 +79,11 @@ func (m *MessengerV2) Start() error {
 			if err := stream.Start(context.Background(), options); err != nil {
 				return errors.Wrap(err, "unable to start private stream")
 			}
+
 			m.private[contacts[i].Topic] = stream
 		} else {
 			_, exist := m.public[contacts[i].Topic]
+
 			if exist {
 				return fmt.Errorf("multiple public chats with same topic: %s", contacts[i].Topic)
 			}
@@ -86,6 +92,7 @@ func (m *MessengerV2) Start() error {
 			if err := stream.Start(context.Background(), options); err != nil {
 				return errors.Wrap(err, "unable to start stream")
 			}
+
 			m.public[contacts[i].Topic] = stream
 		}
 	}
@@ -168,18 +175,21 @@ func (m *MessengerV2) Request(ctx context.Context, c Contact, options protocol.R
 }
 
 func (m *MessengerV2) requestHistories(ctx context.Context, histories []History, opts protocol.RequestOptions) error {
-	log.Printf("[messenger::RequestAll] requesting messages for chats %+v: from %d to %d\n", opts.Chats, opts.From, opts.To)
+	log.Printf("[Messenger::requestHistories] requesting messages for chats %+v: from %d to %d\n", opts.Chats, opts.From, opts.To)
+
 	start := time.Now()
+
 	err := m.proto.Request(ctx, opts)
 	if err != nil {
 		return err
 	}
-	log.Printf("[messenger::RequestAll] requesting message for chats %+v finished. took %v\n", opts.Chats, time.Since(start))
+
+	log.Printf("[Messenger::requestHistories] requesting message for chats %+v finished in %s\n", opts.Chats, time.Since(start))
+
 	for i := range histories {
 		histories[i].Synced = opts.To
 	}
-	err = m.db.UpdateHistories(histories)
-	return err
+	return m.db.UpdateHistories(histories)
 }
 
 func (m *MessengerV2) RequestAll(ctx context.Context, newest bool) error {
@@ -210,6 +220,9 @@ func (m *MessengerV2) RequestAll(ctx context.Context, newest bool) error {
 		}()
 	}
 	wg.Wait()
+
+	log.Printf("[Messenger::RequestAll] finished requesting histories")
+
 	close(errors)
 	for err := range errors {
 		if err != nil {
@@ -245,10 +258,18 @@ func (m *MessengerV2) Send(c Contact, data []byte) error {
 		return errors.Wrap(err, "failed to prepare send options")
 	}
 
-	hash, err := m.proto.Send(context.Background(), encodedMessage, opts)
+	log.Printf("[Messenger::Send] sending message")
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	hash, err := m.proto.Send(ctx, encodedMessage, opts)
 	if err != nil {
 		return errors.Wrap(err, "can't send a message")
 	}
+
+	log.Printf("[Messenger::Send] sent message with hash %x", hash)
+
 	message.ID = hash
 	message.SigPubKey = &m.identity.PublicKey
 	_, err = m.db.SaveMessages(c, []*protocol.Message{&message})

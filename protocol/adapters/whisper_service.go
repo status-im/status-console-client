@@ -326,10 +326,10 @@ func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, req shhext.
 	if err != nil {
 		return
 	}
-
 	shhextAPI := shhext.NewPublicAPI(shhextService)
 
-	log.Printf("[WhisperServiceAdapter::requestMessages] request for a chunk with %d messages\n", req.Limit)
+	log.Printf("[WhisperServiceAdapter::requestMessages] request for a chunk with %d messages", req.Limit)
+
 	start := time.Now()
 	resp, err = shhextAPI.RequestMessagesSync(shhext.RetryConfig{
 		BaseTimeout: time.Second * 10,
@@ -337,12 +337,12 @@ func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, req shhext.
 		MaxRetries:  3,
 	}, req)
 	if err != nil {
-		log.Printf("[WhisperServiceAdapter::requestMessages] timed out. err %v\n", err)
+		log.Printf("[WhisperServiceAdapter::requestMessages] failed with err: %v", err)
 		return
 	}
-	log.Printf("[WhisperServiceAdapter::requestMessages] delivery for %d message took %v\n", req.Limit, time.Since(start))
 
-	log.Printf("[WhisperServiceAdapter::requestMessages] response = %+v, err = %v\n", resp, err)
+	log.Printf("[WhisperServiceAdapter::requestMessages] delivery of %d message took %v", req.Limit, time.Since(start))
+	log.Printf("[WhisperServiceAdapter::requestMessages] response: %+v", resp)
 
 	if resp.Error != nil {
 		err = resp.Error
@@ -353,7 +353,7 @@ func (a *WhisperServiceAdapter) requestMessages(ctx context.Context, req shhext.
 	}
 
 	req.Cursor = resp.Cursor
-	log.Printf("[WhisperServiceAdapter::requestMessages] request messages with cursor %v\n", req.Cursor)
+	log.Printf("[WhisperServiceAdapter::requestMessages] request messages with cursor %v", req.Cursor)
 	return a.requestMessages(ctx, req, true)
 }
 

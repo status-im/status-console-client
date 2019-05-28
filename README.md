@@ -27,6 +27,16 @@ $ ./bin/status-term-client -keyhex=<KEY> 2>/tmp/status-term-client.log
 $ ./bin/status-term-client -h
 ```
 
+# Commands
+
+## Adding a public chat
+
+`/contact add <topic>`
+
+## Adding a contact
+
+`/contact add <public-key> <name>`
+
 # Packages
 
 The main package contains the console user interface.
