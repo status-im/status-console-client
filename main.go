@@ -41,10 +41,11 @@ var (
 	createKeyPair = fs.Bool("create-key-pair", false, "creates and prints a key pair instead of running")
 
 	// flags for in-proc node
-	dataDir    = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
-	fleet      = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
-	configFile = fs.String("node-config", "", "a JSON file with node config")
-	pfsEnabled = fs.Bool("pfs", false, "enable PFS")
+	dataDir     = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
+	noNamespace = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
+	fleet       = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
+	configFile  = fs.String("node-config", "", "a JSON file with node config")
+	pfsEnabled  = fs.Bool("pfs", false, "enable PFS")
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -82,10 +83,12 @@ func main() {
 	// This is required because it's not possible
 	// or adviced to share data between different
 	// key pairs.
-	*dataDir = filepath.Join(
-		*dataDir,
-		hex.EncodeToString(crypto.FromECDSAPub(&privateKey.PublicKey)[:20]),
-	)
+	if !*noNamespace {
+		*dataDir = filepath.Join(
+			*dataDir,
+			hex.EncodeToString(crypto.FromECDSAPub(&privateKey.PublicKey)[:20]),
+		)
+	}
 
 	err := os.MkdirAll(*dataDir, 0755)
 	if err != nil {
