@@ -85,10 +85,7 @@ func (m *MessengerV2) Start() error {
 
 	log.Printf("[Mesenger:Start] request messages from mail sever")
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-
-	return m.RequestAll(ctx, true)
+	return m.RequestAll(context.Background(), true)
 }
 
 func (m *MessengerV2) Join(ctx context.Context, c Contact) error {

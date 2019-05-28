@@ -105,7 +105,7 @@ func (c *ChatViewController) readEventsLoop(contact client.Contact) {
 					log.Printf("[ChatViewController::readEventsLoop] selected and received message contact are not equal: %s, %s", contact, ev.GetContact())
 					continue
 				}
-				msgev, ok := event.Interface.(client.EventWithMessage)
+				msgev, ok := ev.(client.EventWithMessage)
 				if !ok {
 					log.Printf("[ChatViewController::readEventsLoop] can not convert to EventWithMessage")
 					continue
