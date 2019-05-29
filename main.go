@@ -169,8 +169,14 @@ func main() {
 			exitErr(errors.Errorf("invalid -add-contact value"))
 		}
 
-		if err := db.SaveContacts([]client.Contact{c}); err != nil {
+		exists, err := db.ContactExist(c)
+		if err != nil {
 			exitErr(err)
+		}
+		if !exists {
+			if err := db.SaveContacts([]client.Contact{c}); err != nil {
+				exitErr(err)
+			}
 		}
 	}
 
