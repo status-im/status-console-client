@@ -41,8 +41,8 @@ require (
 	github.com/stretchr/objx v0.1.1 // indirect
 	github.com/stretchr/testify v1.3.0
 	golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f
-	golang.org/x/net v0.0.0-20190514140710-3ec191127204 // indirect
-	golang.org/x/sys v0.0.0-20190514135907-3a4b5fb9f71f // indirect
+	golang.org/x/net v0.0.0-20190522155817-f3200d17e092 // indirect
+	golang.org/x/sys v0.0.0-20190528183647-3626398d7749 // indirect
 	golang.org/x/text v0.3.2 // indirect
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/go-playground/validator.v9 v9.24.0 // indirect
