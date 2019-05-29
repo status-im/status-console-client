@@ -44,6 +44,7 @@ install-dev:
 	go get -u github.com/golang/mock/gomock
 	go install github.com/golang/mock/mockgen
 	go get -u github.com/jteeuwen/go-bindata/go-bindata@v3.0.7
+	go mod tidy || echo 'ignore mod tidy'
 .PHONY: install-dev
 
 mock:
