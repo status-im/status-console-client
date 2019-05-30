@@ -3,17 +3,12 @@ package mvds
 // @todo this is a very rough implementation that needs cleanup
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"log"
 	"sync/atomic"
 	"time"
-
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 type calculateNextEpoch func(count uint64, epoch int64) int64
-type PeerId ecdsa.PublicKey
 
 type Node struct {
 	store     MessageStore
@@ -59,7 +54,7 @@ func (n *Node) Run() {
 
 	go func() {
 		for {
-			log.Printf("Node: %x Epoch: %d", n.ID.toBytes()[:4], n.epoch)
+			log.Printf("Node: %x Epoch: %d", n.ID.ToBytes()[:4], n.epoch)
 			time.Sleep(1 * time.Second)
 
 			n.sendMessages()
@@ -70,9 +65,6 @@ func (n *Node) Run() {
 
 // AppendMessage sends a message to a given group.
 func (n *Node) AppendMessage(group GroupID, data []byte) (MessageID, error) {
-
-	// @todo because we don't lock here we seem to get to a point where we can no longer append?
-
 	m := Message{
 		GroupId:   group[:],
 		Timestamp: time.Now().Unix(),
@@ -93,8 +85,6 @@ func (n *Node) AppendMessage(group GroupID, data []byte) (MessageID, error) {
 					continue
 				}
 
-				// @todo store a sync state only for Offers
-
 				s := state{}
 				s.SendEpoch = n.epoch + 1
 				n.syncState.Set(g, id, p, s)
@@ -102,7 +92,7 @@ func (n *Node) AppendMessage(group GroupID, data []byte) (MessageID, error) {
 		}
 	}()
 
-	log.Printf("[%x] node %x sending %x\n", group[:4], n.ID.toBytes()[:4], id[:4])
+	log.Printf("[%x] node %x sending %x\n", group[:4], n.ID.ToBytes()[:4], id[:4])
 	// @todo think about a way to insta trigger send messages when send was selected, we don't wanna wait for ticks here
 
 	return id, nil
@@ -148,6 +138,7 @@ func (n *Node) sendMessages() {
 	n.payloads.Map(func(id GroupID, peer PeerId, payload Payload) {
 		err := n.transport.Send(id, n.ID, peer, payload)
 		if err != nil {
+			log.Printf("error sending message: %s", err.Error())
 			//	@todo
 		}
 	})
@@ -178,7 +169,7 @@ func (n *Node) onOffer(group GroupID, sender PeerId, msg Offer) [][]byte {
 
 	for _, raw := range msg.Id {
 		id := toMessageID(raw)
-		log.Printf("[%x] OFFER (%x -> %x): %x received.\n", group[:4], sender.toBytes()[:4], n.ID.toBytes()[:4], id[:4])
+		log.Printf("[%x] OFFER (%x -> %x): %x received.\n", group[:4], sender.ToBytes()[:4], n.ID.ToBytes()[:4], id[:4])
 
 		// @todo maybe ack?
 		if n.store.Has(id) {
@@ -186,7 +177,7 @@ func (n *Node) onOffer(group GroupID, sender PeerId, msg Offer) [][]byte {
 		}
 
 		r = append(r, raw)
-		log.Printf("[%x] sending REQUEST (%x -> %x): %x\n", group[:4], n.ID.toBytes()[:4], sender.toBytes()[:4], id[:4])
+		log.Printf("[%x] sending REQUEST (%x -> %x): %x\n", group[:4], n.ID.ToBytes()[:4], sender.ToBytes()[:4], id[:4])
 	}
 
 	return r
@@ -197,7 +188,7 @@ func (n *Node) onRequest(group GroupID, sender PeerId, msg Request) []*Message {
 
 	for _, raw := range msg.Id {
 		id := toMessageID(raw)
-		log.Printf("[%x] REQUEST (%x -> %x): %x received.\n", group[:4], sender.toBytes()[:4], n.ID.toBytes()[:4], id[:4])
+		log.Printf("[%x] REQUEST (%x -> %x): %x received.\n", group[:4], sender.ToBytes()[:4], n.ID.ToBytes()[:4], id[:4])
 
 		if !n.IsPeerInGroup(group, sender) {
 			continue
@@ -213,20 +204,19 @@ func (n *Node) onRequest(group GroupID, sender PeerId, msg Request) []*Message {
 
 		m = append(m, &message)
 
-		log.Printf("[%x] sending MESSAGE (%x -> %x): %x\n", group[:4], n.ID.toBytes()[:4], sender.toBytes()[:4], id[:4])
+		log.Printf("[%x] sending MESSAGE (%x -> %x): %x\n", group[:4], n.ID.ToBytes()[:4], sender.ToBytes()[:4], id[:4])
 	}
 
 	return m
 }
 
-// @todo this should return nothing?
 func (n *Node) onAck(group GroupID, sender PeerId, msg Ack) {
 	for _, raw := range msg.Id {
 		id := toMessageID(raw)
 
 		n.syncState.Remove(group, id, sender)
 
-		log.Printf("[%x] ACK (%x -> %x): %x received.\n", group[:4], sender.toBytes()[:4], n.ID.toBytes()[:4], id[:4])
+		log.Printf("[%x] ACK (%x -> %x): %x received.\n", group[:4], sender.ToBytes()[:4], n.ID.ToBytes()[:4], id[:4])
 	}
 }
 
@@ -241,17 +231,16 @@ func (n *Node) onMessages(group GroupID, sender PeerId, messages []*Message) [][
 		}
 
 		id := m.ID()
-		log.Printf("[%x] sending ACK (%x -> %x): %x\n", group[:4], n.ID.toBytes()[:4], sender.toBytes()[:4], id[:4])
+		log.Printf("[%x] sending ACK (%x -> %x): %x\n", group[:4], n.ID.ToBytes()[:4], sender.ToBytes()[:4], id[:4])
 		a = append(a, id[:])
 	}
 
 	return a
 }
 
-// @todo this should return ACKs
 func (n *Node) onMessage(group GroupID, sender PeerId, msg Message) error {
 	id := msg.ID()
-	log.Printf("[%x] MESSAGE (%x -> %x): %x received.\n", group[:4], sender.toBytes()[:4], n.ID.toBytes()[:4], id[:4])
+	log.Printf("[%x] MESSAGE (%x -> %x): %x received.\n", group[:4], sender.ToBytes()[:4], n.ID.ToBytes()[:4], id[:4])
 
 	// @todo share message with those around us
 
@@ -261,7 +250,6 @@ func (n *Node) onMessage(group GroupID, sender PeerId, msg Message) error {
 		// @todo process, should this function ever even have an error?
 	}
 
-	// @todo push message somewhere for end user
 	return nil
 }
 
@@ -275,12 +263,4 @@ func toMessageID(b []byte) MessageID {
 	var id MessageID
 	copy(id[:], b)
 	return id
-}
-
-func (p PeerId) toBytes() []byte {
-	if p.X == nil || p.Y == nil {
-		return nil
-	}
-
-	return elliptic.Marshal(crypto.S256(), p.X, p.Y)
 }
