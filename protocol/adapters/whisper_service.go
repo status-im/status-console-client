@@ -23,8 +23,6 @@ type whisperServiceKeysManager struct {
 	shh *whisper.Whisper
 
 	// Identity of the current user.
-	// It must be the same private key
-	// that is used in the PFS service.
 	privateKey *ecdsa.PrivateKey
 
 	passToSymKeyMutex sync.RWMutex
@@ -122,7 +120,7 @@ func (a *WhisperServiceAdapter) InitPFS(baseDir string) error {
 	return nil
 }
 
-// SetPFS sets the PFS service and a private key.
+// SetPFS sets the PFS service.
 func (a *WhisperServiceAdapter) SetPFS(pfs *chat.ProtocolService) {
 	a.pfs = pfs
 }
@@ -237,15 +235,19 @@ func (a *WhisperServiceAdapter) Send(
 	}
 
 	if a.pfs != nil {
-		encryptedPayload, err := a.pfs.BuildDirectMessage(
-			a.keysManager.PrivateKey(),
-			options.Recipient,
-			data,
-		)
-		if err != nil {
-			return nil, err
+		if options.Recipient != nil {
+			encryptedPayload, err := a.encryptDirectMessagePayload(data, options.Recipient)
+			if err != nil {
+				return nil, err
+			}
+			data = encryptedPayload
+		} else {
+			encryptedPayload, err := a.encryptPublicPayload(data)
+			if err != nil {
+				return nil, err
+			}
+			data = encryptedPayload
 		}
-		data = encryptedPayload
 	}
 
 	newMessage, err := newNewMessage(a.keysManager, data)
@@ -259,6 +261,21 @@ func (a *WhisperServiceAdapter) Send(
 	// Only public Whisper API implements logic to send messages.
 	shhAPI := whisper.NewPublicWhisperAPI(a.shh)
 	return shhAPI.Post(ctx, newMessage.ToWhisper())
+}
+
+func (a *WhisperServiceAdapter) encryptDirectMessagePayload(
+	data []byte,
+	publicKey *ecdsa.PublicKey,
+) ([]byte, error) {
+	return a.pfs.BuildDirectMessage(
+		a.keysManager.PrivateKey(),
+		publicKey,
+		data,
+	)
+}
+
+func (a *WhisperServiceAdapter) encryptPublicPayload(data []byte) ([]byte, error) {
+	return a.pfs.BuildPublicMessage(a.keysManager.PrivateKey(), data)
 }
 
 // Request requests messages from mail servers.
