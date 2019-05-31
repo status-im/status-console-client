@@ -90,21 +90,21 @@ func NewWhisperServiceAdapter(node *node.StatusNode, shh *whisper.Whisper, priva
 
 // InitPFS adds support for PFS messages.
 func (a *WhisperServiceAdapter) InitPFS(baseDir string) error {
-	addBundlesHandler := func(addedBundles []chat.IdentityAndIDPair) {
-		log.Printf("added bundles: %v", addedBundles)
-	}
-
 	const (
 		// TODO: manage these values properly
-		dbPath        = "pfs_v1.db"
+		dbFileName    = "pfs_v1.db"
 		sqlSecretKey  = "enc-key-abc"
 		instalationID = "instalation-1"
 	)
 
-	dir := filepath.Join(baseDir, dbPath)
-	persistence, err := chat.NewSQLLitePersistence(dir, sqlSecretKey)
+	dbPath := filepath.Join(baseDir, dbFileName)
+	persistence, err := chat.NewSQLLitePersistence(dbPath, sqlSecretKey)
 	if err != nil {
 		return err
+	}
+
+	addBundlesHandler := func(addedBundles []chat.IdentityAndIDPair) {
+		log.Printf("added bundles: %v", addedBundles)
 	}
 
 	pfs := chat.NewProtocolService(
@@ -235,19 +235,25 @@ func (a *WhisperServiceAdapter) Send(
 	}
 
 	if a.pfs != nil {
+		var (
+			encryptedData []byte
+			err           error
+		)
+
 		if options.Recipient != nil {
-			encryptedPayload, err := a.encryptDirectMessagePayload(data, options.Recipient)
-			if err != nil {
-				return nil, err
-			}
-			data = encryptedPayload
+			encryptedData, err = a.pfs.BuildDirectMessage(
+				a.keysManager.PrivateKey(),
+				options.Recipient,
+				data,
+			)
 		} else {
-			encryptedPayload, err := a.encryptPublicPayload(data)
-			if err != nil {
-				return nil, err
-			}
-			data = encryptedPayload
+			encryptedData, err = a.pfs.BuildPublicMessage(a.keysManager.PrivateKey(), data)
 		}
+
+		if err != nil {
+			return nil, err
+		}
+		data = encryptedData
 	}
 
 	newMessage, err := newNewMessage(a.keysManager, data)
@@ -261,21 +267,6 @@ func (a *WhisperServiceAdapter) Send(
 	// Only public Whisper API implements logic to send messages.
 	shhAPI := whisper.NewPublicWhisperAPI(a.shh)
 	return shhAPI.Post(ctx, newMessage.ToWhisper())
-}
-
-func (a *WhisperServiceAdapter) encryptDirectMessagePayload(
-	data []byte,
-	publicKey *ecdsa.PublicKey,
-) ([]byte, error) {
-	return a.pfs.BuildDirectMessage(
-		a.keysManager.PrivateKey(),
-		publicKey,
-		data,
-	)
-}
-
-func (a *WhisperServiceAdapter) encryptPublicPayload(data []byte) ([]byte, error) {
-	return a.pfs.BuildPublicMessage(a.keysManager.PrivateKey(), data)
 }
 
 // Request requests messages from mail servers.
