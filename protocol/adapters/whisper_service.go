@@ -23,8 +23,6 @@ type whisperServiceKeysManager struct {
 	shh *whisper.Whisper
 
 	// Identity of the current user.
-	// It must be the same private key
-	// that is used in the PFS service.
 	privateKey *ecdsa.PrivateKey
 
 	passToSymKeyMutex sync.RWMutex
@@ -92,21 +90,21 @@ func NewWhisperServiceAdapter(node *node.StatusNode, shh *whisper.Whisper, priva
 
 // InitPFS adds support for PFS messages.
 func (a *WhisperServiceAdapter) InitPFS(baseDir string) error {
-	addBundlesHandler := func(addedBundles []chat.IdentityAndIDPair) {
-		log.Printf("added bundles: %v", addedBundles)
-	}
-
 	const (
 		// TODO: manage these values properly
-		dbPath        = "pfs_v1.db"
+		dbFileName    = "pfs_v1.db"
 		sqlSecretKey  = "enc-key-abc"
 		instalationID = "instalation-1"
 	)
 
-	dir := filepath.Join(baseDir, dbPath)
-	persistence, err := chat.NewSQLLitePersistence(dir, sqlSecretKey)
+	dbPath := filepath.Join(baseDir, dbFileName)
+	persistence, err := chat.NewSQLLitePersistence(dbPath, sqlSecretKey)
 	if err != nil {
 		return err
+	}
+
+	addBundlesHandler := func(addedBundles []chat.IdentityAndIDPair) {
+		log.Printf("added bundles: %v", addedBundles)
 	}
 
 	pfs := chat.NewProtocolService(
@@ -122,7 +120,7 @@ func (a *WhisperServiceAdapter) InitPFS(baseDir string) error {
 	return nil
 }
 
-// SetPFS sets the PFS service and a private key.
+// SetPFS sets the PFS service.
 func (a *WhisperServiceAdapter) SetPFS(pfs *chat.ProtocolService) {
 	a.pfs = pfs
 }
@@ -237,15 +235,25 @@ func (a *WhisperServiceAdapter) Send(
 	}
 
 	if a.pfs != nil {
-		encryptedPayload, err := a.pfs.BuildDirectMessage(
-			a.keysManager.PrivateKey(),
-			options.Recipient,
-			data,
+		var (
+			encryptedData []byte
+			err           error
 		)
+
+		if options.Recipient != nil {
+			encryptedData, err = a.pfs.BuildDirectMessage(
+				a.keysManager.PrivateKey(),
+				options.Recipient,
+				data,
+			)
+		} else {
+			encryptedData, err = a.pfs.BuildPublicMessage(a.keysManager.PrivateKey(), data)
+		}
+
 		if err != nil {
 			return nil, err
 		}
-		data = encryptedPayload
+		data = encryptedData
 	}
 
 	newMessage, err := newNewMessage(a.keysManager, data)
