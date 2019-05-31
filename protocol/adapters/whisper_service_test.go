@@ -72,14 +72,7 @@ type WhisperServiceAdapterWithPFSTestSuite struct {
 }
 
 func (s *WhisperServiceAdapterWithPFSTestSuite) SetupTest() {
-	identity, err := crypto.GenerateKey()
-	s.Require().NoError(err)
-
-	shhConfig := whisper.DefaultConfig
-	shhConfig.MinimumAcceptedPOW = 0
-	shh := whisper.New(&shhConfig)
-
-	s.ws = NewWhisperServiceAdapter(nil, shh, identity)
+	s.WhisperServiceAdapterTestSuite.SetupTest()
 
 	dir, err := ioutil.TempDir("", "")
 	s.Require().NoError(err)
