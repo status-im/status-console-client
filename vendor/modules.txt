@@ -346,6 +346,7 @@ github.com/status-im/whisper/shhclient
 github.com/status-im/whisper/whisperv6
 # github.com/stretchr/testify v1.3.0
 github.com/stretchr/testify/require
+github.com/stretchr/testify/suite
 github.com/stretchr/testify/assert
 # github.com/syndtr/goleveldb v1.0.0
 github.com/syndtr/goleveldb/leveldb

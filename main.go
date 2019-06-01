@@ -40,6 +40,7 @@ var (
 
 	// flags acting like commands
 	createKeyPair = fs.Bool("create-key-pair", false, "creates and prints a key pair instead of running")
+	addContact    = fs.String("add-contact", "", "add contact using format: type,name[,public-key] where type can be 'private' or 'public' and 'public-key' is required for 'private' type")
 
 	// flags for in-proc node
 	dataDir     = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
@@ -126,6 +127,61 @@ func main() {
 	}
 	defer db.Close()
 
+	// Manage initial contacts.
+	if contacts, err := db.Contacts(); len(contacts) == 0 || err != nil {
+		debugContacts := []client.Contact{
+			{Name: "status", Type: client.ContactPublicRoom, Topic: "status"},
+			{Name: "status-core", Type: client.ContactPublicRoom, Topic: "status-core"},
+		}
+		uniqueContacts := []client.Contact{}
+		for _, c := range debugContacts {
+			exist, err := db.ContactExist(c)
+			if err != nil {
+				exitErr(err)
+			}
+			if !exist {
+				uniqueContacts = append(uniqueContacts, c)
+			}
+		}
+		if len(uniqueContacts) != 0 {
+			if err := db.SaveContacts(uniqueContacts); err != nil {
+				exitErr(err)
+			}
+		}
+	}
+
+	// Handle add contact.
+	if *addContact != "" {
+		options := strings.Split(*addContact, ",")
+
+		var c client.Contact
+
+		if len(options) == 2 && options[0] == "public" {
+			c = client.Contact{
+				Name:  options[1],
+				Type:  client.ContactPublicRoom,
+				Topic: options[1],
+			}
+		} else if len(options) == 3 && options[0] == "private" {
+			c, err = client.ContactWithPublicKey(options[1], options[2])
+			if err != nil {
+				exitErr(err)
+			}
+		} else {
+			exitErr(errors.Errorf("invalid -add-contact value"))
+		}
+
+		exists, err := db.ContactExist(c)
+		if err != nil {
+			exitErr(err)
+		}
+		if !exists {
+			if err := db.SaveContacts([]client.Contact{c}); err != nil {
+				exitErr(err)
+			}
+		}
+	}
+
 	// initialize protocol
 	var (
 		messenger *client.MessengerV2
@@ -145,35 +201,6 @@ func main() {
 
 		if err != nil {
 			exitErr(err)
-		}
-	}
-
-	adambContact, err := client.ContactWithPublicKey("adamb", "0x0493ac727e70ea62c4428caddf4da301ca67b699577988d6a782898acfd813addf79b2a2ca2c411499f2e0a12b7de4d00574cbddb442bec85789aea36b10f46895")
-	if err != nil {
-		exitErr(err)
-	}
-
-	if contacts, err := db.Contacts(); len(contacts) == 0 || err != nil {
-		debugContacts := []client.Contact{
-			{Name: "status", Type: client.ContactPublicRoom, Topic: "status"},
-			{Name: "status-core", Type: client.ContactPublicRoom, Topic: "status-core"},
-			{Name: "testing-adamb", Type: client.ContactPublicRoom, Topic: "testing-adamb"},
-			adambContact,
-		}
-		uniqueContacts := []client.Contact{}
-		for _, c := range debugContacts {
-			exist, err := db.ContactExist(c)
-			if err != nil {
-				exitErr(err)
-			}
-			if !exist {
-				uniqueContacts = append(uniqueContacts, c)
-			}
-		}
-		if len(uniqueContacts) != 0 {
-			if err := db.SaveContacts(uniqueContacts); err != nil {
-				exitErr(err)
-			}
 		}
 	}
 
