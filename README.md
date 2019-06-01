@@ -29,6 +29,10 @@ $ ./bin/status-term-client -h
 
 # Commands
 
+Commands starts with `/` and must be typed in the INPUT view in the UI.
+
+Currently the following commands are supported.
+
 ## Adding a public chat
 
 `/contact add <topic>`
