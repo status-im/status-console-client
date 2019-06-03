@@ -67,6 +67,13 @@ func (m *MessengerV2) Start() error {
 	return m.RequestAll(context.Background(), true)
 }
 
+// addStream creates a new Stream and adds it to the Messenger.
+// For contacts with public key, we just need to make sure
+// each possible topic has a stream. For a single topic
+// for all private conversations, the map will have a len of 1.
+// In the future, private conversations will have sharded topics,
+// which means there will be many conversation over a particular topic
+// but there will be more than one topic.
 func (m *MessengerV2) addStream(c Contact) error {
 	options, err := createSubscribeOptions(c)
 	if err != nil {
