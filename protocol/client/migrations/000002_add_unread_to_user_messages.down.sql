@@ -1,0 +1,1 @@
+-- cannot drop column without copying a table

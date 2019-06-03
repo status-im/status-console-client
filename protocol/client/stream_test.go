@@ -14,7 +14,7 @@ func TestStreamHandlerForContact(t *testing.T) {
 	defer db.Close()
 
 	contact := Contact{Name: "test", Type: ContactPublicRoom}
-	handler := StreamHandlerForContact(contact, db)
+	handler := StreamStoreHandlerForContact(db, contact)
 	msg := protocol.Message{
 		ID: []byte{1},
 	}
@@ -33,7 +33,7 @@ func TestPrivateStreamSavesNewContactsAndMessages(t *testing.T) {
 	defer db.Close()
 	pkey, err := crypto.GenerateKey()
 	require.NoError(t, err)
-	handler := StreamHandlerMultiplexed(db)
+	handler := StreamStoreHandlerMultiplexed(db)
 	msg := protocol.Message{
 		ID:        []byte{1},
 		SigPubKey: &pkey.PublicKey,

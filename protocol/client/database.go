@@ -8,14 +8,15 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/pkg/errors"
-	"github.com/status-im/migrate"
-	"github.com/status-im/migrate/database/sqlcipher"
-	bindata "github.com/status-im/migrate/source/go_bindata"
+	"github.com/status-im/migrate/v4"
+	"github.com/status-im/migrate/v4/database/sqlcipher"
+	bindata "github.com/status-im/migrate/v4/source/go_bindata"
 	"github.com/status-im/status-console-client/protocol/client/migrations"
 	"github.com/status-im/status-console-client/protocol/client/sqlite"
 	"github.com/status-im/status-console-client/protocol/v1"
@@ -85,6 +86,8 @@ func Migrate(db *sql.DB) error {
 			return migrations.Asset(name)
 		},
 	)
+
+	log.Printf("[Migrate] applying migrations %s", migrations.AssetNames())
 
 	source, err := bindata.WithInstance(resources)
 	if err != nil {
@@ -347,8 +350,8 @@ func (db SQLLiteDatabase) SaveMessages(c Contact, messages []*protocol.Message) 
 		return
 	}
 	stmt, err = tx.Prepare(`INSERT INTO user_messages(
-id, contact_id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+id, contact_id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return
 	}
@@ -374,7 +377,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 		}
 		rst, err = stmt.Exec(
 			msg.ID, contactID, msg.ContentT, msg.MessageT, msg.Text,
-			msg.Clock, msg.Timestamp, msg.Content.ChatID, msg.Content.Text, pkey)
+			msg.Clock, msg.Timestamp, msg.Content.ChatID, msg.Content.Text,
+			pkey, msg.Flags)
 		if err != nil {
 			if err.Error() == uniqueIDContstraint {
 				err = ErrMsgAlreadyExist
