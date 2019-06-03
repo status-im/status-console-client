@@ -482,7 +482,12 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.MessengerV2) error
 			},
 		},
 		&View{
-			Name:      ViewInput,
+			Name: ViewInput,
+			Title: fmt.Sprintf(
+				"%s (as %#x)",
+				ViewInput,
+				crypto.FromECDSAPub(&privateKey.PublicKey),
+			),
 			Enabled:   true,
 			Editable:  true,
 			Cursor:    true,
