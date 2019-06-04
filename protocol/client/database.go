@@ -398,7 +398,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 func (db SQLLiteDatabase) Messages(c Contact, from, to time.Time) (result []*protocol.Message, err error) {
 	contactID := fmt.Sprintf("%s:%d", c.Name, c.Type)
 	rows, err := db.db.Query(`SELECT
-id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key
+id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags
 FROM user_messages WHERE contact_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp`,
 		contactID, protocol.TimestampInMsFromTime(from), protocol.TimestampInMsFromTime(to))
 	if err != nil {
@@ -414,7 +414,7 @@ FROM user_messages WHERE contact_id = ? AND timestamp >= ? AND timestamp <= ? OR
 		pkey := []byte{}
 		err = rows.Scan(
 			&msg.ID, &msg.ContentT, &msg.MessageT, &msg.Text, &msg.Clock,
-			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey)
+			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey, &msg.Flags)
 		if err != nil {
 			return nil, err
 		}
@@ -432,7 +432,7 @@ FROM user_messages WHERE contact_id = ? AND timestamp >= ? AND timestamp <= ? OR
 func (db SQLLiteDatabase) NewMessages(c Contact, rowid int64) ([]*protocol.Message, error) {
 	contactID := contactID(c)
 	rows, err := db.db.Query(`SELECT
-id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key
+id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags
 FROM user_messages WHERE contact_id = ? AND rowid >= ? ORDER BY clock`,
 		contactID, rowid)
 	if err != nil {
@@ -448,7 +448,7 @@ FROM user_messages WHERE contact_id = ? AND rowid >= ? ORDER BY clock`,
 		pkey := []byte{}
 		err = rows.Scan(
 			&msg.ID, &msg.ContentT, &msg.MessageT, &msg.Text, &msg.Clock,
-			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey)
+			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey, &msg.Flags)
 		if err != nil {
 			return nil, err
 		}
