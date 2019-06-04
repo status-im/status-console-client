@@ -11,6 +11,12 @@ type payloads struct {
 }
 // @todo check in all the functions below that we aren't duplicating stuff
 
+func newPayloads() payloads {
+	return payloads{
+		payloads: make(map[GroupID]map[PeerId]Payload),
+	}
+}
+
 func (p *payloads) AddOffers(group GroupID, peer PeerId, offers ...[]byte) {
 	p.Lock()
 	defer p.Unlock()
@@ -66,7 +72,7 @@ func (p *payloads) AddMessages(group GroupID, peer PeerId, messages ...*Message)
 	p.set(group, peer, payload)
 }
 
-func (p *payloads) Map(f func(GroupID, PeerId, Payload)) {
+func (p *payloads) MapAndClear(f func(GroupID, PeerId, Payload)) {
 	p.Lock()
 	defer p.Unlock()
 
@@ -75,13 +81,6 @@ func (p *payloads) Map(f func(GroupID, PeerId, Payload)) {
 			f(g, peer, payload)
 		}
 	}
-
-	p.payloads = make(map[GroupID]map[PeerId]Payload)
-}
-
-func (p *payloads) RemoveAll() {
-	p.Lock()
-	defer p.Unlock()
 
 	p.payloads = make(map[GroupID]map[PeerId]Payload)
 }

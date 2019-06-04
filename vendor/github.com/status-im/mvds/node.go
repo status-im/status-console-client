@@ -3,7 +3,9 @@ package mvds
 // @todo this is a very rough implementation that needs cleanup
 
 import (
+	"fmt"
 	"log"
+	"reflect"
 	"sync/atomic"
 	"time"
 )
@@ -34,7 +36,7 @@ func NewNode(ms MessageStore, st Transport, nextEpoch calculateNextEpoch, id Pee
 		syncState: newSyncState(),
 		sharing:   make(map[GroupID][]PeerId),
 		peers:     make(map[GroupID][]PeerId),
-		payloads:  payloads{payloads: make(map[GroupID]map[PeerId]Payload)},
+		payloads:  newPayloads(),
 		nextEpoch: nextEpoch,
 		ID:        id,
 		epoch:     0,
@@ -71,24 +73,27 @@ func (n *Node) AppendMessage(group GroupID, data []byte) (MessageID, error) {
 		Body:      data,
 	}
 
+	id := m.ID()
+
+	peers, ok := n.peers[group]
+	if !ok {
+		return MessageID{}, fmt.Errorf("trying to send to unknown group %x", group[:4])
+	}
+
 	err := n.store.Add(m)
 	if err != nil {
 		return MessageID{}, err
 	}
 
-	id := m.ID()
-
 	go func () {
-		for g, peers := range n.peers {
-			for _, p := range peers {
-				if !n.IsPeerInGroup(group, p) {
-					continue
-				}
-
-				s := state{}
-				s.SendEpoch = n.epoch + 1
-				n.syncState.Set(g, id, p, s)
+		for _, p := range peers {
+			if !n.IsPeerInGroup(group, p) {
+				continue
 			}
+
+			s := state{}
+			s.SendEpoch = n.epoch + 1
+			n.syncState.Set(group, id, p, s)
 		}
 	}()
 
@@ -117,7 +122,7 @@ func (n *Node) Share(group GroupID, id PeerId) {
 
 func (n Node) IsPeerInGroup(g GroupID, p PeerId) bool {
 	for _, peer := range n.sharing[g] {
-		if peer == p {
+		if reflect.DeepEqual(peer.ToBytes(), p.ToBytes()) {
 			return true
 		}
 	}
@@ -135,15 +140,13 @@ func (n *Node) sendMessages() {
 		return n.updateSendEpoch(s)
 	})
 
-	n.payloads.Map(func(id GroupID, peer PeerId, payload Payload) {
+	n.payloads.MapAndClear(func(id GroupID, peer PeerId, payload Payload) {
 		err := n.transport.Send(id, n.ID, peer, payload)
 		if err != nil {
 			log.Printf("error sending message: %s", err.Error())
 			//	@todo
 		}
 	})
-
-	n.payloads.RemoveAll()
 }
 
 func (n *Node) onPayload(group GroupID, sender PeerId, payload Payload) {
@@ -191,7 +194,10 @@ func (n *Node) onRequest(group GroupID, sender PeerId, msg Request) []*Message {
 		log.Printf("[%x] REQUEST (%x -> %x): %x received.\n", group[:4], sender.ToBytes()[:4], n.ID.ToBytes()[:4], id[:4])
 
 		if !n.IsPeerInGroup(group, sender) {
-			continue
+			log.Print(sender)
+			log.Print(n.sharing[group])
+		//	log.Printf("[%x] peer %x is not in group", group[:4], sender.ToBytes()[:4])
+		//	continue
 		}
 
 		message, err := n.store.Get(id)
