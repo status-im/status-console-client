@@ -249,6 +249,8 @@ github.com/status-im/migrate v0.0.0-20181227113212-3bde36291b5c/go.mod h1:dZ3YxY
 github.com/status-im/mvds v0.0.2/go.mod h1:cgNgcRbLwE4TMPMSax7xl+Ca/Q8rIklZLDwAD6iBKjo=
 github.com/status-im/mvds v0.0.3 h1:EIG8uHD9a7FSerB8mgEZmhDvGDjPu9pTcRgGQ6577oE=
 github.com/status-im/mvds v0.0.3/go.mod h1:cgNgcRbLwE4TMPMSax7xl+Ca/Q8rIklZLDwAD6iBKjo=
+github.com/status-im/mvds v0.0.4 h1:ltCyIh0dzcpG+RPaQrBw3AV1cik2fKKxgotuu0qNlco=
+github.com/status-im/mvds v0.0.4/go.mod h1:cgNgcRbLwE4TMPMSax7xl+Ca/Q8rIklZLDwAD6iBKjo=
 github.com/status-im/rendezvous v1.2.0/go.mod h1:vUZNaCYr2AsFngV2IW5NsnPBRK/h+x57nsMINkhrVCQ=
 github.com/status-im/status-go v0.25.0-beta.2/go.mod h1:3ky7GKNvGXC46HmjcVnDe+3cCkzP+JTzPRz4d50AQ4w=
 github.com/status-im/whisper v1.4.13/go.mod h1:WS6z39YJQ8WJa9s+DmTuEM/s2nVF6Iz3B1SZYw5cYf0=
