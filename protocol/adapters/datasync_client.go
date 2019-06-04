@@ -166,6 +166,9 @@ func (t *DataSyncWhisperTransport) subscribe(in chan<- *protocol.Message, option
 
 				for _, item := range received {
 					payload := t.handlePayload(item)
+					if payload == nil {
+						continue
+					}
 
 					t.packets <- mvds.Packet{
 						Group:   toGroupId(item.Topic),
