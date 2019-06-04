@@ -76,10 +76,13 @@ func main() {
 			exitErr(err)
 		}
 		privateKey = k
-
-		fmt.Printf("Contact address: %#x\n", crypto.FromECDSAPub(&privateKey.PublicKey))
 	} else {
-		exitErr(errors.New("private key is required"))
+		k, err := crypto.GenerateKey()
+		if err != nil {
+			exitErr(err)
+		}
+		privateKey = k
+		fmt.Printf("Starting with a new private key: %#x\n", crypto.FromECDSA(privateKey))
 	}
 
 	// Prefix data directory with a public key.
@@ -126,6 +129,10 @@ func main() {
 		exitErr(err)
 	}
 	defer db.Close()
+
+	// Log the current contact info in two places for easy retrieval.
+	fmt.Printf("Contact address: %#x\n", crypto.FromECDSAPub(&privateKey.PublicKey))
+	log.Printf("contact address: %#x", crypto.FromECDSAPub(&privateKey.PublicKey))
 
 	// Manage initial contacts.
 	if contacts, err := db.Contacts(); len(contacts) == 0 || err != nil {
@@ -532,7 +539,12 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.MessengerV2) error
 			},
 		},
 		&View{
-			Name:      ViewInput,
+			Name: ViewInput,
+			Title: fmt.Sprintf(
+				"%s (as %#x)",
+				ViewInput,
+				crypto.FromECDSAPub(&privateKey.PublicKey),
+			),
 			Enabled:   true,
 			Editable:  true,
 			Cursor:    true,
