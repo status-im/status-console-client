@@ -155,7 +155,7 @@ func (m *MessengerV2) joinPublic(ctx context.Context, c Contact) error {
 
 // Messages reads all messages from database.
 func (m *MessengerV2) Messages(c Contact, offset int64) ([]*protocol.Message, error) {
-	return m.db.GetNewMessages(c, offset)
+	return m.db.NewMessages(c, offset)
 }
 
 func (m *MessengerV2) Request(ctx context.Context, c Contact, options protocol.RequestOptions) error {

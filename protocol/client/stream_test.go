@@ -21,7 +21,7 @@ func TestStreamHandlerForContact(t *testing.T) {
 
 	require.NoError(t, handler(&msg))
 
-	msgs, err := db.GetNewMessages(contact, 0)
+	msgs, err := db.NewMessages(contact, 0)
 	require.NoError(t, err)
 	require.Len(t, msgs, 1)
 	require.Equal(t, msg.ID, msgs[0].ID)
@@ -49,7 +49,7 @@ func TestPrivateStreamSavesNewContactsAndMessages(t *testing.T) {
 	require.Equal(t, ContactNew, contacts[0].State)
 
 	// aassert saved messages
-	msgs, err := db.GetNewMessages(contacts[0], 0)
+	msgs, err := db.NewMessages(contacts[0], 0)
 	require.NoError(t, err)
 	require.Len(t, msgs, 1)
 	require.Equal(t, &pkey.PublicKey, msgs[0].SigPubKey)

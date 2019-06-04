@@ -65,8 +65,9 @@ var (
 // Database is an interface for all db operations.
 type Database interface {
 	Close() error
-	Messages(c Contact, from, to time.Time) (result []*protocol.Message, err error)
-	GetNewMessages(Contact, int64) ([]*protocol.Message, error)
+	Messages(c Contact, from, to time.Time) ([]*protocol.Message, error)
+	NewMessages(c Contact, rowid int64) ([]*protocol.Message, error)
+	UnreadMessages(c Contact) ([]*protocol.Message, error)
 	SaveMessages(c Contact, messages []*protocol.Message) (int64, error)
 	LastMessageClock(Contact) (int64, error)
 	Contacts() ([]Contact, error)
@@ -428,8 +429,8 @@ FROM user_messages WHERE contact_id = ? AND timestamp >= ? AND timestamp <= ? OR
 	return rst, nil
 }
 
-func (db SQLLiteDatabase) GetNewMessages(c Contact, rowid int64) ([]*protocol.Message, error) {
-	contactID := fmt.Sprintf("%s:%d", c.Name, c.Type)
+func (db SQLLiteDatabase) NewMessages(c Contact, rowid int64) ([]*protocol.Message, error) {
+	contactID := contactID(c)
 	rows, err := db.db.Query(`SELECT
 id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key
 FROM user_messages WHERE contact_id = ? AND rowid >= ? ORDER BY clock`,
@@ -460,6 +461,59 @@ FROM user_messages WHERE contact_id = ? AND rowid >= ? ORDER BY clock`,
 		rst = append(rst, &msg)
 	}
 	return rst, nil
+}
+
+// TODO(adam): refactor all message getters in order not to
+// repeat the select fields over and over.
+func (db SQLLiteDatabase) UnreadMessages(c Contact) ([]*protocol.Message, error) {
+	contactID := contactID(c)
+	rows, err := db.db.Query(`
+		SELECT
+			id,
+			content_type,
+			message_type,
+			text,
+			clock,
+			timestamp,
+			content_chat_id,
+			content_text,
+			public_key,
+			flags
+		FROM
+			user_messages
+		WHERE
+			contact_id = ? AND
+			flags & ? == 1
+		ORDER BY clock`,
+		contactID, protocol.MessageUnread,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*protocol.Message
+
+	for rows.Next() {
+		msg := protocol.Message{
+			Content: protocol.Content{},
+		}
+		pkey := []byte{}
+		err = rows.Scan(
+			&msg.ID, &msg.ContentT, &msg.MessageT, &msg.Text, &msg.Clock,
+			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey, &msg.Flags)
+		if err != nil {
+			return nil, err
+		}
+		if len(pkey) != 0 {
+			msg.SigPubKey, err = unmarshalEcdsaPub(pkey)
+			if err != nil {
+				return nil, err
+			}
+		}
+		result = append(result, &msg)
+	}
+
+	return result, nil
 }
 
 func contactID(c Contact) string {
