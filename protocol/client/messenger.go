@@ -18,9 +18,9 @@ type Messenger struct {
 	proto    protocol.Protocol
 	db       Database
 
-	mu      sync.Mutex // guards public and private maps
-	public  map[string]*Stream
-	private map[string]*Stream
+	mu      sync.Mutex         // guards public and private maps
+	public  map[string]*Stream // key is Contact.Topic
+	private map[string]*Stream // key is Contact.Topic
 
 	events *event.Feed
 }
@@ -264,17 +264,31 @@ func (m *Messenger) Contacts() ([]Contact, error) {
 }
 
 func (m *Messenger) Leave(c Contact) error {
-	if c.Type == ContactPublicRoom {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		stream, exist := m.public[c.Name]
-		if !exist {
-			return errors.New("stream doesn't exist")
+	var stream *Stream
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	switch c.Type {
+	case ContactPublicRoom:
+		stream = m.public[c.Topic]
+		if stream != nil {
+			delete(m.public, c.Topic)
 		}
-		stream.Stop()
-		return nil
+	case ContactPrivate:
+		// TODO: should we additionally block that peer?
+		stream = m.private[c.Topic]
+		if stream != nil {
+			delete(m.private, c.Topic)
+		}
 	}
-	// TODO how to handle leave for private chat? block that peer?
+
+	if stream == nil {
+		return errors.New("contact not found")
+	}
+
+	stream.Stop()
+
 	return nil
 }
 
