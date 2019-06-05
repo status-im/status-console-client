@@ -1,7 +1,6 @@
 module github.com/status-im/status-console-client
 
 require (
-	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/allegro/bigcache v1.1.0 // indirect
 	github.com/beevik/ntp v0.2.0 // indirect
 	github.com/cespare/cp v1.1.1 // indirect
@@ -14,6 +13,7 @@ require (
 	github.com/go-playground/locales v0.12.1 // indirect
 	github.com/go-playground/universal-translator v0.16.0 // indirect
 	github.com/golang-migrate/migrate v3.5.4+incompatible // indirect
+	github.com/golang-migrate/migrate/v4 v4.3.1 // indirect
 	github.com/golang/mock v1.3.1
 	github.com/influxdata/influxdb v1.7.6 // indirect
 	github.com/jroimartin/gocui v0.4.0
@@ -32,9 +32,9 @@ require (
 	github.com/russolsen/ohyeah v0.0.0-20160324131710-f4938c005315 // indirect
 	github.com/russolsen/same v0.0.0-20160222130632-f089df61f51d // indirect
 	github.com/russolsen/transit v0.0.0-20180705123435-0794b4c4505a
-	github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24 // indirect
 	github.com/status-im/doubleratchet v2.0.0+incompatible // indirect
-	github.com/status-im/migrate v0.0.0-20181227113212-3bde36291b5c
+	github.com/status-im/migrate v3.5.1-status+incompatible // indirect
+	github.com/status-im/migrate/v4 v4.3.1-status
 	github.com/status-im/rendezvous v1.2.0 // indirect
 	github.com/status-im/status-go v0.25.0-beta.2
 	github.com/status-im/whisper v1.4.13
@@ -43,7 +43,7 @@ require (
 	golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f
 	golang.org/x/net v0.0.0-20190522155817-f3200d17e092 // indirect
 	golang.org/x/sys v0.0.0-20190528183647-3626398d7749 // indirect
-	golang.org/x/text v0.3.2 // indirect
+	golang.org/x/tools v0.0.0-20190613204242-ed0dc450797f // indirect
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/go-playground/validator.v9 v9.24.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect

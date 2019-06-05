@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/status-im/status-console-client/protocol/adapters"
+	"github.com/status-im/status-console-client/protocol/adapter"
 	"github.com/status-im/status-console-client/protocol/client"
 )
 
@@ -22,12 +22,12 @@ func main() {
 	log.Println("flags:", *publicTopic, *privateTopic, *output)
 
 	if *publicTopic != "" {
-		topic, err := adapters.ToTopic(*publicTopic)
+		topic, err := adapter.ToTopic(*publicTopic)
 		exitErr(err)
 
 		printOutput(topic)
 	} else if *privateTopic {
-		topic, err := adapters.ToTopic(client.DefaultPrivateTopic())
+		topic, err := adapter.ToTopic(client.DefaultPrivateTopic())
 		exitErr(err)
 
 		printOutput(topic)

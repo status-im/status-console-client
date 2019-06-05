@@ -19,12 +19,14 @@ import (
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
-	"github.com/status-im/status-console-client/protocol/adapters"
+	"github.com/status-im/status-console-client/protocol/adapter"
 	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/gethservice"
+	"github.com/status-im/status-console-client/protocol/transport"
 	"github.com/status-im/status-go/logutils"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
+	"github.com/status-im/status-go/services/shhext/chat"
 	"github.com/status-im/status-go/signal"
 )
 
@@ -168,7 +170,7 @@ func main() {
 				Topic: options[1],
 			}
 		} else if len(options) == 3 && options[0] == "private" {
-			c, err = client.ContactWithPublicKey(options[1], options[2])
+			c, err = client.CreateContactPrivate(options[1], options[2], client.ContactAdded)
 			if err != nil {
 				exitErr(err)
 			}
@@ -189,7 +191,7 @@ func main() {
 
 	// initialize protocol
 	var (
-		messenger *client.MessengerV2
+		messenger *client.Messenger
 	)
 
 	if *providerURI != "" {
@@ -260,27 +262,24 @@ func (k keysGetter) PrivateKey() (*ecdsa.PrivateKey, error) {
 	return k.privateKey, nil
 }
 
-func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database) (*client.MessengerV2, error) {
-	rpc, err := rpc.Dial(*providerURI)
+func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
+	_, err := rpc.Dial(*providerURI)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to dial")
 	}
 
 	// TODO: provide Mail Servers in a different way.
-	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
+	_, err = generateStatusNodeConfig(*dataDir, *fleet, *configFile)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate node config")
 	}
-	proto := adapters.NewWhisperClientAdapter(
-		rpc,
-		pk,
-		nodeConfig.ClusterConfig.TrustedMailServers,
-	)
-	messenger := client.NewMessengerV2(pk, proto, db)
-	return &messenger, nil
+
+	// TODO
+
+	return nil, errors.New("not implemented")
 }
 
-func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.MessengerV2, error) {
+func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
 	// collect mail server request signals
 	signalsForwarder := newSignalForwarder()
 	go signalsForwarder.Start()
@@ -317,11 +316,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		return nil, errors.Wrap(err, "failed to get Whisper service")
 	}
 
-	adapter := adapters.NewWhisperServiceAdapter(statusNode, shhService, pk)
-	messenger := client.NewMessengerV2(pk, adapter, db)
-
-	protocolGethService.SetProtocol(adapter)
-	protocolGethService.SetMessenger(&messenger)
+	var pfs *chat.ProtocolService
 
 	// TODO: should be removed from StatusNode
 	if *pfsEnabled {
@@ -331,17 +326,25 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 			exitErr(errors.Wrap(err, "failed to create databases dir"))
 		}
 
-		if err := adapter.InitPFS(databasesDir); err != nil {
+		pfs, err = initPFS(databasesDir)
+		if err != nil {
 			exitErr(errors.Wrap(err, "initialize PFS"))
 		}
 
 		log.Printf("PFS has been initialized")
 	}
 
-	return &messenger, nil
+	transport := transport.NewWhisperServiceTransport(statusNode, shhService, pk)
+	adapter := adapter.NewProtocolWhisperAdapter(transport, pfs)
+	messenger := client.NewMessenger(pk, adapter, db)
+
+	protocolGethService.SetProtocol(adapter)
+	protocolGethService.SetMessenger(messenger)
+
+	return messenger, nil
 }
 
-func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.MessengerV2) error {
+func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 	var err error
 
 	// global
@@ -567,4 +570,31 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.MessengerV2) error
 	}
 
 	return nil
+}
+
+func initPFS(baseDir string) (*chat.ProtocolService, error) {
+	const (
+		// TODO: manage these values properly
+		dbFileName    = "pfs_v1.db"
+		sqlSecretKey  = "enc-key-abc"
+		instalationID = "instalation-1"
+	)
+
+	dbPath := filepath.Join(baseDir, dbFileName)
+	persistence, err := chat.NewSQLLitePersistence(dbPath, sqlSecretKey)
+	if err != nil {
+		return nil, err
+	}
+
+	addBundlesHandler := func(addedBundles []chat.IdentityAndIDPair) {
+		log.Printf("added bundles: %v", addedBundles)
+	}
+
+	return chat.NewProtocolService(
+		chat.NewEncryptionService(
+			persistence,
+			chat.DefaultEncryptionServiceConfig(instalationID),
+		),
+		addBundlesHandler,
+	), nil
 }

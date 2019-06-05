@@ -37,10 +37,10 @@ func TestContactMarshalUnmarshal(t *testing.T) {
 			name: "ContactPublicKey",
 			c: Contact{
 				Name:      "user1",
-				Type:      ContactPublicKey,
+				Type:      ContactPrivate,
 				PublicKey: &privateKey.PublicKey,
 			},
-			result: fmt.Sprintf(`{"name":"user1","type":"ContactPublicKey","state":0,"topic":"","public_key":"%s"}`, publicKeyStr),
+			result: fmt.Sprintf(`{"name":"user1","type":"ContactPrivate","state":0,"topic":"","public_key":"%s"}`, publicKeyStr),
 		},
 	}
 

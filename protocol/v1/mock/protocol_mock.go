@@ -7,6 +7,7 @@ package protocol_mock
 import (
 	context "context"
 	gomock "github.com/golang/mock/gomock"
+	subscription "github.com/status-im/status-console-client/protocol/subscription"
 	v1 "github.com/status-im/status-console-client/protocol/v1"
 	reflect "reflect"
 )
@@ -64,10 +65,10 @@ func (mr *MockProtocolMockRecorder) Send(arg0, arg1, arg2 interface{}) *gomock.C
 }
 
 // Subscribe mocks base method
-func (m *MockProtocol) Subscribe(arg0 context.Context, arg1 chan<- *v1.Message, arg2 v1.SubscribeOptions) (*v1.Subscription, error) {
+func (m *MockProtocol) Subscribe(arg0 context.Context, arg1 chan<- *v1.Message, arg2 v1.SubscribeOptions) (*subscription.Subscription, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Subscribe", arg0, arg1, arg2)
-	ret0, _ := ret[0].(*v1.Subscription)
+	ret0, _ := ret[0].(*subscription.Subscription)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

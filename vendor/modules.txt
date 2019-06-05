@@ -27,11 +27,11 @@ github.com/ethereum/go-ethereum/common
 github.com/ethereum/go-ethereum/crypto
 github.com/ethereum/go-ethereum/node
 github.com/ethereum/go-ethereum/rpc
-github.com/ethereum/go-ethereum/p2p
-github.com/ethereum/go-ethereum/p2p/enode
 github.com/ethereum/go-ethereum/common/hexutil
 github.com/ethereum/go-ethereum/crypto/secp256k1
 github.com/ethereum/go-ethereum/event
+github.com/ethereum/go-ethereum/p2p
+github.com/ethereum/go-ethereum/p2p/enode
 github.com/ethereum/go-ethereum/common/math
 github.com/ethereum/go-ethereum/rlp
 github.com/ethereum/go-ethereum/accounts
@@ -51,9 +51,9 @@ github.com/ethereum/go-ethereum/les
 github.com/ethereum/go-ethereum/p2p/discv5
 github.com/ethereum/go-ethereum/p2p/enr
 github.com/ethereum/go-ethereum/params
-github.com/ethereum/go-ethereum/common/bitutil
-github.com/ethereum/go-ethereum/common/mclock
 github.com/ethereum/go-ethereum/crypto/ecies
+github.com/ethereum/go-ethereum/common/mclock
+github.com/ethereum/go-ethereum/common/bitutil
 github.com/ethereum/go-ethereum/p2p/discover
 github.com/ethereum/go-ethereum
 github.com/ethereum/go-ethereum/core/types
@@ -104,17 +104,25 @@ github.com/gogo/protobuf/io
 github.com/golang-migrate/migrate/database
 github.com/golang-migrate/migrate/source
 github.com/golang-migrate/migrate
+# github.com/golang-migrate/migrate/v4 v4.3.1
+github.com/golang-migrate/migrate/v4/database
+github.com/golang-migrate/migrate/v4/source
+github.com/golang-migrate/migrate/v4
 # github.com/golang/mock v1.3.1
 github.com/golang/mock/gomock
-# github.com/golang/protobuf v1.3.0
+# github.com/golang/protobuf v1.3.1
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/protoc-gen-go/descriptor
-# github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
+# github.com/golang/snappy v0.0.1
 github.com/golang/snappy
 # github.com/google/uuid v1.1.1
 github.com/google/uuid
 # github.com/gorilla/websocket v1.4.0
 github.com/gorilla/websocket
+# github.com/hashicorp/errwrap v1.0.0
+github.com/hashicorp/errwrap
+# github.com/hashicorp/go-multierror v1.0.0
+github.com/hashicorp/go-multierror
 # github.com/hashicorp/golang-lru v0.5.1
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
@@ -154,7 +162,7 @@ github.com/karalabe/hid
 github.com/koron/go-ssdp
 # github.com/leodido/go-urn v1.1.0
 github.com/leodido/go-urn
-# github.com/lib/pq v0.0.0-20180523175426-90697d60dd84
+# github.com/lib/pq v1.0.0
 github.com/lib/pq
 github.com/lib/pq/oid
 # github.com/libp2p/go-addr-util v0.0.1
@@ -303,11 +311,15 @@ github.com/spaolacci/murmur3
 github.com/status-im/doubleratchet
 # github.com/status-im/go-multiaddr-ethv4 v1.1.0
 github.com/status-im/go-multiaddr-ethv4
-# github.com/status-im/migrate v0.0.0-20181227113212-3bde36291b5c
+# github.com/status-im/migrate v3.5.1-status+incompatible
 github.com/status-im/migrate
 github.com/status-im/migrate/database/sqlcipher
 github.com/status-im/migrate/source/go_bindata
 github.com/status-im/migrate/database/postgres
+# github.com/status-im/migrate/v4 v4.3.1-status
+github.com/status-im/migrate/v4
+github.com/status-im/migrate/v4/database/sqlcipher
+github.com/status-im/migrate/v4/source/go_bindata
 # github.com/status-im/rendezvous v1.2.0
 github.com/status-im/rendezvous
 github.com/status-im/rendezvous/protocol
@@ -315,9 +327,9 @@ github.com/status-im/rendezvous/protocol
 github.com/status-im/status-go/logutils
 github.com/status-im/status-go/node
 github.com/status-im/status-go/params
+github.com/status-im/status-go/services/shhext/chat
 github.com/status-im/status-go/signal
 github.com/status-im/status-go/services/shhext
-github.com/status-im/status-go/services/shhext/chat
 github.com/status-im/status-go/db
 github.com/status-im/status-go/discovery
 github.com/status-im/status-go/mailserver
@@ -329,10 +341,10 @@ github.com/status-im/status-go/services/personal
 github.com/status-im/status-go/services/status
 github.com/status-im/status-go/static
 github.com/status-im/status-go/timesource
-github.com/status-im/status-go/services/shhext/dedup
-github.com/status-im/status-go/services/shhext/mailservers
 github.com/status-im/status-go/services/shhext/chat/crypto
 github.com/status-im/status-go/services/shhext/chat/migrations
+github.com/status-im/status-go/services/shhext/dedup
+github.com/status-im/status-go/services/shhext/mailservers
 github.com/status-im/status-go/extkeys
 github.com/status-im/status-go/mailserver/migrations
 github.com/status-im/status-go/contracts
@@ -340,11 +352,9 @@ github.com/status-im/status-go/mailserver/registry
 github.com/status-im/status-go/peers/verifier
 github.com/status-im/status-go/account
 # github.com/status-im/whisper v1.4.13
-github.com/status-im/whisper/shhclient
 github.com/status-im/whisper/whisperv6
 # github.com/stretchr/testify v1.3.0
 github.com/stretchr/testify/require
-github.com/stretchr/testify/suite
 github.com/stretchr/testify/assert
 # github.com/syndtr/goleveldb v1.0.0
 github.com/syndtr/goleveldb/leveldb
