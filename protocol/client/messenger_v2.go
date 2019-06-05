@@ -121,25 +121,7 @@ func (m *MessengerV2) addStream(c Contact) error {
 func (m *MessengerV2) Join(ctx context.Context, c Contact) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if c.Type == ContactPublicKey {
-		return m.joinPrivate(ctx, c)
-	}
-	return m.joinPublic(ctx, c)
-}
 
-func (m *MessengerV2) joinPrivate(ctx context.Context, c Contact) error {
-	if err := m.addStream(c); err != nil {
-		return err
-	}
-
-	opts := protocol.DefaultRequestOptions()
-	if err := m.Request(ctx, c, opts); err != nil {
-		return err
-	}
-	return m.db.UpdateHistories([]History{{Contact: c, Synced: opts.To}})
-}
-
-func (m *MessengerV2) joinPublic(ctx context.Context, c Contact) error {
 	if err := m.addStream(c); err != nil {
 		return err
 	}
