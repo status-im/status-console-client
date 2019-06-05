@@ -49,6 +49,19 @@ func TimestampInMsFromTime(t time.Time) TimestampInMs {
 	return TimestampInMs(t.UnixNano() / int64(time.Millisecond))
 }
 
+// Flags define various boolean properties of a message.
+type Flags uint64
+
+func (f *Flags) Set(val Flags)     { *f = *f | val }
+func (f *Flags) Clear(val Flags)   { *f = *f &^ val }
+func (f *Flags) Toggle(val Flags)  { *f = *f ^ val }
+func (f Flags) Has(val Flags) bool { return f&val != 0 }
+
+// A list of Message flags.
+const (
+	MessageRead Flags = 1 << iota
+)
+
 // Message contains all message details.
 type Message struct {
 	Text      string        `json:"text"` // TODO: why is this duplicated?
@@ -61,6 +74,7 @@ type Message struct {
 	// not protocol defined fields
 	ID        []byte           `json:"-"`
 	SigPubKey *ecdsa.PublicKey `json:"-"`
+	Flags     Flags            `json:"-"`
 }
 
 func (m *Message) MarshalJSON() ([]byte, error) {

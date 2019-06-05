@@ -75,6 +75,43 @@ func TestMessagesFilteredAndOrderedByTimestamp(t *testing.T) {
 	require.Equal(t, msg1.Timestamp, msgs[1].Timestamp)
 }
 
+func TestUnreadMessages(t *testing.T) {
+	db, err := InitializeTmpDB()
+	require.NoError(t, err)
+	defer db.Close()
+	contact := Contact{
+		Name:  "test",
+		Type:  ContactPublicRoom,
+		Topic: "first",
+	}
+	// insert some messages
+	var messages []*protocol.Message
+	for i := 0; i < 4; i++ {
+		var flags protocol.Flags
+		if i%2 == 0 {
+			// even messages are marked as read
+			flags.Set(protocol.MessageRead)
+		}
+		m := protocol.Message{
+			ID:        []byte{byte(i)},
+			Timestamp: protocol.TimestampInMs(i + 1),
+			Clock:     int64(i + 1),
+			Flags:     flags,
+		}
+		messages = append(messages, &m)
+	}
+	_, err = db.SaveMessages(contact, messages)
+	require.NoError(t, err)
+
+	// verify that we get only unread messages
+	unread, err := db.UnreadMessages(contact)
+	require.NoError(t, err)
+	require.Len(t, unread, 2)
+	for _, m := range unread {
+		require.False(t, m.Flags.Has(protocol.MessageRead))
+	}
+}
+
 func TestSaveMessagesUniqueConstraint(t *testing.T) {
 	contact := Contact{
 		Name:  "test",
@@ -222,7 +259,7 @@ func BenchmarkLoadMessages(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rst, err := db.GetNewMessages(contacts[0], 0)
+		rst, err := db.NewMessages(contacts[0], 0)
 		require.NoError(b, err)
 		require.Len(b, rst, count)
 	}

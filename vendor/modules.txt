@@ -104,17 +104,25 @@ github.com/gogo/protobuf/io
 github.com/golang-migrate/migrate/database
 github.com/golang-migrate/migrate/source
 github.com/golang-migrate/migrate
+# github.com/golang-migrate/migrate/v4 v4.3.1
+github.com/golang-migrate/migrate/v4/database
+github.com/golang-migrate/migrate/v4/source
+github.com/golang-migrate/migrate/v4
 # github.com/golang/mock v1.3.1
 github.com/golang/mock/gomock
-# github.com/golang/protobuf v1.3.0
+# github.com/golang/protobuf v1.3.1
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/protoc-gen-go/descriptor
-# github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
+# github.com/golang/snappy v0.0.1
 github.com/golang/snappy
 # github.com/google/uuid v1.1.1
 github.com/google/uuid
 # github.com/gorilla/websocket v1.4.0
 github.com/gorilla/websocket
+# github.com/hashicorp/errwrap v1.0.0
+github.com/hashicorp/errwrap
+# github.com/hashicorp/go-multierror v1.0.0
+github.com/hashicorp/go-multierror
 # github.com/hashicorp/golang-lru v0.5.1
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
@@ -154,7 +162,7 @@ github.com/karalabe/hid
 github.com/koron/go-ssdp
 # github.com/leodido/go-urn v1.1.0
 github.com/leodido/go-urn
-# github.com/lib/pq v0.0.0-20180523175426-90697d60dd84
+# github.com/lib/pq v1.0.0
 github.com/lib/pq
 github.com/lib/pq/oid
 # github.com/libp2p/go-addr-util v0.0.1
@@ -303,11 +311,15 @@ github.com/spaolacci/murmur3
 github.com/status-im/doubleratchet
 # github.com/status-im/go-multiaddr-ethv4 v1.1.0
 github.com/status-im/go-multiaddr-ethv4
-# github.com/status-im/migrate v0.0.0-20181227113212-3bde36291b5c
+# github.com/status-im/migrate v3.5.1-status+incompatible
 github.com/status-im/migrate
 github.com/status-im/migrate/database/sqlcipher
 github.com/status-im/migrate/source/go_bindata
 github.com/status-im/migrate/database/postgres
+# github.com/status-im/migrate/v4 v4.3.1-status
+github.com/status-im/migrate/v4
+github.com/status-im/migrate/v4/database/sqlcipher
+github.com/status-im/migrate/v4/source/go_bindata
 # github.com/status-im/rendezvous v1.2.0
 github.com/status-im/rendezvous
 github.com/status-im/rendezvous/protocol

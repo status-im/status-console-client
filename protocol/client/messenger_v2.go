@@ -57,43 +57,8 @@ func (m *MessengerV2) Start() error {
 	// This means that we don't know from which contact the message
 	// came from until it is examined.
 	for i := range contacts {
-		options, err := createSubscribeOptions(contacts[i])
-		if err != nil {
+		if err := m.addStream(contacts[i]); err != nil {
 			return err
-		}
-
-		// For contacts with public key, we just need to make sure
-		// each possible topic has a stream. For a single topic
-		// for all private conversations, the map will have a len of 1.
-		// In the future, private conversations will have sharded topics,
-		// which means there will be many conversation over a particular topic
-		// but there will be more than one topic.
-		if contacts[i].Type == ContactPublicKey {
-			_, exist := m.private[contacts[i].Topic]
-
-			if exist {
-				continue
-			}
-
-			stream := NewStream(m.proto, StreamHandlerMultiplexed(m.db))
-			if err := stream.Start(context.Background(), options); err != nil {
-				return errors.Wrap(err, "unable to start private stream")
-			}
-
-			m.private[contacts[i].Topic] = stream
-		} else {
-			_, exist := m.public[contacts[i].Topic]
-
-			if exist {
-				return fmt.Errorf("multiple public chats with same topic: %s", contacts[i].Topic)
-			}
-
-			stream := NewStream(m.proto, StreamHandlerForContact(contacts[i], m.db))
-			if err := stream.Start(context.Background(), options); err != nil {
-				return errors.Wrap(err, "unable to start stream")
-			}
-
-			m.public[contacts[i].Topic] = stream
 		}
 	}
 
@@ -102,57 +67,64 @@ func (m *MessengerV2) Start() error {
 	return m.RequestAll(context.Background(), true)
 }
 
-func (m *MessengerV2) Join(ctx context.Context, c Contact) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if c.Type == ContactPublicKey {
-		return m.joinPrivate(ctx, c)
-	}
-	return m.joinPublic(ctx, c)
-}
-
-func (m *MessengerV2) joinPrivate(ctx context.Context, c Contact) error {
-	_, exist := m.private[c.Topic]
-	if exist {
-		return nil
-	}
-
-	subOpts, err := createSubscribeOptions(c)
+// addStream creates a new Stream and adds it to the Messenger.
+// For contacts with public key, we just need to make sure
+// each possible topic has a stream. For a single topic
+// for all private conversations, the map will have a len of 1.
+// In the future, private conversations will have sharded topics,
+// which means there will be many conversation over a particular topic
+// but there will be more than one topic.
+func (m *MessengerV2) addStream(c Contact) error {
+	options, err := createSubscribeOptions(c)
 	if err != nil {
 		return errors.Wrap(err, "failed to create SubscribeOptions")
 	}
 
-	stream := NewStream(m.proto, StreamHandlerMultiplexed(m.db))
-	if err := stream.Start(context.Background(), subOpts); err != nil {
-		return errors.Wrap(err, "can't subscribe to a stream")
-	}
-	m.private[c.Name] = stream
+	switch c.Type {
+	case ContactPublicKey:
+		_, exist := m.private[c.Topic]
+		if exist {
+			return nil
+		}
 
-	opts := protocol.DefaultRequestOptions()
-	if err := m.Request(ctx, c, opts); err != nil {
-		return err
+		stream := NewStream(
+			m.proto,
+			StreamStoreHandlerMultiplexed(m.db),
+		)
+		if err := stream.Start(context.Background(), options); err != nil {
+			return errors.Wrap(err, "can't subscribe to a stream")
+		}
+
+		m.private[c.Name] = stream
+	case ContactPublicRoom:
+		_, exist := m.public[c.Topic]
+		if exist {
+			return nil
+		}
+
+		stream := NewStream(
+			m.proto,
+			StreamStoreHandlerForContact(m.db, c),
+		)
+		if err := stream.Start(context.Background(), options); err != nil {
+			return errors.Wrap(err, "can't subscribe to a stream")
+		}
+
+		m.public[c.Name] = stream
+	default:
+		return fmt.Errorf("unsupported contect type: %s", c.Type)
 	}
-	return m.db.UpdateHistories([]History{{Contact: c, Synced: opts.To}})
+
+	return nil
 }
 
-func (m *MessengerV2) joinPublic(ctx context.Context, c Contact) error {
-	_, exist := m.public[c.Topic]
-	if exist {
-		// FIXME(dshulyak) don't request messages on every join
-		// all messages must be requested in a single request when app starts
-		return nil
-	}
+func (m *MessengerV2) Join(ctx context.Context, c Contact) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	subOpts, err := createSubscribeOptions(c)
-	if err != nil {
+	if err := m.addStream(c); err != nil {
 		return err
 	}
-
-	stream := NewStream(m.proto, StreamHandlerForContact(c, m.db))
-	if err := stream.Start(context.Background(), subOpts); err != nil {
-		return errors.Wrap(err, "can't subscribe to a stream")
-	}
-	m.public[c.Name] = stream
 
 	opts := protocol.DefaultRequestOptions()
 	if err := m.Request(ctx, c, opts); err != nil {
@@ -163,7 +135,7 @@ func (m *MessengerV2) joinPublic(ctx context.Context, c Contact) error {
 
 // Messages reads all messages from database.
 func (m *MessengerV2) Messages(c Contact, offset int64) ([]*protocol.Message, error) {
-	return m.db.GetNewMessages(c, offset)
+	return m.db.NewMessages(c, offset)
 }
 
 func (m *MessengerV2) Request(ctx context.Context, c Contact, options protocol.RequestOptions) error {
