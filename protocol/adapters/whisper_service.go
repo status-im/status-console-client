@@ -60,6 +60,9 @@ func (m *whisperServiceKeysManager) GetRawSymKey(id string) ([]byte, error) {
 	return m.shh.GetSymKey(id)
 }
 
+// MessageDecoder is a function that decodes bytes to a message.
+type MessageDecoder func(data []byte) (protocol.Message, error)
+
 // WhisperServiceAdapter is an adapter for Whisper service
 // the implements Protocol interface.
 type WhisperServiceAdapter struct {
@@ -68,6 +71,8 @@ type WhisperServiceAdapter struct {
 	keysManager *whisperServiceKeysManager
 
 	pfs *chat.ProtocolService
+
+	decoder MessageDecoder
 
 	selectedMailServerEnode string
 }
@@ -85,7 +90,13 @@ func NewWhisperServiceAdapter(node *node.StatusNode, shh *whisper.Whisper, priva
 			privateKey:        privateKey,
 			passToSymKeyCache: make(map[string]string),
 		},
+		decoder: protocol.DecodeMessage,
 	}
+}
+
+// SetDecoder sets a function as a message decoder.
+func (a *WhisperServiceAdapter) SetDecoder(f MessageDecoder) {
+	a.decoder = f
 }
 
 // InitPFS adds support for PFS messages.
@@ -214,7 +225,7 @@ func (a *WhisperServiceAdapter) decodeMessage(message *whisper.ReceivedMessage) 
 		}
 	}
 
-	decoded, err := protocol.DecodeMessage(payload)
+	decoded, err := a.decoder(payload)
 	if err != nil {
 		return nil, err
 	}
