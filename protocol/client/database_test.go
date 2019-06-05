@@ -89,7 +89,7 @@ func TestUnreadMessages(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		var flags protocol.Flags
 		if i%2 == 0 {
-			// odd messages are unread
+			// even messages are marked as read
 			flags.Set(protocol.MessageRead)
 		}
 		m := protocol.Message{
