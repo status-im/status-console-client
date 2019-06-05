@@ -166,7 +166,7 @@ func TestPublicContactExist(t *testing.T) {
 	require.NoError(t, err)
 	contact := Contact{
 		Name:      "first",
-		Type:      ContactPublicKey,
+		Type:      ContactPrivate,
 		PublicKey: &pk.PublicKey,
 		Topic:     "first",
 	}
@@ -223,19 +223,19 @@ func BenchmarkLoadMessages(b *testing.B) {
 	contacts := []Contact{
 		{
 			Name:      "first",
-			Type:      ContactPublicKey,
+			Type:      ContactPrivate,
 			PublicKey: &pk.PublicKey,
 			Topic:     "test",
 		},
 		{
 			Name:      "second",
-			Type:      ContactPublicKey,
+			Type:      ContactPrivate,
 			PublicKey: &pk.PublicKey,
 			Topic:     "test",
 		},
 		{
 			Name:      "third",
-			Type:      ContactPublicKey,
+			Type:      ContactPrivate,
 			PublicKey: &pk.PublicKey,
 			Topic:     "test",
 		},

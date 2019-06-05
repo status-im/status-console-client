@@ -49,7 +49,7 @@ func streamStoreHandlerMultiplexed(db Database, m *protocol.Message) error {
 	}
 
 	contact := Contact{
-		Type:      ContactPublicKey,
+		Type:      ContactPrivate,
 		State:     ContactNew,
 		Name:      pubkeyToHex(publicKey), // TODO(dshulyak) replace with 3-word funny name
 		PublicKey: publicKey,

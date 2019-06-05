@@ -57,7 +57,7 @@ func (f *Flags) Clear(val Flags)   { *f = *f &^ val }
 func (f *Flags) Toggle(val Flags)  { *f = *f ^ val }
 func (f Flags) Has(val Flags) bool { return f&val != 0 }
 
-// A list of Message flags.
+// A list of Message flags. By default, a message is unread.
 const (
 	MessageRead Flags = 1 << iota
 )
@@ -88,6 +88,10 @@ func (m *Message) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(item)
+}
+
+func (m Message) Unread() bool {
+	return !m.Flags.Has(MessageRead)
 }
 
 // createTextMessage creates a Message.

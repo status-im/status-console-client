@@ -25,8 +25,8 @@ func (c *ContactType) UnmarshalJSON(data []byte) error {
 	switch string(data) {
 	case fmt.Sprintf(`"%s"`, ContactPublicRoom):
 		*c = ContactPublicRoom
-	case fmt.Sprintf(`"%s"`, ContactPublicKey):
-		*c = ContactPublicKey
+	case fmt.Sprintf(`"%s"`, ContactPrivate):
+		*c = ContactPrivate
 	default:
 		return fmt.Errorf("invalid ContactType: %s", data)
 	}
@@ -37,13 +37,15 @@ func (c *ContactType) UnmarshalJSON(data []byte) error {
 // Types of contacts.
 const (
 	ContactPublicRoom ContactType = iota + 1
-	ContactPublicKey
+	ContactPrivate
+)
 
+const (
 	// ContactAdded default level. Added or confirmed by user.
-	ContactAdded ContactState = iota
+	ContactAdded ContactState = iota + 1
 	// ContactNew contact got connected to us and waits for being added or blocked.
 	ContactNew
-	// Messages of the blocked contact must be discarded (or atleast not visible to the user)
+	// ContactBlocked means that all incoming messages from it will be discarded.
 	ContactBlocked
 )
 
@@ -54,6 +56,32 @@ type Contact struct {
 	State     ContactState     `json:"state"`
 	Topic     string           `json:"topic"`
 	PublicKey *ecdsa.PublicKey `json:"-"`
+}
+
+// CreateContactPrivate creates a new private contact.
+func CreateContactPrivate(name, pubKeyHex string) (c Contact, err error) {
+	pubKeyBytes, err := hexutil.Decode(pubKeyHex)
+	if err != nil {
+		return
+	}
+
+	c.Name = name
+	c.Type = ContactPrivate
+	c.State = ContactAdded
+	c.Topic = DefaultPrivateTopic()
+	c.PublicKey, err = crypto.UnmarshalPubkey(pubKeyBytes)
+
+	return
+}
+
+// CreateContactPublicRoom creates a public room contact.
+func CreateContactPublicRoom(name string) Contact {
+	return Contact{
+		Name:  name,
+		Type:  ContactPublicRoom,
+		State: ContactAdded,
+		Topic: name,
+	}
 }
 
 // String returns a string representation of Contact.
@@ -77,7 +105,7 @@ func (c Contact) MarshalJSON() ([]byte, error) {
 	}
 
 	if c.PublicKey != nil {
-		item.PublicKey = hexutil.Encode(crypto.FromECDSAPub(c.PublicKey))
+		item.PublicKey = EncodePublicKeyAsString(c.PublicKey)
 	}
 
 	return json.Marshal(&item)
@@ -112,16 +140,8 @@ func (c *Contact) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// ContactWithPublicKey creates a new private contact.
-func ContactWithPublicKey(name, pubKeyHex string) (c Contact, err error) {
-	c.Name = name
-	c.Type = ContactPublicKey
-	c.Topic = DefaultPrivateTopic()
-	pubKeyBytes, err := hexutil.Decode(pubKeyHex)
-	if err != nil {
-		return
-	}
-
-	c.PublicKey, err = crypto.UnmarshalPubkey(pubKeyBytes)
-	return
+// EncodePublicKeyAsString encodes a public key as a string.
+// It starts with 0x to indicate it's hex encoding.
+func EncodePublicKeyAsString(pubKey *ecdsa.PublicKey) string {
+	return hexutil.Encode(crypto.FromECDSAPub(pubKey))
 }
