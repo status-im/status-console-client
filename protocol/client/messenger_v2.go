@@ -89,7 +89,6 @@ func (m *MessengerV2) addStream(c Contact) error {
 
 		stream := NewStream(
 			m.proto,
-			streamPresentationHandler,
 			StreamStoreHandlerMultiplexed(m.db),
 		)
 		if err := stream.Start(context.Background(), options); err != nil {
@@ -105,7 +104,6 @@ func (m *MessengerV2) addStream(c Contact) error {
 
 		stream := NewStream(
 			m.proto,
-			streamPresentationHandler,
 			StreamStoreHandlerForContact(m.db, c),
 		)
 		if err := stream.Start(context.Background(), options); err != nil {

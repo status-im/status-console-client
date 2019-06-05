@@ -95,15 +95,10 @@ func streamStoreHandlerMultiplexed(db Database, m *protocol.Message) error {
 	return nil
 }
 
-func streamPresentationHandler(m *protocol.Message) error {
-	m.Flags.Set(protocol.MessageUnread)
-	return nil
-}
-
 // Stream converts messages subscription model to a stream of messages.
 type Stream struct {
-	proto    protocol.Protocol
-	handlers []StreamHandler
+	proto   protocol.Protocol
+	handler StreamHandler
 
 	mu     sync.Mutex
 	cancel func()         // context cancel
@@ -111,10 +106,10 @@ type Stream struct {
 }
 
 // NewStream creates a new stream instance with protocol and handler.
-func NewStream(proto protocol.Protocol, handlers ...StreamHandler) *Stream {
+func NewStream(proto protocol.Protocol, handler StreamHandler) *Stream {
 	return &Stream{
-		proto:    proto,
-		handlers: handlers,
+		proto:   proto,
+		handler: handler,
 	}
 }
 
@@ -158,12 +153,18 @@ func (s *Stream) processLoop(ctx context.Context, messages <-chan *protocol.Mess
 	for {
 		select {
 		case msg := <-messages:
-			for _, h := range s.handlers {
-				err := h(msg)
-				if err != nil {
-					s.processHandlerErr(err, msg)
-					continue
-				}
+			// TODO(adam): refactor this. For now, we mark each message as unread by default
+			// There are a few problems with putting it like this:
+			//   * Flags (and some other fields) are not in the spec so ideally
+			//     we should move them to `client`.
+			//   * It is not obvious that additional processing happens here.
+			//     It should be clear from the `Stream` caller perspective.
+			msg.Flags.Set(protocol.MessageUnread)
+
+			err := s.handler(msg)
+			if err != nil {
+				s.processHandlerErr(err, msg)
+				continue
 			}
 		case <-ctx.Done():
 			return
