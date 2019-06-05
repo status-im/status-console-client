@@ -59,7 +59,7 @@ func (f Flags) Has(val Flags) bool { return f&val != 0 }
 
 // A list of Message flags.
 const (
-	MessageUnread Flags = 1 << iota
+	MessageRead Flags = 1 << iota
 )
 
 // Message contains all message details.

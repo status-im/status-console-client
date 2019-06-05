@@ -153,14 +153,6 @@ func (s *Stream) processLoop(ctx context.Context, messages <-chan *protocol.Mess
 	for {
 		select {
 		case msg := <-messages:
-			// TODO(adam): refactor this. For now, we mark each message as unread by default
-			// There are a few problems with putting it like this:
-			//   * Flags (and some other fields) are not in the spec so ideally
-			//     we should move them to `client`.
-			//   * It is not obvious that additional processing happens here.
-			//     It should be clear from the `Stream` caller perspective.
-			msg.Flags.Set(protocol.MessageUnread)
-
 			err := s.handler(msg)
 			if err != nil {
 				s.processHandlerErr(err, msg)

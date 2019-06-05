@@ -87,11 +87,16 @@ func TestUnreadMessages(t *testing.T) {
 	// insert some messages
 	var messages []*protocol.Message
 	for i := 0; i < 4; i++ {
+		var flags protocol.Flags
+		if i%2 == 0 {
+			// odd messages are unread
+			flags.Set(protocol.MessageRead)
+		}
 		m := protocol.Message{
 			ID:        []byte{byte(i)},
 			Timestamp: protocol.TimestampInMs(i + 1),
 			Clock:     int64(i + 1),
-			Flags:     protocol.MessageUnread & protocol.Flags(i%2), // odd messages are unread
+			Flags:     flags,
 		}
 		messages = append(messages, &m)
 	}
@@ -103,7 +108,7 @@ func TestUnreadMessages(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, unread, 2)
 	for _, m := range unread {
-		require.Equal(t, protocol.MessageUnread, m.Flags)
+		require.False(t, m.Flags.Has(protocol.MessageRead))
 	}
 }
 

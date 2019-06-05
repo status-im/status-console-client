@@ -483,9 +483,9 @@ func (db SQLLiteDatabase) UnreadMessages(c Contact) ([]*protocol.Message, error)
 			user_messages
 		WHERE
 			contact_id = ? AND
-			flags & ? == 1
+			flags & ? == 0
 		ORDER BY clock`,
-		contactID, protocol.MessageUnread,
+		contactID, protocol.MessageRead,
 	)
 	if err != nil {
 		return nil, err
