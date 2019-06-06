@@ -9,7 +9,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/status-im/mvds"
@@ -74,7 +73,7 @@ func (c *DataSyncClient) peer(id mvds.GroupID, peer *ecdsa.PublicKey) {
 		return
 	}
 
-	p := mvds.PeerId(*peer)
+	p := mvds.PublicKeyToPeerID(*peer)
 
 	if c.sync.IsPeerInGroup(id, p) {
 		return
@@ -108,7 +107,7 @@ func (t *DataSyncWhisperTransport) Watch() mvds.Packet {
 }
 
 // Send sends a new message using the Whisper service.
-func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, peer mvds.PeerId, payload mvds.Payload) error {
+func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerID, peer mvds.PeerID, payload mvds.Payload) error {
 	data, err := proto.Marshal(&payload)
 	if err != nil {
 		return err
@@ -123,9 +122,7 @@ func (t *DataSyncWhisperTransport) Send(group mvds.GroupID, _ mvds.PeerId, peer 
 
 	// @todo set SymKeyID or PublicKey depending on chat type
 
-	// we are only assuming private chats
-	k := ecdsa.PublicKey(peer)
-	newMessage.PublicKey = crypto.FromECDSAPub(&k)
+	newMessage.PublicKey = peer[:]
 
 	_, err = whisper.NewPublicWhisperAPI(t.shh).Post(context.Background(), newMessage.ToWhisper())
 	return err
@@ -172,7 +169,7 @@ func (t *DataSyncWhisperTransport) subscribe(in chan<- *protocol.Message, option
 
 					t.packets <- mvds.Packet{
 						Group:   toGroupId(item.Topic),
-						Sender:  mvds.PeerId(*item.Src),
+						Sender:  mvds.PublicKeyToPeerID(*item.Src),
 						Payload: *payload,
 					}
 
