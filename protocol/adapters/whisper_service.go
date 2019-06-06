@@ -60,6 +60,12 @@ func (m *whisperServiceKeysManager) GetRawSymKey(id string) ([]byte, error) {
 	return m.shh.GetSymKey(id)
 }
 
+var (
+	// ErrDecoderSkipMessage means that the packet was handled by the decoder properly
+	// but due to some reason it did not result in a valid message.
+	ErrDecoderSkipMessage = errors.New("message was skipped by the decoder")
+)
+
 // MessageDecoder is a function that decodes bytes to a message.
 type MessageDecoder func(data []byte) (protocol.Message, error)
 
@@ -192,11 +198,14 @@ func (a *WhisperServiceAdapter) handleMessages(received []*whisper.ReceivedMessa
 
 	for _, item := range received {
 		message, err := a.decodeMessage(item)
-		if err != nil {
+		switch err {
+		case ErrDecoderSkipMessage:
+			log.Printf("message skipped by decoder %#+x", item.EnvelopeHash.Bytes())
+		case nil:
+			messages = append(messages, message)
+		default:
 			log.Printf("failed to decode message %#+x: %v", item.EnvelopeHash.Bytes(), err)
-			continue
 		}
-		messages = append(messages, message)
 	}
 
 	sort.Slice(messages, func(i, j int) bool {
