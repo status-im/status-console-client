@@ -9,12 +9,12 @@ func _() {
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
 	_ = x[ContactPublicRoom-1]
-	_ = x[ContactPublicKey-2]
+	_ = x[ContactPrivate-2]
 }
 
-const _ContactType_name = "ContactPublicRoomContactPublicKey"
+const _ContactType_name = "ContactPublicRoomContactPrivate"
 
-var _ContactType_index = [...]uint8{0, 17, 33}
+var _ContactType_index = [...]uint8{0, 17, 31}
 
 func (i ContactType) String() string {
 	i -= 1

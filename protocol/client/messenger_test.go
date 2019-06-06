@@ -32,7 +32,7 @@ func TestRequestHistoryOneRequest(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 	proto := &requestsMock{}
-	m := NewMessengerV2(nil, proto, db)
+	m := NewMessenger(nil, proto, db)
 
 	require.NoError(t, db.SaveContacts([]Contact{
 		{Name: "first", Type: ContactPublicRoom},
@@ -52,7 +52,7 @@ func TestRequestHistoryTwoRequest(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 	proto := &requestsMock{}
-	m := NewMessengerV2(nil, proto, db)
+	m := NewMessenger(nil, proto, db)
 
 	contacts := []Contact{
 		{Name: "first", Type: ContactPublicRoom, Topic: "first"},

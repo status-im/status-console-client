@@ -13,9 +13,21 @@ import (
 	"github.com/status-im/status-console-client/protocol/v1"
 )
 
-func NewMessengerV2(identity *ecdsa.PrivateKey, proto protocol.Protocol, db Database) MessengerV2 {
+type Messenger struct {
+	identity *ecdsa.PrivateKey
+	proto    protocol.Protocol
+	db       Database
+
+	mu      sync.Mutex         // guards public and private maps
+	public  map[string]*Stream // key is Contact.Topic
+	private map[string]*Stream // key is Contact.Topic
+
+	events *event.Feed
+}
+
+func NewMessenger(identity *ecdsa.PrivateKey, proto protocol.Protocol, db Database) *Messenger {
 	events := &event.Feed{}
-	return MessengerV2{
+	return &Messenger{
 		identity: identity,
 		proto:    proto,
 		db:       NewDatabaseWithEvents(db, events),
@@ -26,19 +38,7 @@ func NewMessengerV2(identity *ecdsa.PrivateKey, proto protocol.Protocol, db Data
 	}
 }
 
-type MessengerV2 struct {
-	identity *ecdsa.PrivateKey
-	proto    protocol.Protocol
-	db       Database
-
-	mu      sync.Mutex
-	public  map[string]*Stream
-	private map[string]*Stream
-
-	events *event.Feed
-}
-
-func (m *MessengerV2) Start() error {
+func (m *Messenger) Start() error {
 	log.Printf("[Messenger::Start]")
 
 	m.mu.Lock()
@@ -74,14 +74,14 @@ func (m *MessengerV2) Start() error {
 // In the future, private conversations will have sharded topics,
 // which means there will be many conversation over a particular topic
 // but there will be more than one topic.
-func (m *MessengerV2) addStream(c Contact) error {
+func (m *Messenger) addStream(c Contact) error {
 	options, err := createSubscribeOptions(c)
 	if err != nil {
 		return errors.Wrap(err, "failed to create SubscribeOptions")
 	}
 
 	switch c.Type {
-	case ContactPublicKey:
+	case ContactPrivate:
 		_, exist := m.private[c.Topic]
 		if exist {
 			return nil
@@ -118,7 +118,7 @@ func (m *MessengerV2) addStream(c Contact) error {
 	return nil
 }
 
-func (m *MessengerV2) Join(ctx context.Context, c Contact) error {
+func (m *Messenger) Join(ctx context.Context, c Contact) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -134,11 +134,11 @@ func (m *MessengerV2) Join(ctx context.Context, c Contact) error {
 }
 
 // Messages reads all messages from database.
-func (m *MessengerV2) Messages(c Contact, offset int64) ([]*protocol.Message, error) {
+func (m *Messenger) Messages(c Contact, offset int64) ([]*protocol.Message, error) {
 	return m.db.NewMessages(c, offset)
 }
 
-func (m *MessengerV2) Request(ctx context.Context, c Contact, options protocol.RequestOptions) error {
+func (m *Messenger) Request(ctx context.Context, c Contact, options protocol.RequestOptions) error {
 	err := enhanceRequestOptions(c, &options)
 	if err != nil {
 		return err
@@ -146,7 +146,7 @@ func (m *MessengerV2) Request(ctx context.Context, c Contact, options protocol.R
 	return m.proto.Request(ctx, options)
 }
 
-func (m *MessengerV2) requestHistories(ctx context.Context, histories []History, opts protocol.RequestOptions) error {
+func (m *Messenger) requestHistories(ctx context.Context, histories []History, opts protocol.RequestOptions) error {
 	log.Printf("[Messenger::requestHistories] requesting messages for chats %+v: from %d to %d\n", opts.Chats, opts.From, opts.To)
 
 	start := time.Now()
@@ -164,7 +164,7 @@ func (m *MessengerV2) requestHistories(ctx context.Context, histories []History,
 	return m.db.UpdateHistories(histories)
 }
 
-func (m *MessengerV2) RequestAll(ctx context.Context, newest bool) error {
+func (m *Messenger) RequestAll(ctx context.Context, newest bool) error {
 	// FIXME(dshulyak) if newest is false request 24 hour of messages older then the
 	// earliest envelope for each contact.
 	histories, err := m.db.Histories()
@@ -204,7 +204,7 @@ func (m *MessengerV2) RequestAll(ctx context.Context, newest bool) error {
 	return nil
 }
 
-func (m *MessengerV2) Send(c Contact, data []byte) error {
+func (m *Messenger) Send(c Contact, data []byte) error {
 	// FIXME(dshulyak) sending must be locked by contact to prevent sending second msg with same clock
 	clock, err := m.db.LastMessageClock(c)
 	if err != nil {
@@ -215,7 +215,7 @@ func (m *MessengerV2) Send(c Contact, data []byte) error {
 	switch c.Type {
 	case ContactPublicRoom:
 		message = protocol.CreatePublicTextMessage(data, clock, c.Name)
-	case ContactPublicKey:
+	case ContactPrivate:
 		message = protocol.CreatePrivateTextMessage(data, clock, c.Name)
 	default:
 		return fmt.Errorf("failed to send message: unsupported contact type")
@@ -251,33 +251,47 @@ func (m *MessengerV2) Send(c Contact, data []byte) error {
 	return nil
 }
 
-func (m *MessengerV2) RemoveContact(c Contact) error {
+func (m *Messenger) RemoveContact(c Contact) error {
 	return m.db.DeleteContact(c)
 }
 
-func (m *MessengerV2) AddContact(c Contact) error {
+func (m *Messenger) AddContact(c Contact) error {
 	return m.db.SaveContacts([]Contact{c})
 }
 
-func (m *MessengerV2) Contacts() ([]Contact, error) {
+func (m *Messenger) Contacts() ([]Contact, error) {
 	return m.db.Contacts()
 }
 
-func (m *MessengerV2) Leave(c Contact) error {
-	if c.Type == ContactPublicRoom {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		stream, exist := m.public[c.Name]
-		if !exist {
-			return errors.New("stream doesn't exist")
+func (m *Messenger) Leave(c Contact) error {
+	var stream *Stream
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	switch c.Type {
+	case ContactPublicRoom:
+		stream = m.public[c.Topic]
+		if stream != nil {
+			delete(m.public, c.Topic)
 		}
-		stream.Stop()
-		return nil
+	case ContactPrivate:
+		// TODO: should we additionally block that peer?
+		stream = m.private[c.Topic]
+		if stream != nil {
+			delete(m.private, c.Topic)
+		}
 	}
-	// TODO how to handle leave for private chat? block that peer?
+
+	if stream == nil {
+		return errors.New("stream not found")
+	}
+
+	stream.Stop()
+
 	return nil
 }
 
-func (m *MessengerV2) Subscribe(events chan Event) event.Subscription {
+func (m *Messenger) Subscribe(events chan Event) event.Subscription {
 	return m.events.Subscribe(events)
 }

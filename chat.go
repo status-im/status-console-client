@@ -24,7 +24,7 @@ type ChatViewController struct {
 	contact client.Contact
 
 	identity  *ecdsa.PrivateKey
-	messenger *client.MessengerV2
+	messenger *client.Messenger
 
 	onError func(error)
 
@@ -35,7 +35,7 @@ type ChatViewController struct {
 }
 
 // NewChatViewController returns a new chat view controller.
-func NewChatViewController(vc *ViewController, id Identity, m *client.MessengerV2, onError func(error)) *ChatViewController {
+func NewChatViewController(vc *ViewController, id Identity, m *client.Messenger, onError func(error)) *ChatViewController {
 	if onError == nil {
 		onError = func(error) {}
 	}

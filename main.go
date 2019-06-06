@@ -168,7 +168,7 @@ func main() {
 				Topic: options[1],
 			}
 		} else if len(options) == 3 && options[0] == "private" {
-			c, err = client.ContactWithPublicKey(options[1], options[2])
+			c, err = client.CreateContactPrivate(options[1], options[2], client.ContactAdded)
 			if err != nil {
 				exitErr(err)
 			}
@@ -189,7 +189,7 @@ func main() {
 
 	// initialize protocol
 	var (
-		messenger *client.MessengerV2
+		messenger *client.Messenger
 	)
 
 	if *providerURI != "" {
@@ -260,7 +260,7 @@ func (k keysGetter) PrivateKey() (*ecdsa.PrivateKey, error) {
 	return k.privateKey, nil
 }
 
-func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database) (*client.MessengerV2, error) {
+func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
 	rpc, err := rpc.Dial(*providerURI)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to dial")
@@ -276,11 +276,11 @@ func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database
 		pk,
 		nodeConfig.ClusterConfig.TrustedMailServers,
 	)
-	messenger := client.NewMessengerV2(pk, proto, db)
-	return &messenger, nil
+	messenger := client.NewMessenger(pk, proto, db)
+	return messenger, nil
 }
 
-func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.MessengerV2, error) {
+func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
 	// collect mail server request signals
 	signalsForwarder := newSignalForwarder()
 	go signalsForwarder.Start()
@@ -318,10 +318,10 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 	}
 
 	adapter := adapters.NewWhisperServiceAdapter(statusNode, shhService, pk)
-	messenger := client.NewMessengerV2(pk, adapter, db)
+	messenger := client.NewMessenger(pk, adapter, db)
 
 	protocolGethService.SetProtocol(adapter)
-	protocolGethService.SetMessenger(&messenger)
+	protocolGethService.SetMessenger(messenger)
 
 	// TODO: should be removed from StatusNode
 	if *pfsEnabled {
@@ -338,10 +338,10 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		log.Printf("PFS has been initialized")
 	}
 
-	return &messenger, nil
+	return messenger, nil
 }
 
-func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.MessengerV2) error {
+func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 	var err error
 
 	// global

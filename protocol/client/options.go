@@ -14,7 +14,7 @@ func createSubscribeOptions(c Contact) (opts protocol.SubscribeOptions, err erro
 	opts.ChatName = c.Topic
 	switch c.Type {
 	case ContactPublicRoom:
-	case ContactPublicKey:
+	case ContactPrivate:
 		opts.Recipient = c.PublicKey
 	default:
 		err = errUnsupportedContactType
@@ -26,7 +26,7 @@ func createSendOptions(c Contact) (opts protocol.SendOptions, err error) {
 	opts.ChatName = c.Topic
 	switch c.Type {
 	case ContactPublicRoom:
-	case ContactPublicKey:
+	case ContactPrivate:
 		opts.Recipient = c.PublicKey
 	default:
 		err = errUnsupportedContactType
@@ -39,7 +39,7 @@ func enhanceRequestOptions(c Contact, opts *protocol.RequestOptions) error {
 	chatOptions.ChatName = c.Topic
 	switch c.Type {
 	case ContactPublicRoom:
-	case ContactPublicKey:
+	case ContactPrivate:
 		chatOptions.Recipient = c.PublicKey
 	default:
 		return errUnsupportedContactType
