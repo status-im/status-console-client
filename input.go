@@ -76,7 +76,7 @@ func contactAddCmdHandler(args []string) (c client.Contact, err error) {
 			Topic: name,
 		}
 	} else if len(args) == 2 {
-		c, err = client.CreateContactPrivate(args[1], args[0])
+		c, err = client.CreateContactPrivate(args[1], args[0], client.ContactAdded)
 	} else {
 		err = errors.New("/contact: incorect arguments to add subcommand")
 	}

@@ -14,9 +14,6 @@ import (
 // ContactType defines a type of a contact.
 type ContactType int
 
-// ContactState defines state of the contact.
-type ContactState int
-
 func (c ContactType) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"%s"`, c)), nil
 }
@@ -40,6 +37,9 @@ const (
 	ContactPrivate
 )
 
+// ContactState defines state of the contact.
+type ContactState int
+
 const (
 	// ContactAdded default level. Added or confirmed by user.
 	ContactAdded ContactState = iota + 1
@@ -59,7 +59,7 @@ type Contact struct {
 }
 
 // CreateContactPrivate creates a new private contact.
-func CreateContactPrivate(name, pubKeyHex string) (c Contact, err error) {
+func CreateContactPrivate(name, pubKeyHex string, state ContactState) (c Contact, err error) {
 	pubKeyBytes, err := hexutil.Decode(pubKeyHex)
 	if err != nil {
 		return
@@ -67,7 +67,7 @@ func CreateContactPrivate(name, pubKeyHex string) (c Contact, err error) {
 
 	c.Name = name
 	c.Type = ContactPrivate
-	c.State = ContactAdded
+	c.State = state
 	c.Topic = DefaultPrivateTopic()
 	c.PublicKey, err = crypto.UnmarshalPubkey(pubKeyBytes)
 
@@ -75,11 +75,11 @@ func CreateContactPrivate(name, pubKeyHex string) (c Contact, err error) {
 }
 
 // CreateContactPublicRoom creates a public room contact.
-func CreateContactPublicRoom(name string) Contact {
+func CreateContactPublicRoom(name string, state ContactState) Contact {
 	return Contact{
 		Name:  name,
 		Type:  ContactPublicRoom,
-		State: ContactAdded,
+		State: state,
 		Topic: name,
 	}
 }

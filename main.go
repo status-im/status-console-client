@@ -168,7 +168,7 @@ func main() {
 				Topic: options[1],
 			}
 		} else if len(options) == 3 && options[0] == "private" {
-			c, err = client.CreateContactPrivate(options[1], options[2])
+			c, err = client.CreateContactPrivate(options[1], options[2], client.ContactAdded)
 			if err != nil {
 				exitErr(err)
 			}

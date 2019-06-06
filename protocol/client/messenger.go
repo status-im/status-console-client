@@ -284,7 +284,7 @@ func (m *Messenger) Leave(c Contact) error {
 	}
 
 	if stream == nil {
-		return errors.New("contact not found")
+		return errors.New("stream not found")
 	}
 
 	stream.Stop()
