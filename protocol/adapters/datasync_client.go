@@ -162,8 +162,9 @@ func (t *DataSyncWhisperTransport) subscribe(in chan<- *protocol.Message, option
 				}
 
 				for _, item := range received {
-					payload := t.handlePayload(item)
-					if payload == nil {
+					payload, err := t.handlePayload(item)
+					if err != nil {
+						log.Printf("failed to decode message %#+x: %v", item.EnvelopeHash.Bytes(), err)
 						continue
 					}
 
@@ -188,19 +189,17 @@ func (t *DataSyncWhisperTransport) subscribe(in chan<- *protocol.Message, option
 	return sub, nil
 }
 
-// @todo return error?
-func (t *DataSyncWhisperTransport) handlePayload(received *whisper.ReceivedMessage) *mvds.Payload {
+func (t DataSyncWhisperTransport) handlePayload(received *whisper.ReceivedMessage) (*mvds.Payload, error) {
 	payload := &mvds.Payload{}
 	err := proto.Unmarshal(received.Payload, payload)
 	if err != nil {
-		log.Printf("failed to decode message %#+x: %v", received.EnvelopeHash.Bytes(), err)
-		return nil // @todo
+		return nil, err
 	}
 
-	return payload
+	return payload, nil
 }
 
-func (t *DataSyncWhisperTransport) decodeMessages(payload mvds.Payload) []*protocol.Message {
+func (t DataSyncWhisperTransport) decodeMessages(payload mvds.Payload) []*protocol.Message {
 	messages := make([]*protocol.Message, 0)
 
 	for _, message := range payload.Messages {
