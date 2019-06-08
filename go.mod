@@ -43,17 +43,17 @@ require (
 	github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24 // indirect
 	github.com/status-im/doubleratchet v2.0.0+incompatible // indirect
 	github.com/status-im/migrate v0.0.0-20181227113212-3bde36291b5c
-	github.com/status-im/mvds v0.0.5 // indirect
+	github.com/status-im/mvds v0.0.6 // indirect
 	github.com/status-im/rendezvous v1.2.0 // indirect
 	github.com/status-im/status-go v0.25.0-beta.2
 	github.com/status-im/whisper v1.4.13
 	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.3.0
 	golang.org/x/crypto v0.0.0-20190605123033-f99c8df09eb5
-	golang.org/x/net v0.0.0-20190603091049-60506f45cf65 // indirect
-	golang.org/x/sys v0.0.0-20190606122018-79a91cf218c4 // indirect
+	golang.org/x/net v0.0.0-20190607181551-461777fb6f67 // indirect
+	golang.org/x/sys v0.0.0-20190606203320-7fc4e5ec1444 // indirect
 	golang.org/x/text v0.3.2 // indirect
-	golang.org/x/tools v0.0.0-20190606124116-d0a3d012864b // indirect
+	golang.org/x/tools v0.0.0-20190607224622-755ce86c7629 // indirect
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/go-playground/validator.v9 v9.24.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect

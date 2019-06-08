@@ -30,7 +30,7 @@ lint-v110:
 
 vendor:
 	go mod vendor
-	modvendor -copy="**/*.c **/*.h" -v
+	modvendor -copy="**/*.c **/*.h **/*.pb" -v
 .PHONY: vendor
 
 install-linter:
