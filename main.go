@@ -19,7 +19,9 @@ import (
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
-	"github.com/status-im/mvds"
+	datasyncnode "github.com/status-im/mvds/node"
+	"github.com/status-im/mvds/state"
+	"github.com/status-im/mvds/store"
 	"github.com/status-im/status-console-client/protocol/adapters"
 	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/gethservice"
@@ -386,14 +388,14 @@ func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*cli
 	}
 
 	t := adapters.NewDataSyncWhisperTransport(shhService, pk)
-	ds := mvds.NewDummyStore()
-	n := mvds.NewNode(
+	ds := store.NewDummyStore()
+	n := datasyncnode.NewNode(
 		&ds,
 		t,
-		mvds.NewSyncState(), // @todo sqlite syncstate
+		state.NewSyncState(), // @todo sqlite syncstate
 		adapters.CalculateSendTime,
-		mvds.PublicKeyToPeerID(pk.PublicKey),
-		mvds.BATCH,
+		state.PublicKeyToPeerID(pk.PublicKey),
+		datasyncnode.BATCH,
 	)
 
 	adapter := adapters.NewDataSyncClient(n, t)

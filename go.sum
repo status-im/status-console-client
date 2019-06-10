@@ -262,6 +262,8 @@ github.com/status-im/mvds v0.0.8 h1:+zNPliT/88FLedwM3ZD4nSdl8XgTvcFE1YLCV823MFg=
 github.com/status-im/mvds v0.0.8/go.mod h1:cgNgcRbLwE4TMPMSax7xl+Ca/Q8rIklZLDwAD6iBKjo=
 github.com/status-im/mvds v0.0.9 h1:GrY8nIWnUCEItONI54yvYRYGYmrS32JVo5CL8PwTRPQ=
 github.com/status-im/mvds v0.0.9/go.mod h1:cgNgcRbLwE4TMPMSax7xl+Ca/Q8rIklZLDwAD6iBKjo=
+github.com/status-im/mvds v0.0.10 h1:SgDu7PlFHa27kPZDmpIAdlP9RUT+xc0mIpBKlxmrW7A=
+github.com/status-im/mvds v0.0.10/go.mod h1:cgNgcRbLwE4TMPMSax7xl+Ca/Q8rIklZLDwAD6iBKjo=
 github.com/status-im/rendezvous v1.2.0/go.mod h1:vUZNaCYr2AsFngV2IW5NsnPBRK/h+x57nsMINkhrVCQ=
 github.com/status-im/status-go v0.25.0-beta.2/go.mod h1:3ky7GKNvGXC46HmjcVnDe+3cCkzP+JTzPRz4d50AQ4w=
 github.com/status-im/whisper v1.4.13/go.mod h1:WS6z39YJQ8WJa9s+DmTuEM/s2nVF6Iz3B1SZYw5cYf0=
@@ -338,6 +340,7 @@ golang.org/x/tools v0.0.0-20190606124116-d0a3d012864b/go.mod h1:/rFqwRUd4F7ZHNgw
 golang.org/x/tools v0.0.0-20190607224622-755ce86c7629/go.mod h1:/rFqwRUd4F7ZHNgwSSTFct+R/Kf4OFW1sUzUTQQTgfc=
 golang.org/x/tools v0.0.0-20190608022120-eacb66d2a7c3/go.mod h1:/rFqwRUd4F7ZHNgwSSTFct+R/Kf4OFW1sUzUTQQTgfc=
 golang.org/x/tools v0.0.0-20190610162940-e6ce0ddf0321/go.mod h1:/rFqwRUd4F7ZHNgwSSTFct+R/Kf4OFW1sUzUTQQTgfc=
+golang.org/x/tools v0.0.0-20190610194359-fe937a7521e5/go.mod h1:/rFqwRUd4F7ZHNgwSSTFct+R/Kf4OFW1sUzUTQQTgfc=
 google.golang.org/api v0.0.0-20180724000608-2c45710c7f3f/go.mod h1:4mhQ8q/RsB7i+udVvVy5NUi08OU8ZlA0gRVgrF7VFY0=
 google.golang.org/appengine v1.1.0/go.mod h1:EbEs0AVv82hx2wNQdGPgUI5lhzA/G0D9YwlJXL52JkM=
 google.golang.org/genproto v0.0.0-20180722052100-02b4e9547331/go.mod h1:JiN7NxoALGmiZfu7CAH4rXhgtRTLTxftemlI0sWmxmc=
