@@ -2,6 +2,7 @@ package datasync
 
 import (
 	"database/sql"
+	"log"
 
 	"github.com/status-im/mvds"
 )
@@ -23,7 +24,7 @@ func (s *SyncState) Get(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID)
 	}
 
 	if !r.Next() {
-		return mvds.State{}, err
+		return mvds.State{}, nil
 	}
 
 	var count uint64
@@ -86,12 +87,19 @@ func (s *SyncState) Map(process func(mvds.GroupID, mvds.MessageID, mvds.PeerID, 
 			continue
 		}
 
-		newState := process(groupID(group), messageID(id), peerID(peer), state)
+		g := groupID(group)
+		m := messageID(group)
+		p := peerID(peer)
+
+		newState := process(g, m, p, state)
 		if newState == state {
 			continue
 		}
 
-		// @todo set state
+		err = s.Set(g, m, p, newState)
+		if err != nil {
+			log.Printf("error while setting new state %s", err.Error())
+		}
 	}
 
 	return nil
