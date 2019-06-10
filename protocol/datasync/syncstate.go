@@ -74,13 +74,14 @@ func (s *SyncState) Map(epoch int64, process func(state.GroupID, state.MessageID
 		return err
 	}
 
-	var group []byte
-	var id []byte
-	var peer []byte
+	var (
+		group []byte
+		id    []byte
+		peer  []byte
+	)
+
 	for r.Next() {
-
 		state := state.State{}
-
 		err = r.Scan(&group, &id, &peer, &state.SendCount, &state.SendEpoch)
 		if err != nil {
 			// @todo
@@ -88,7 +89,7 @@ func (s *SyncState) Map(epoch int64, process func(state.GroupID, state.MessageID
 		}
 
 		g := groupID(group)
-		m := messageID(group)
+		m := messageID(id)
 		p := peerID(peer)
 
 		newState := process(g, m, p, state)
