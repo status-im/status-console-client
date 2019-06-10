@@ -4,14 +4,14 @@ import (
 	"database/sql"
 	"log"
 
-	"github.com/status-im/mvds"
+	"github.com/status-im/mvds/state"
 )
 
 type SyncState struct {
 	db *sql.DB
 }
 
-func (s *SyncState) Get(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID) (mvds.State, error) {
+func (s *SyncState) Get(group state.GroupID, id state.MessageID, peer state.PeerID) (state.State, error) {
 	r, err := s.db.Query(
 		"SELECT send_count, send_epoch FROM state WHERE group = ? AND id = ? AND peer = ?",
 		group[:],
@@ -20,27 +20,27 @@ func (s *SyncState) Get(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID)
 	)
 
 	if err != nil {
-		return mvds.State{}, err
+		return state.State{}, err
 	}
 
 	if !r.Next() {
-		return mvds.State{}, nil
+		return state.State{}, nil
 	}
 
 	var count uint64
 	var epoch int64
 	err = r.Scan(&count, &epoch)
 	if err != nil {
-		return mvds.State{}, err
+		return state.State{}, err
 	}
 
-	return mvds.State{
+	return state.State{
 		SendCount: count,
 		SendEpoch: epoch,
 	}, nil
 }
 
-func (s *SyncState) Set(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID, newState mvds.State) error {
+func (s *SyncState) Set(group state.GroupID, id state.MessageID, peer state.PeerID, newState state.State) error {
 	q, err := s.db.Prepare("INSERT INTO state(group, id, peer, send_count, send_epoch) VALUES(?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
@@ -54,7 +54,7 @@ func (s *SyncState) Set(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID,
 	return nil
 }
 
-func (s *SyncState) Remove(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID) error {
+func (s *SyncState) Remove(group state.GroupID, id state.MessageID, peer state.PeerID) error {
 	q, err := s.db.Prepare("DELETE FROM state WHERE group = ? AND id = ? AND peer = ?")
 	if err != nil {
 		return err
@@ -68,7 +68,7 @@ func (s *SyncState) Remove(group mvds.GroupID, id mvds.MessageID, peer mvds.Peer
 	return nil
 }
 
-func (s *SyncState) Map(epoch int64, process func(mvds.GroupID, mvds.MessageID, mvds.PeerID, mvds.State) mvds.State) error {
+func (s *SyncState) Map(epoch int64, process func(state.GroupID, state.MessageID, state.PeerID, state.State) state.State) error {
 	r, err := s.db.Query("SELECT group, id, peer, send_count, send_epoch FROM state")
 	if err != nil {
 		return err
@@ -79,7 +79,7 @@ func (s *SyncState) Map(epoch int64, process func(mvds.GroupID, mvds.MessageID, 
 	var peer []byte
 	for r.Next() {
 
-		state := mvds.State{}
+		state := state.State{}
 
 		err = r.Scan(&group, &id, &peer, &state.SendCount, &state.SendEpoch)
 		if err != nil {
@@ -105,22 +105,22 @@ func (s *SyncState) Map(epoch int64, process func(mvds.GroupID, mvds.MessageID, 
 	return nil
 }
 
-func groupID(bytes []byte) mvds.GroupID {
-	id := mvds.GroupID{}
+func groupID(bytes []byte) state.GroupID {
+	id := state.GroupID{}
 	copy(id[:], bytes)
 
 	return id
 }
 
-func messageID(bytes []byte) mvds.MessageID {
-	id := mvds.MessageID{}
+func messageID(bytes []byte) state.MessageID {
+	id := state.MessageID{}
 	copy(id[:], bytes)
 
 	return id
 }
 
-func peerID(bytes []byte) mvds.PeerID {
-	id := mvds.PeerID{}
+func peerID(bytes []byte) state.PeerID {
+	id := state.PeerID{}
 	copy(id[:], bytes)
 
 	return id
