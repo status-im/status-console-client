@@ -19,6 +19,9 @@ import (
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
+	datasyncnode "github.com/status-im/mvds/node"
+	"github.com/status-im/mvds/state"
+	"github.com/status-im/mvds/store"
 	"github.com/status-im/status-console-client/protocol/adapters"
 	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/gethservice"
@@ -47,6 +50,7 @@ var (
 	fleet       = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
 	configFile  = fs.String("node-config", "", "a JSON file with node config")
 	pfsEnabled  = fs.Bool("pfs", false, "enable PFS")
+	datasyncEnabled = fs.Bool("ds", false, "enable data sync")
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -198,7 +202,12 @@ func main() {
 			exitErr(err)
 		}
 	} else {
-		messenger, err = createMessengerInProc(privateKey, db)
+		if *datasyncEnabled {
+			messenger, err = createMessengerWithDataSync(privateKey, db)
+		} else {
+			messenger, err = createMessengerInProc(privateKey, db)
+		}
+
 		if err != nil {
 			exitErr(err)
 		}
@@ -337,6 +346,63 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 
 		log.Printf("PFS has been initialized")
 	}
+
+	return &messenger, nil
+}
+
+func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*client.MessengerV2, error) {
+	// collect mail server request signals
+	signalsForwarder := newSignalForwarder()
+	go signalsForwarder.Start()
+
+	// setup signals handler
+	signal.SetDefaultNodeNotificationHandler(
+		filterMailTypesHandler(signalsForwarder.in),
+	)
+
+	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
+	if err != nil {
+		exitErr(errors.Wrap(err, "failed to generate node config"))
+	}
+
+	statusNode := node.New()
+
+	protocolGethService := gethservice.New(
+		statusNode,
+		&keysGetter{privateKey: pk},
+	)
+
+	services := []gethnode.ServiceConstructor{
+		func(ctx *gethnode.ServiceContext) (gethnode.Service, error) {
+			return protocolGethService, nil
+		},
+	}
+
+	if err := statusNode.Start(nodeConfig, services...); err != nil {
+		return nil, errors.Wrap(err, "failed to start node")
+	}
+
+	shhService, err := statusNode.WhisperService()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get Whisper service")
+	}
+
+	t := adapters.NewDataSyncWhisperTransport(shhService, pk)
+	ds := store.NewDummyStore()
+	n := datasyncnode.NewNode(
+		&ds,
+		t,
+		state.NewSyncState(), // @todo sqlite syncstate
+		adapters.CalculateSendTime,
+		state.PublicKeyToPeerID(pk.PublicKey),
+		datasyncnode.BATCH,
+	)
+
+	adapter := adapters.NewDataSyncClient(n, t)
+	messenger := client.NewMessengerV2(pk, adapter, db)
+
+	protocolGethService.SetProtocol(adapter)
+	protocolGethService.SetMessenger(&messenger)
 
 	return &messenger, nil
 }
