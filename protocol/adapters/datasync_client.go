@@ -224,7 +224,7 @@ func (t DataSyncWhisperTransport) decodeMessages(payload protobuf.Payload) []*pr
 // CalculateSendTime calculates the next epoch
 // at which a message should be sent.
 func CalculateSendTime(count uint64, time int64) int64 {
-	return time + int64(count*2)
+	return time + int64(count*2) // @todo this should match that time is increased by whisper periods, aka we only retransmit the first time when a message has expired.
 }
 
 func toGroupId(topicType whisper.TopicType) state.GroupID {
