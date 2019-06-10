@@ -11,7 +11,13 @@ type SyncState struct {
 }
 
 func (s *SyncState) Get(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID) (mvds.State, error) {
-	r, err := s.db.Query("SELECT * FROM state WHERE groupID = ? AND id = ? AND peer = ?", group[:], id[:], peer[:])
+	r, err := s.db.Query(
+		"SELECT send_count, send_epoch FROM state WHERE groupID = ? AND id = ? AND peer = ?",
+		group[:],
+		id[:],
+		peer[:],
+	)
+
 	if err != nil {
 		return mvds.State{}, err
 	}
