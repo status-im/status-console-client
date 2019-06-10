@@ -10,62 +10,57 @@ type SyncState struct {
 	db *sql.DB
 }
 
-// @todo these functions should probably all return errors
-func (s *SyncState) Get(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID) mvds.State {
+func (s *SyncState) Get(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID) (mvds.State, error) {
 	r, err := s.db.Query("SELECT * FROM state WHERE groupID = ? AND id = ? AND peer = ?", group[:], id[:], peer[:])
 	if err != nil {
-		// @todo
-		return mvds.State{}
+		return mvds.State{}, err
 	}
 
 	if !r.Next() {
-		return mvds.State{}
+		return mvds.State{}, err
 	}
 
 	var count   uint64
 	var epoch   int64
 	err = r.Scan(&count, &epoch)
 	if err != nil {
-		// @todo
-		return mvds.State{}
+		return mvds.State{}, err
 	}
 
 	return mvds.State{
 		SendCount: count,
 		SendEpoch: epoch,
-	}
+	}, nil
 }
 
-func (s *SyncState) Set(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID, newState mvds.State) {
+func (s *SyncState) Set(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID, newState mvds.State) error {
 	panic("implement me")
 }
 
-func (s *SyncState) Remove(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID) {
+func (s *SyncState) Remove(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID) error {
 	q, err := s.db.Prepare("DELETE FROM state WHERE groupID = ? AND id = ? AND peer = ?")
 	if err != nil {
 		// @todo
-		return
 	}
 
 	r, err := q.Exec(group[:], id[:], peer[:])
 	if err != nil {
-		// @todo
-		return
+		return err
 	}
 
-	// @todo check r.RowsAffected
 	affected, err := r.RowsAffected()
 	if err != nil {
-		// @todo
-		return
+		return err
 	}
 
 	if affected != 1 {
 		// @todo
 	}
+
+	return nil
 }
 
-func (s *SyncState) Map(process func(mvds.GroupID, mvds.MessageID, mvds.PeerID, mvds.State) mvds.State) {
+func (s *SyncState) Map(process func(mvds.GroupID, mvds.MessageID, mvds.PeerID, mvds.State) mvds.State) error {
 	panic("implement me")
 }
 
