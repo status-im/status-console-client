@@ -7,7 +7,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/status-im/mvds/node"
@@ -75,9 +74,6 @@ func (c *DataSyncClient) peer(id state.GroupID, peer *ecdsa.PublicKey) {
 		return
 	}
 
-	log.Print(len(crypto.FromECDSAPub(peer)))
-	log.Print(crypto.FromECDSAPub(peer))
-
 	p := state.PublicKeyToPeerID(*peer)
 
 	if c.sync.IsPeerInGroup(id, p) {
@@ -125,9 +121,6 @@ func (t *DataSyncWhisperTransport) Send(group state.GroupID, _ state.PeerID, pee
 	newMessage.Topic = toTopicType(group)
 
 	// @todo set SymKeyID or PublicKey depending on chat type
-
-	log.Print(peer[:])
-
 	newMessage.PublicKey = peer[:]
 
 	_, err = whisper.NewPublicWhisperAPI(t.shh).Post(context.Background(), newMessage.ToWhisper())
