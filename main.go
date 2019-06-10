@@ -24,6 +24,7 @@ import (
 	"github.com/status-im/mvds/store"
 	"github.com/status-im/status-console-client/protocol/adapters"
 	"github.com/status-im/status-console-client/protocol/client"
+	"github.com/status-im/status-console-client/protocol/datasync"
 	"github.com/status-im/status-console-client/protocol/gethservice"
 	"github.com/status-im/status-go/logutils"
 	"github.com/status-im/status-go/node"
@@ -389,10 +390,18 @@ func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*cli
 
 	t := adapters.NewDataSyncWhisperTransport(shhService, pk)
 	ds := store.NewDummyStore()
+
+	dbKey := crypto.PubkeyToAddress(pk.PublicKey).String()
+	dbPath := filepath.Join(*dataDir, "db.sql")
+	ss, err := datasync.NewSyncState(dbPath, dbKey)
+	if err != nil {
+		return nil, err
+	}
+
 	n := datasyncnode.NewNode(
 		&ds,
 		t,
-		state.NewSyncState(), // @todo sqlite syncstate
+		ss,
 		adapters.CalculateSendTime,
 		state.PublicKeyToPeerID(pk.PublicKey),
 		datasyncnode.BATCH,

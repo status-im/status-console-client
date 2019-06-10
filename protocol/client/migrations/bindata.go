@@ -43,6 +43,24 @@ func _0001_add_messages_contacts_up_db_sql() ([]byte, error) {
 	)
 }
 
+var __0002_add_state_down_db_sql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x72\x09\xf2\x0f\x50\x08\x71\x74\xf2\x71\x55\x28\x2e\x49\x2c\x49\xb5\xe6\x02\x04\x00\x00\xff\xff\x93\x2f\x1f\x31\x12\x00\x00\x00")
+
+func _0002_add_state_down_db_sql() ([]byte, error) {
+	return bindata_read(
+		__0002_add_state_down_db_sql,
+		"0002_add_state.down.db.sql",
+	)
+}
+
+var __0002_add_state_up_db_sql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x6c\xce\xb1\x0a\x83\x30\x10\xc6\xf1\x3d\x4f\xf1\x8d\x0a\xbe\x81\x93\x69\xaf\xe5\x20\x9c\xb4\x46\x70\xd3\xa2\xa1\x75\x51\x31\xf1\xfd\x0b\xb1\x42\x07\xb7\xe3\xf7\x0d\xf7\xbf\x3c\xa9\xb0\x04\x5b\x68\x43\xe0\x1b\xa4\xb4\xa0\x86\x2b\x5b\xc1\x87\x57\x70\x48\x14\x00\x8c\x03\xb4\x29\x75\x9c\xa5\x36\x26\x8b\xda\xbd\xd7\x79\x5b\xba\xb3\x69\x71\x6e\x3d\x73\xef\xa6\xa1\xed\xe7\x6d\x0a\xd0\x7c\x6f\x59\xec\x9f\xbb\x65\xee\x3f\x87\xab\x34\x57\xea\x97\x57\x0b\x3f\x6a\x02\xcb\x95\x9a\xbd\xcb\xa3\x94\xfd\x4a\xc6\x21\x3b\x4a\xb2\xf8\x37\xcd\xd5\x37\x00\x00\xff\xff\x5e\x55\xa1\x15\xd7\x00\x00\x00")
+
+func _0002_add_state_up_db_sql() ([]byte, error) {
+	return bindata_read(
+		__0002_add_state_up_db_sql,
+		"0002_add_state.up.db.sql",
+	)
+}
+
 // Asset loads and returns the asset for the given name.
 // It returns an error if the asset could not be found or
 // could not be loaded.
@@ -67,6 +85,8 @@ func AssetNames() []string {
 var _bindata = map[string]func() ([]byte, error){
 	"0001_add_messages_contacts.down.db.sql": _0001_add_messages_contacts_down_db_sql,
 	"0001_add_messages_contacts.up.db.sql": _0001_add_messages_contacts_up_db_sql,
+	"0002_add_state.down.db.sql": _0002_add_state_down_db_sql,
+	"0002_add_state.up.db.sql": _0002_add_state_up_db_sql,
 }
 // AssetDir returns the file names below a certain
 // directory embedded in the file by go-bindata.
@@ -111,5 +131,9 @@ var _bintree = &_bintree_t{nil, map[string]*_bintree_t{
 	"0001_add_messages_contacts.down.db.sql": &_bintree_t{_0001_add_messages_contacts_down_db_sql, map[string]*_bintree_t{
 	}},
 	"0001_add_messages_contacts.up.db.sql": &_bintree_t{_0001_add_messages_contacts_up_db_sql, map[string]*_bintree_t{
+	}},
+	"0002_add_state.down.db.sql": &_bintree_t{_0002_add_state_down_db_sql, map[string]*_bintree_t{
+	}},
+	"0002_add_state.up.db.sql": &_bintree_t{_0002_add_state_up_db_sql, map[string]*_bintree_t{
 	}},
 }}

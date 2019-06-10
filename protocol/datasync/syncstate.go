@@ -5,10 +5,20 @@ import (
 	"log"
 
 	"github.com/status-im/mvds/state"
+	"github.com/status-im/status-console-client/protocol/client/sqlite"
 )
 
 type SyncState struct {
 	db *sql.DB
+}
+
+func NewSyncState(path, key string) (*SyncState, error) {
+	db, err := sqlite.OpenDB(path, key)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SyncState{db: db}, nil
 }
 
 func (s *SyncState) Get(group state.GroupID, id state.MessageID, peer state.PeerID) (state.State, error) {
@@ -41,7 +51,7 @@ func (s *SyncState) Get(group state.GroupID, id state.MessageID, peer state.Peer
 }
 
 func (s *SyncState) Set(group state.GroupID, id state.MessageID, peer state.PeerID, newState state.State) error {
-	q, err := s.db.Prepare("INSERT INTO state(group, id, peer, send_count, send_epoch) VALUES(?, ?, ?, ?, ?)")
+	q, err := s.db.Prepare("INSERT INTO state(`group`, id, peer, send_count, send_epoch) VALUES(?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -55,7 +65,7 @@ func (s *SyncState) Set(group state.GroupID, id state.MessageID, peer state.Peer
 }
 
 func (s *SyncState) Remove(group state.GroupID, id state.MessageID, peer state.PeerID) error {
-	q, err := s.db.Prepare("DELETE FROM state WHERE group = ? AND id = ? AND peer = ?")
+	q, err := s.db.Prepare("DELETE FROM state WHERE `group` = ? AND id = ? AND peer = ?")
 	if err != nil {
 		return err
 	}
@@ -68,8 +78,8 @@ func (s *SyncState) Remove(group state.GroupID, id state.MessageID, peer state.P
 	return nil
 }
 
-func (s *SyncState) Map(epoch int64, process func(state.GroupID, state.MessageID, state.PeerID, state.State) state.State) error {
-	r, err := s.db.Query("SELECT group, id, peer, send_count, send_epoch FROM state")
+func (s *SyncState) Map(process func(state.GroupID, state.MessageID, state.PeerID, state.State) state.State) error {
+	r, err := s.db.Query("SELECT `group`, id, peer, send_count, send_epoch FROM state")
 	if err != nil {
 		return err
 	}
