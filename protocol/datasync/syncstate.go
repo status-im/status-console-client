@@ -68,7 +68,7 @@ func (s *SyncState) Remove(group mvds.GroupID, id mvds.MessageID, peer mvds.Peer
 	return nil
 }
 
-func (s *SyncState) Map(process func(mvds.GroupID, mvds.MessageID, mvds.PeerID, mvds.State) mvds.State) error {
+func (s *SyncState) Map(epoch int64, process func(mvds.GroupID, mvds.MessageID, mvds.PeerID, mvds.State) mvds.State) error {
 	r, err := s.db.Query("SELECT group, id, peer, send_count, send_epoch FROM state")
 	if err != nil {
 		return err
