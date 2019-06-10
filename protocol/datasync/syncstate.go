@@ -10,8 +10,30 @@ type SyncState struct {
 	db *sql.DB
 }
 
+// @todo these functions should probably all return errors
 func (s *SyncState) Get(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID) mvds.State {
-	panic("implement me")
+	r, err := s.db.Query("SELECT * FROM state WHERE groupID = ? AND id = ? AND peer = ?", group[:], id[:], peer[:])
+	if err != nil {
+		// @todo
+		return mvds.State{}
+	}
+
+	if !r.Next() {
+		return mvds.State{}
+	}
+
+	var count   uint64
+	var epoch   int64
+	err = r.Scan(&count, &epoch)
+	if err != nil {
+		// @todo
+		return mvds.State{}
+	}
+
+	return mvds.State{
+		SendCount: count,
+		SendEpoch: epoch,
+	}
 }
 
 func (s *SyncState) Set(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID, newState mvds.State) {
@@ -19,7 +41,7 @@ func (s *SyncState) Set(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID,
 }
 
 func (s *SyncState) Remove(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID) {
-	q, err := s.db.Prepare("DELETE state WHERE groupID = ? AND id = ? AND peer = ?")
+	q, err := s.db.Prepare("DELETE FROM state WHERE groupID = ? AND id = ? AND peer = ?")
 	if err != nil {
 		// @todo
 		return
