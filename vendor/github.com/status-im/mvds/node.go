@@ -106,7 +106,12 @@ func (n *Node) AppendMessage(group GroupID, data []byte) (MessageID, error) {
 			if n.mode == INTERACTIVE {
 				s := State{}
 				s.SendEpoch = n.epoch + 1
-				n.syncState.Set(group, id, p, s)
+				err := n.syncState.Set(group, id, p, s)
+
+				if err != nil {
+					log.Printf("error while setting sync state %s", err.Error())
+				}
+
 				return
 			}
 
@@ -151,7 +156,7 @@ func (n Node) IsPeerInGroup(g GroupID, p PeerID) bool {
 }
 
 func (n *Node) sendMessages() {
-	n.syncState.Map(func(g GroupID, m MessageID, p PeerID, s State) State {
+	err := n.syncState.Map(func(g GroupID, m MessageID, p PeerID, s State) State {
 		if s.SendEpoch < n.epoch || !n.IsPeerInGroup(g, p) {
 			return s
 		}
@@ -159,6 +164,10 @@ func (n *Node) sendMessages() {
 		n.payloads.AddOffers(g, p, m[:])
 		return n.updateSendEpoch(s)
 	})
+
+	if err != nil {
+		log.Printf("error while mapping sync state: %s", err.Error())
+	}
 
 	n.payloads.MapAndClear(func(id GroupID, peer PeerID, payload protobuf.Payload) {
 		err := n.transport.Send(id, n.ID, peer, payload)
@@ -224,7 +233,17 @@ func (n *Node) onRequest(group GroupID, sender PeerID, msg protobuf.Request) []*
 			continue
 		}
 
-		n.syncState.Set(group, id, sender, n.updateSendEpoch(n.syncState.Get(group, id, sender)))
+		s, err := n.syncState.Get(group, id, sender)
+		if err != nil {
+			log.Printf("error (%s) getting sync state group: %x id: %x peer: %x", err.Error(), group[:4], id[:4], sender[:4])
+			continue
+		}
+
+		err = n.syncState.Set(group, id, sender, n.updateSendEpoch(s))
+		if err != nil {
+			log.Printf("error (%s) getting sync state group: %x id: %x peer: %x", err.Error(), group[:4], id[:4], sender[:4])
+			continue
+		}
 
 		m = append(m, &message)
 
@@ -238,7 +257,11 @@ func (n *Node) onAck(group GroupID, sender PeerID, msg protobuf.Ack) {
 	for _, raw := range msg.Id {
 		id := toMessageID(raw)
 
-		n.syncState.Remove(group, id, sender)
+		err := n.syncState.Remove(group, id, sender)
+		if err != nil {
+			log.Printf("error while removing sync state %s", err.Error())
+			continue
+		}
 
 		log.Printf("[%x] ACK (%x -> %x): %x received.\n", group[:4], sender[:4], n.ID[:4], id[:4])
 	}
