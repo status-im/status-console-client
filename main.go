@@ -390,7 +390,7 @@ func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*cli
 	n := mvds.NewNode(
 		&ds,
 		t,
-		mvds.NewSyncState(),
+		mvds.NewSyncState(), // @todo sqlite syncstate
 		adapters.CalculateSendTime,
 		mvds.PublicKeyToPeerID(pk.PublicKey),
 		mvds.BATCH,
