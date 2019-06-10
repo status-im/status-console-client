@@ -387,7 +387,14 @@ func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*cli
 
 	t := adapters.NewDataSyncWhisperTransport(shhService, pk)
 	ds := mvds.NewDummyStore()
-	n := mvds.NewNode(&ds, t, adapters.CalculateSendTime, mvds.PublicKeyToPeerID(pk.PublicKey), mvds.BATCH)
+	n := mvds.NewNode(
+		&ds,
+		t,
+		mvds.NewSyncState(),
+		adapters.CalculateSendTime,
+		mvds.PublicKeyToPeerID(pk.PublicKey),
+		mvds.BATCH,
+	)
 
 	adapter := adapters.NewDataSyncClient(n, t)
 	messenger := client.NewMessengerV2(pk, adapter, db)
