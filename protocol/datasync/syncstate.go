@@ -20,8 +20,8 @@ func (s *SyncState) Get(group mvds.GroupID, id mvds.MessageID, peer mvds.PeerID)
 		return mvds.State{}, err
 	}
 
-	var count   uint64
-	var epoch   int64
+	var count uint64
+	var epoch int64
 	err = r.Scan(&count, &epoch)
 	if err != nil {
 		return mvds.State{}, err
@@ -63,4 +63,3 @@ func (s *SyncState) Remove(group mvds.GroupID, id mvds.MessageID, peer mvds.Peer
 func (s *SyncState) Map(process func(mvds.GroupID, mvds.MessageID, mvds.PeerID, mvds.State) mvds.State) error {
 	panic("implement me")
 }
-
