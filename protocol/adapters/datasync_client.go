@@ -57,7 +57,7 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 
 	c.peer(gid, options.Recipient)
 
-	id, err := c.sync.AppendMessage(toGroupId(topic), data)
+	id, err := c.sync.AppendMessage(gid, data)
 	if err != nil {
 		return nil, err
 	}
