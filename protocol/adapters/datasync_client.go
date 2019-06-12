@@ -55,7 +55,13 @@ func (c *DataSyncClient) Send(ctx context.Context, data []byte, options protocol
 
 	gid := toGroupId(topic)
 
-	c.peer(gid, options.Recipient)
+	if options.Recipient != nil {
+		c.peer(gid, options.Recipient)
+	}
+
+	// @todo store somewhere that messages for gid == public
+
+	// @todo peer for m.keys.AddOrGetSymKeyFromPassword(name) to simulate a peer
 
 	id, err := c.sync.AppendMessage(gid, data)
 	if err != nil {
