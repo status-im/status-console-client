@@ -16,18 +16,28 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	gethnode "github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/jroimartin/gocui"
-	"github.com/peterbourgon/ff"
-	"github.com/pkg/errors"
-	"github.com/status-im/status-console-client/protocol/adapter"
-	"github.com/status-im/status-console-client/protocol/client"
-	"github.com/status-im/status-console-client/protocol/gethservice"
-	"github.com/status-im/status-console-client/protocol/transport"
+
 	"github.com/status-im/status-go/logutils"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/services/shhext/chat"
 	"github.com/status-im/status-go/signal"
+
+	"github.com/jroimartin/gocui"
+	"github.com/peterbourgon/ff"
+	"github.com/pkg/errors"
+
+	datasyncnode "github.com/status-im/mvds/node"
+	"github.com/status-im/mvds/state"
+	"github.com/status-im/mvds/store"
+
+	"github.com/status-im/status-console-client/protocol/adapter"
+	"github.com/status-im/status-console-client/protocol/client"
+	"github.com/status-im/status-console-client/protocol/datasync"
+	dspeer "github.com/status-im/status-console-client/protocol/datasync/peer"
+	"github.com/status-im/status-console-client/protocol/gethservice"
+	"github.com/status-im/status-console-client/protocol/transport"
+	"github.com/status-im/status-console-client/protocol/v1"
 )
 
 var g *gocui.Gui
@@ -201,7 +211,7 @@ func main() {
 			exitErr(err)
 		}
 	} else {
-		messenger, err = createMessengerInProc(privateKey, db, *dataSyncEnabled)
+		messenger, err = createMessengerInProc(privateKey, db)
 		if err != nil {
 			exitErr(err)
 		}
@@ -317,47 +327,50 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		return nil, errors.Wrap(err, "failed to get Whisper service")
 	}
 
-	var messenger *client.Messenger
+	var protocolAdapter protocol.Protocol
 
 	if *dataSyncEnabled {
-		t := transport.NewDataSyncWhisperTransport(shhService, pk)
-		ds := store.NewDummyStore()
-		n := datasyncnode.NewNode(
-			&ds,
-			t,
+		transport := transport.NewWhisperServiceTransport(statusNode, shhService, pk)
+
+		dataSyncTransport := datasync.NewDataSyncNodeTransport(transport)
+		dataSyncStore := store.NewDummyStore()
+		dataSyncNode := datasyncnode.NewNode(
+			&dataSyncStore,
+			dataSyncTransport,
 			state.NewSyncState(), // @todo sqlite syncstate
-			transport.CalculateSendTime,
+			datasync.CalculateSendTime,
 			0,
-			transport.PublicKeyToPeerID(pk.PublicKey),
+			dspeer.PublicKeyToPeerID(pk.PublicKey),
 			datasyncnode.BATCH,
 		)
-		adapter := adapter.NewDataSyncWhisperAdapter(n, t)
-		messenger = client.NewMessenger(pk, adapter, db)
+
+		protocolAdapter = adapter.NewDataSyncWhisperAdapter(dataSyncNode, transport, dataSyncTransport)
 	} else {
-	var pfs *chat.ProtocolService
+		var pfs *chat.ProtocolService
 
-	// TODO: should be removed from StatusNode
-	if *pfsEnabled {
-		databasesDir := filepath.Join(*dataDir, "databases")
+		// TODO: should be removed from StatusNode
+		if *pfsEnabled {
+			databasesDir := filepath.Join(*dataDir, "databases")
 
-		if err := os.MkdirAll(databasesDir, 0755); err != nil {
-			exitErr(errors.Wrap(err, "failed to create databases dir"))
+			if err := os.MkdirAll(databasesDir, 0755); err != nil {
+				exitErr(errors.Wrap(err, "failed to create databases dir"))
+			}
+
+			pfs, err = initPFS(databasesDir)
+			if err != nil {
+				exitErr(errors.Wrap(err, "initialize PFS"))
+			}
+
+			log.Printf("PFS has been initialized")
 		}
 
-		pfs, err = initPFS(databasesDir)
-		if err != nil {
-			exitErr(errors.Wrap(err, "initialize PFS"))
-		}
-
-		log.Printf("PFS has been initialized")
+		transport := transport.NewWhisperServiceTransport(statusNode, shhService, pk)
+		protocolAdapter = adapter.NewProtocolWhisperAdapter(transport, pfs)
 	}
 
-	transport := transport.NewWhisperServiceTransport(statusNode, shhService, pk)
-	adapter := adapter.NewProtocolWhisperAdapter(transport, pfs)
-	messenger = client.NewMessenger(pk, adapter, db)
-}
+	messenger := client.NewMessenger(pk, protocolAdapter, db)
 
-	protocolGethService.SetProtocol(adapter)
+	protocolGethService.SetProtocol(protocolAdapter)
 	protocolGethService.SetMessenger(messenger)
 
 	return messenger, nil

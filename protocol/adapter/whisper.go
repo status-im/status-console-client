@@ -93,18 +93,18 @@ func updateFilterFromSubscribeOptions(f *filter, options protocol.SubscribeOptio
 	}
 }
 
-type newMessage struct {
+type NewMessage struct {
 	whisper.NewMessage
 	keys keysManager
 }
 
-func newNewMessage(keys keysManager, data []byte) (*newMessage, error) {
+func NewNewMessage(keys keysManager, data []byte) (*NewMessage, error) {
 	sigKey, err := keys.AddOrGetKeyPair(keys.PrivateKey())
 	if err != nil {
 		return nil, err
 	}
 
-	return &newMessage{
+	return &NewMessage{
 		NewMessage: whisper.NewMessage{
 			TTL:       WhisperTTL,
 			Payload:   data,
@@ -116,7 +116,7 @@ func newNewMessage(keys keysManager, data []byte) (*newMessage, error) {
 	}, nil
 }
 
-func (m *newMessage) updateForPrivate(name string, recipient *ecdsa.PublicKey) (err error) {
+func (m *NewMessage) updateForPrivate(name string, recipient *ecdsa.PublicKey) (err error) {
 	m.Topic, err = ToTopic(name)
 	if err != nil {
 		return
@@ -127,7 +127,7 @@ func (m *newMessage) updateForPrivate(name string, recipient *ecdsa.PublicKey) (
 	return
 }
 
-func (m *newMessage) updateForPublicGroup(name string) (err error) {
+func (m *NewMessage) updateForPublicGroup(name string) (err error) {
 	m.Topic, err = ToTopic(name)
 	if err != nil {
 		return
@@ -137,7 +137,7 @@ func (m *newMessage) updateForPublicGroup(name string) (err error) {
 	return
 }
 
-func updateNewMessageFromSendOptions(m *newMessage, options protocol.SendOptions) error {
+func updateNewMessageFromSendOptions(m *NewMessage, options protocol.SendOptions) error {
 	if options.Recipient != nil && options.ChatName != "" {
 		return m.updateForPrivate(options.ChatName, options.Recipient)
 	} else if options.ChatName != "" {
