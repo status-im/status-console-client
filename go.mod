@@ -7,7 +7,7 @@ require (
 	github.com/deckarep/golang-set v1.7.1 // indirect
 	github.com/edsrzf/mmap-go v1.0.0 // indirect
 	github.com/elastic/gosigar v0.10.2 // indirect
-	github.com/ethereum/go-ethereum v1.8.23
+	github.com/ethereum/go-ethereum v1.8.27
 	github.com/fatih/color v1.7.0
 	github.com/fjl/memsize v0.0.0-20180929194037-2a09253e352a // indirect
 	github.com/go-playground/locales v0.12.1 // indirect
@@ -35,6 +35,7 @@ require (
 	github.com/status-im/doubleratchet v2.0.0+incompatible // indirect
 	github.com/status-im/migrate v3.5.1-status+incompatible // indirect
 	github.com/status-im/migrate/v4 v4.3.1-status
+	github.com/status-im/mvds v0.0.14 // indirect
 	github.com/status-im/rendezvous v1.2.0 // indirect
 	github.com/status-im/status-go v0.25.0-beta.2
 	github.com/status-im/whisper v1.4.13

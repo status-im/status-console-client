@@ -44,11 +44,12 @@ var (
 	addContact    = fs.String("add-contact", "", "add contact using format: type,name[,public-key] where type can be 'private' or 'public' and 'public-key' is required for 'private' type")
 
 	// flags for in-proc node
-	dataDir     = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
-	noNamespace = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
-	fleet       = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
-	configFile  = fs.String("node-config", "", "a JSON file with node config")
-	pfsEnabled  = fs.Bool("pfs", false, "enable PFS")
+	dataDir         = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
+	noNamespace     = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
+	fleet           = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
+	configFile      = fs.String("node-config", "", "a JSON file with node config")
+	pfsEnabled      = fs.Bool("pfs", false, "enable PFS")
+	dataSyncEnabled = fs.Bool("ds", false, "enable data sync")
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -200,7 +201,7 @@ func main() {
 			exitErr(err)
 		}
 	} else {
-		messenger, err = createMessengerInProc(privateKey, db)
+		messenger, err = createMessengerInProc(privateKey, db, *dataSyncEnabled)
 		if err != nil {
 			exitErr(err)
 		}
@@ -316,6 +317,23 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		return nil, errors.Wrap(err, "failed to get Whisper service")
 	}
 
+	var messenger *client.Messenger
+
+	if *dataSyncEnabled {
+		t := transport.NewDataSyncWhisperTransport(shhService, pk)
+		ds := store.NewDummyStore()
+		n := datasyncnode.NewNode(
+			&ds,
+			t,
+			state.NewSyncState(), // @todo sqlite syncstate
+			transport.CalculateSendTime,
+			0,
+			transport.PublicKeyToPeerID(pk.PublicKey),
+			datasyncnode.BATCH,
+		)
+		adapter := adapter.NewDataSyncWhisperAdapter(n, t)
+		messenger = client.NewMessenger(pk, adapter, db)
+	} else {
 	var pfs *chat.ProtocolService
 
 	// TODO: should be removed from StatusNode
@@ -336,7 +354,8 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 
 	transport := transport.NewWhisperServiceTransport(statusNode, shhService, pk)
 	adapter := adapter.NewProtocolWhisperAdapter(transport, pfs)
-	messenger := client.NewMessenger(pk, adapter, db)
+	messenger = client.NewMessenger(pk, adapter, db)
+}
 
 	protocolGethService.SetProtocol(adapter)
 	protocolGethService.SetMessenger(messenger)
