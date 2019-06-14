@@ -22,16 +22,16 @@ github.com/davecgh/go-spew/spew
 github.com/deckarep/golang-set
 # github.com/edsrzf/mmap-go v1.0.0
 github.com/edsrzf/mmap-go
-# github.com/ethereum/go-ethereum v1.8.23 => github.com/status-im/go-ethereum v1.8.23
+# github.com/ethereum/go-ethereum v1.8.27 => github.com/status-im/go-ethereum v1.8.27-status
 github.com/ethereum/go-ethereum/common
 github.com/ethereum/go-ethereum/crypto
 github.com/ethereum/go-ethereum/node
 github.com/ethereum/go-ethereum/rpc
-github.com/ethereum/go-ethereum/p2p
-github.com/ethereum/go-ethereum/p2p/enode
 github.com/ethereum/go-ethereum/common/hexutil
 github.com/ethereum/go-ethereum/crypto/secp256k1
 github.com/ethereum/go-ethereum/event
+github.com/ethereum/go-ethereum/p2p
+github.com/ethereum/go-ethereum/p2p/enode
 github.com/ethereum/go-ethereum/common/math
 github.com/ethereum/go-ethereum/rlp
 github.com/ethereum/go-ethereum/accounts
@@ -51,9 +51,9 @@ github.com/ethereum/go-ethereum/les
 github.com/ethereum/go-ethereum/p2p/discv5
 github.com/ethereum/go-ethereum/p2p/enr
 github.com/ethereum/go-ethereum/params
-github.com/ethereum/go-ethereum/common/bitutil
-github.com/ethereum/go-ethereum/common/mclock
 github.com/ethereum/go-ethereum/crypto/ecies
+github.com/ethereum/go-ethereum/common/mclock
+github.com/ethereum/go-ethereum/common/bitutil
 github.com/ethereum/go-ethereum/p2p/discover
 github.com/ethereum/go-ethereum
 github.com/ethereum/go-ethereum/core/types
@@ -327,9 +327,9 @@ github.com/status-im/rendezvous/protocol
 github.com/status-im/status-go/logutils
 github.com/status-im/status-go/node
 github.com/status-im/status-go/params
+github.com/status-im/status-go/services/shhext/chat
 github.com/status-im/status-go/signal
 github.com/status-im/status-go/services/shhext
-github.com/status-im/status-go/services/shhext/chat
 github.com/status-im/status-go/db
 github.com/status-im/status-go/discovery
 github.com/status-im/status-go/mailserver
@@ -341,10 +341,10 @@ github.com/status-im/status-go/services/personal
 github.com/status-im/status-go/services/status
 github.com/status-im/status-go/static
 github.com/status-im/status-go/timesource
-github.com/status-im/status-go/services/shhext/dedup
-github.com/status-im/status-go/services/shhext/mailservers
 github.com/status-im/status-go/services/shhext/chat/crypto
 github.com/status-im/status-go/services/shhext/chat/migrations
+github.com/status-im/status-go/services/shhext/dedup
+github.com/status-im/status-go/services/shhext/mailservers
 github.com/status-im/status-go/extkeys
 github.com/status-im/status-go/mailserver/migrations
 github.com/status-im/status-go/contracts
@@ -352,11 +352,9 @@ github.com/status-im/status-go/mailserver/registry
 github.com/status-im/status-go/peers/verifier
 github.com/status-im/status-go/account
 # github.com/status-im/whisper v1.4.13
-github.com/status-im/whisper/shhclient
 github.com/status-im/whisper/whisperv6
 # github.com/stretchr/testify v1.3.0
 github.com/stretchr/testify/require
-github.com/stretchr/testify/suite
 github.com/stretchr/testify/assert
 # github.com/syndtr/goleveldb v1.0.0
 github.com/syndtr/goleveldb/leveldb

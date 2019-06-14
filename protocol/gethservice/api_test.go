@@ -11,11 +11,15 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	gethnode "github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/golang/mock/gomock"
-	"github.com/status-im/status-console-client/protocol/v1"
-	protomock "github.com/status-im/status-console-client/protocol/v1/mock"
+
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
+
+	"github.com/status-im/status-console-client/protocol/subscription"
+	"github.com/status-im/status-console-client/protocol/v1"
+	protomock "github.com/status-im/status-console-client/protocol/v1/mock"
+
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -120,7 +124,7 @@ func TestPublicAPIMessages(t *testing.T) {
 				},
 			}),
 		).
-		Return(protocol.NewSubscription(), nil)
+		Return(subscription.New(), nil)
 
 	// The first argument is a name of the method to use for subscription.
 	_, err = client.Subscribe(context.Background(), StatusSecureMessagingProtocolAPIName, messages, "messages", params)

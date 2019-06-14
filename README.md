@@ -41,12 +41,6 @@ Currently the following commands are supported.
 
 `/contact add <public-key> <name>`
 
-# Packages
-
-The main package contains the console user interface.
-
-* `github.com/status-im/status-console-client/protocol/v1` contains the current messaging protocol payload encoders and decoders as well as some utilities like creating a Whisper topic for a public chat.
-
 # License
 
 [Mozilla Public License 2.0](https://github.com/status-im/status-go/blob/develop/LICENSE.md)

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/status-im/status-console-client/protocol/subscription"
 	"github.com/status-im/status-console-client/protocol/v1"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +19,7 @@ func (proto *requestsMock) Send(ctx context.Context, data []byte, options protoc
 	return nil, nil
 }
 
-func (proto *requestsMock) Subscribe(ctx context.Context, messages chan<- *protocol.Message, options protocol.SubscribeOptions) (*protocol.Subscription, error) {
+func (proto *requestsMock) Subscribe(ctx context.Context, messages chan<- *protocol.Message, options protocol.SubscribeOptions) (*subscription.Subscription, error) {
 	return nil, nil
 }
 
