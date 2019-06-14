@@ -394,7 +394,8 @@ func createMessengerWithDataSync(pk *ecdsa.PrivateKey, db client.Database) (*cli
 		t,
 		state.NewSyncState(), // @todo sqlite syncstate
 		adapters.CalculateSendTime,
-		state.PublicKeyToPeerID(pk.PublicKey),
+		0,
+		adapters.PublicKeyToPeerID(pk.PublicKey),
 		datasyncnode.BATCH,
 	)
 

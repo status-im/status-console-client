@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/status-im/mvds/node"
@@ -25,7 +26,7 @@ type DataSyncClient struct {
 }
 
 func NewDataSyncClient(sync *node.Node, t *DataSyncWhisperTransport) *DataSyncClient {
-	go sync.Run()
+	go sync.Start()
 
 	return &DataSyncClient{
 		sync: sync,
@@ -80,7 +81,7 @@ func (c *DataSyncClient) Peer(id state.GroupID, peer *ecdsa.PublicKey) {
 		return
 	}
 
-	p := state.PublicKeyToPeerID(*peer)
+	p := PublicKeyToPeerID(*peer)
 
 	if c.sync.IsPeerInGroup(id, p) {
 		return
@@ -175,7 +176,7 @@ func (t *DataSyncWhisperTransport) subscribe(in chan<- *protocol.Message, option
 
 					t.packets <- transport.Packet{
 						Group:   toGroupId(item.Topic),
-						Sender:  state.PublicKeyToPeerID(*item.Src),
+						Sender:  PublicKeyToPeerID(*item.Src),
 						Payload: *payload,
 					}
 
@@ -243,4 +244,10 @@ func toTopicType(g state.GroupID) whisper.TopicType {
 	t := whisper.TopicType{}
 	copy(t[:], g[:4])
 	return t
+}
+
+func PublicKeyToPeerID(k ecdsa.PublicKey) state.PeerID {
+	var p state.PeerID
+	copy(p[:], crypto.FromECDSAPub(&k))
+	return p
 }
