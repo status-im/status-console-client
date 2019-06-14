@@ -22,7 +22,7 @@ github.com/davecgh/go-spew/spew
 github.com/deckarep/golang-set
 # github.com/edsrzf/mmap-go v1.0.0
 github.com/edsrzf/mmap-go
-# github.com/ethereum/go-ethereum v1.8.23 => github.com/status-im/go-ethereum v1.8.23
+# github.com/ethereum/go-ethereum v1.8.27 => github.com/status-im/go-ethereum v1.8.27-status
 github.com/ethereum/go-ethereum/common
 github.com/ethereum/go-ethereum/crypto
 github.com/ethereum/go-ethereum/node
