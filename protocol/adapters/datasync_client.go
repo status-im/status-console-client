@@ -75,7 +75,7 @@ func (c *DataSyncClient) peer(id state.GroupID, peer *ecdsa.PublicKey) {
 		return
 	}
 
-	p := publicKeyToPeerID(*peer)
+	p := PublicKeyToPeerID(*peer)
 
 	if c.sync.IsPeerInGroup(id, p) {
 		return
@@ -170,7 +170,7 @@ func (t *DataSyncWhisperTransport) subscribe(in chan<- *protocol.Message, option
 
 					t.packets <- transport.Packet{
 						Group:   toGroupId(item.Topic),
-						Sender:  publicKeyToPeerID(*item.Src),
+						Sender:  PublicKeyToPeerID(*item.Src),
 						Payload: *payload,
 					}
 
@@ -240,7 +240,7 @@ func toTopicType(g state.GroupID) whisper.TopicType {
 	return t
 }
 
-func publicKeyToPeerID(k ecdsa.PublicKey) state.PeerID {
+func PublicKeyToPeerID(k ecdsa.PublicKey) state.PeerID {
 	var p state.PeerID
 	copy(p[:], crypto.FromECDSAPub(&k))
 	return p
