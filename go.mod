@@ -17,10 +17,8 @@ require (
 	github.com/golang/mock v1.3.1
 	github.com/influxdata/influxdb v1.7.6 // indirect
 	github.com/jroimartin/gocui v0.4.0
-	github.com/karalabe/hid v0.0.0-20181128192157-d815e0c1a2e2 // indirect
 	github.com/leodido/go-urn v1.1.0 // indirect
 	github.com/mattn/go-runewidth v0.0.4 // indirect
-	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/mutecomm/go-sqlcipher v0.0.0-20170920224653-f799951b4ab2
 	github.com/nsf/termbox-go v0.0.0-20181027232701-60ab7e3d12ed // indirect
 	github.com/pborman/uuid v1.2.0 // indirect
@@ -44,13 +42,10 @@ require (
 	golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f
 	golang.org/x/net v0.0.0-20190522155817-f3200d17e092 // indirect
 	golang.org/x/sys v0.0.0-20190528183647-3626398d7749 // indirect
-	golang.org/x/tools v0.0.0-20190613204242-ed0dc450797f // indirect
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/go-playground/validator.v9 v9.24.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
-	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
 	gopkg.in/olebedev/go-duktape.v3 v3.0.0-20181125150206-ccb656ba24c2 // indirect
-	gopkg.in/urfave/cli.v1 v1.20.0 // indirect
 )
 
-replace github.com/ethereum/go-ethereum v1.8.23 => github.com/status-im/go-ethereum v1.8.23
+replace github.com/ethereum/go-ethereum v1.8.27 => github.com/status-im/go-ethereum v1.8.27-status
