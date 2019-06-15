@@ -344,6 +344,8 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 			datasyncnode.BATCH,
 		)
 
+		dataSyncNode.Start()
+
 		protocolAdapter = adapter.NewDataSyncWhisperAdapter(dataSyncNode, transport, dataSyncTransport)
 	} else {
 		var pfs *chat.ProtocolService
