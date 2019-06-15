@@ -12,6 +12,7 @@ require (
 	github.com/fjl/memsize v0.0.0-20180929194037-2a09253e352a // indirect
 	github.com/go-playground/locales v0.12.1 // indirect
 	github.com/go-playground/universal-translator v0.16.0 // indirect
+	github.com/gogo/protobuf v1.2.1
 	github.com/golang-migrate/migrate v3.5.4+incompatible // indirect
 	github.com/golang-migrate/migrate/v4 v4.3.1 // indirect
 	github.com/golang/mock v1.3.1
@@ -33,6 +34,7 @@ require (
 	github.com/status-im/doubleratchet v2.0.0+incompatible // indirect
 	github.com/status-im/migrate v3.5.1-status+incompatible // indirect
 	github.com/status-im/migrate/v4 v4.3.1-status
+	github.com/status-im/mvds v0.0.14
 	github.com/status-im/rendezvous v1.2.0 // indirect
 	github.com/status-im/status-go v0.25.0-beta.2
 	github.com/status-im/whisper v1.4.13

@@ -127,7 +127,7 @@ func (w *ProtocolWhisperAdapter) Send(ctx context.Context, data []byte, options 
 		data = encryptedData
 	}
 
-	newMessage, err := newNewMessage(w.transport.KeysManager(), data)
+	newMessage, err := NewNewMessage(w.transport.KeysManager(), data)
 	if err != nil {
 		return nil, err
 	}

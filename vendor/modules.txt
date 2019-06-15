@@ -5,12 +5,12 @@ github.com/allegro/bigcache/queue
 github.com/aristanetworks/goarista/monotime
 # github.com/beevik/ntp v0.2.0
 github.com/beevik/ntp
-# github.com/btcsuite/btcd v0.0.0-20190213025234-306aecffea32
+# github.com/btcsuite/btcd v0.0.0-20190427004231-96897255fd17
 github.com/btcsuite/btcd/btcec
 github.com/btcsuite/btcd/chaincfg
 github.com/btcsuite/btcd/chaincfg/chainhash
 github.com/btcsuite/btcd/wire
-# github.com/btcsuite/btcutil v0.0.0-20190207003914-4c204d697803
+# github.com/btcsuite/btcutil v0.0.0-20190425235716-9e5f4b9a998d
 github.com/btcsuite/btcutil
 github.com/btcsuite/btcutil/base58
 github.com/btcsuite/btcutil/bech32
@@ -320,6 +320,12 @@ github.com/status-im/migrate/database/postgres
 github.com/status-im/migrate/v4
 github.com/status-im/migrate/v4/database/sqlcipher
 github.com/status-im/migrate/v4/source/go_bindata
+# github.com/status-im/mvds v0.0.14
+github.com/status-im/mvds/node
+github.com/status-im/mvds/state
+github.com/status-im/mvds/store
+github.com/status-im/mvds/protobuf
+github.com/status-im/mvds/transport
 # github.com/status-im/rendezvous v1.2.0
 github.com/status-im/rendezvous
 github.com/status-im/rendezvous/protocol

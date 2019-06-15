@@ -16,18 +16,28 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	gethnode "github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/jroimartin/gocui"
-	"github.com/peterbourgon/ff"
-	"github.com/pkg/errors"
-	"github.com/status-im/status-console-client/protocol/adapter"
-	"github.com/status-im/status-console-client/protocol/client"
-	"github.com/status-im/status-console-client/protocol/gethservice"
-	"github.com/status-im/status-console-client/protocol/transport"
+
 	"github.com/status-im/status-go/logutils"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/services/shhext/chat"
 	"github.com/status-im/status-go/signal"
+
+	"github.com/jroimartin/gocui"
+	"github.com/peterbourgon/ff"
+	"github.com/pkg/errors"
+
+	datasyncnode "github.com/status-im/mvds/node"
+	"github.com/status-im/mvds/state"
+	"github.com/status-im/mvds/store"
+
+	"github.com/status-im/status-console-client/protocol/adapter"
+	"github.com/status-im/status-console-client/protocol/client"
+	"github.com/status-im/status-console-client/protocol/datasync"
+	dspeer "github.com/status-im/status-console-client/protocol/datasync/peer"
+	"github.com/status-im/status-console-client/protocol/gethservice"
+	"github.com/status-im/status-console-client/protocol/transport"
+	"github.com/status-im/status-console-client/protocol/v1"
 )
 
 var g *gocui.Gui
@@ -44,11 +54,12 @@ var (
 	addContact    = fs.String("add-contact", "", "add contact using format: type,name[,public-key] where type can be 'private' or 'public' and 'public-key' is required for 'private' type")
 
 	// flags for in-proc node
-	dataDir     = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
-	noNamespace = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
-	fleet       = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
-	configFile  = fs.String("node-config", "", "a JSON file with node config")
-	pfsEnabled  = fs.Bool("pfs", false, "enable PFS")
+	dataDir         = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
+	noNamespace     = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
+	fleet           = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
+	configFile      = fs.String("node-config", "", "a JSON file with node config")
+	pfsEnabled      = fs.Bool("pfs", false, "enable PFS")
+	dataSyncEnabled = fs.Bool("ds", false, "enable data sync")
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -316,29 +327,50 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		return nil, errors.Wrap(err, "failed to get Whisper service")
 	}
 
-	var pfs *chat.ProtocolService
+	var protocolAdapter protocol.Protocol
 
-	// TODO: should be removed from StatusNode
-	if *pfsEnabled {
-		databasesDir := filepath.Join(*dataDir, "databases")
+	if *dataSyncEnabled {
+		transport := transport.NewWhisperServiceTransport(statusNode, shhService, pk)
 
-		if err := os.MkdirAll(databasesDir, 0755); err != nil {
-			exitErr(errors.Wrap(err, "failed to create databases dir"))
+		dataSyncTransport := datasync.NewDataSyncNodeTransport(transport)
+		dataSyncStore := store.NewDummyStore()
+		dataSyncNode := datasyncnode.NewNode(
+			&dataSyncStore,
+			dataSyncTransport,
+			state.NewSyncState(), // @todo sqlite syncstate
+			datasync.CalculateSendTime,
+			0,
+			dspeer.PublicKeyToPeerID(pk.PublicKey),
+			datasyncnode.BATCH,
+		)
+
+		protocolAdapter = adapter.NewDataSyncWhisperAdapter(dataSyncNode, transport, dataSyncTransport)
+	} else {
+		var pfs *chat.ProtocolService
+
+		// TODO: should be removed from StatusNode
+		if *pfsEnabled {
+			databasesDir := filepath.Join(*dataDir, "databases")
+
+			if err := os.MkdirAll(databasesDir, 0755); err != nil {
+				exitErr(errors.Wrap(err, "failed to create databases dir"))
+			}
+
+			pfs, err = initPFS(databasesDir)
+			if err != nil {
+				exitErr(errors.Wrap(err, "initialize PFS"))
+			}
+
+			log.Printf("PFS has been initialized")
 		}
 
-		pfs, err = initPFS(databasesDir)
-		if err != nil {
-			exitErr(errors.Wrap(err, "initialize PFS"))
-		}
-
-		log.Printf("PFS has been initialized")
+		transport := transport.NewWhisperServiceTransport(statusNode, shhService, pk)
+		protocolAdapter = adapter.NewProtocolWhisperAdapter(transport, pfs)
 	}
 
-	transport := transport.NewWhisperServiceTransport(statusNode, shhService, pk)
-	adapter := adapter.NewProtocolWhisperAdapter(transport, pfs)
-	messenger := client.NewMessenger(pk, adapter, db)
+	messenger := client.NewMessenger(pk, protocolAdapter, db)
 
-	protocolGethService.SetProtocol(adapter)
+	protocolGethService.SetProtocol(protocolAdapter)
 	protocolGethService.SetMessenger(messenger)
 
 	return messenger, nil
