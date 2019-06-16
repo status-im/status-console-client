@@ -327,12 +327,24 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		return nil, errors.Wrap(err, "failed to get Whisper service")
 	}
 
-	var protocolAdapter protocol.Protocol
+	shhExtService, err := statusNode.ShhExtService()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get shhext service")
+	}
+
+	var (
+		protocolAdapter protocol.Protocol
+		transp          = transport.NewWhisperServiceTransport(
+			statusNode,
+			nodeConfig.ClusterConfig.TrustedMailServers,
+			shhService,
+			shhExtService,
+			pk,
+		)
+	)
 
 	if *dataSyncEnabled {
-		transport := transport.NewWhisperServiceTransport(statusNode, shhService, pk)
-
-		dataSyncTransport := datasync.NewDataSyncNodeTransport(transport)
+		dataSyncTransport := datasync.NewDataSyncNodeTransport(transp)
 		dataSyncStore := store.NewDummyStore()
 		dataSyncNode := datasyncnode.NewNode(
 			&dataSyncStore,
@@ -346,7 +358,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 
 		dataSyncNode.Start()
 
-		protocolAdapter = adapter.NewDataSyncWhisperAdapter(dataSyncNode, transport, dataSyncTransport)
+		protocolAdapter = adapter.NewDataSyncWhisperAdapter(dataSyncNode, transp, dataSyncTransport)
 	} else {
 		var pfs *chat.ProtocolService
 
@@ -366,8 +378,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 			log.Printf("PFS has been initialized")
 		}
 
-		transport := transport.NewWhisperServiceTransport(statusNode, shhService, pk)
-		protocolAdapter = adapter.NewProtocolWhisperAdapter(transport, pfs)
+		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, pfs)
 	}
 
 	messenger := client.NewMessenger(pk, protocolAdapter, db)
