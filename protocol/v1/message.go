@@ -13,6 +13,7 @@ import (
 const (
 	// ContentTypeTextPlain means that the message contains plain text.
 	ContentTypeTextPlain = "text/plain"
+	ContentTypeMeta      = "meta"
 )
 
 // Message types.
