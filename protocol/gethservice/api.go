@@ -47,8 +47,8 @@ type RequestParams struct {
 
 // Contact
 type Contact struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
+	Name      string        `json:"name"`
+	PublicKey hexutil.Bytes `json:"key"`
 }
 
 // PublicAPI provides an JSON-RPC API to interact with
@@ -242,6 +242,63 @@ func (api *PublicAPI) Chat(ctx context.Context, contact client.Contact) (*rpc.Su
 // Otherwise, it requests older messages than already downloaded.
 func (api *PublicAPI) RequestAll(ctx context.Context, newest bool) error {
 	return api.service.messenger.RequestAll(ctx, newest)
+}
+
+// AddContact will ensure that contact is added to messenger database and new stream spawned for a contact if needed.
+func (api *PublicAPI) AddContact(ctx context.Context, contact Contact) (err error) {
+	if api.service.messenger == nil {
+		return ErrMessengerNotSet
+	}
+	var c client.Contact
+	if len(contact.PublicKey) != 0 {
+		c, err = client.CreateContactPrivate(contact.Name, contact.PublicKey.String(), client.ContactAdded)
+		if err != nil {
+			return err
+		}
+	} else {
+		c = client.CreateContactPublicRoom(contact.Name, client.ContactAdded)
+	}
+	err = api.service.messenger.AddContact(c)
+	if err != nil {
+		return err
+	}
+	return api.service.messenger.Join(ctx, c)
+}
+
+// SendToContact send payload to specified contact. Contact should be added before sending message, otherwise error will
+// be received.
+func (api *PublicAPI) SendToContact(ctx context.Context, contact Contact, payload string) (err error) {
+	if api.service.messenger == nil {
+		return ErrMessengerNotSet
+	}
+	var c client.Contact
+	if len(contact.PublicKey) != 0 {
+		c, err = client.CreateContactPrivate(contact.Name, contact.PublicKey.String(), client.ContactAdded)
+		if err != nil {
+			return err
+		}
+	} else {
+		c = client.CreateContactPublicRoom(contact.Name, client.ContactAdded)
+	}
+	return api.service.messenger.Send(c, []byte(payload))
+}
+
+// ReadContactMessages read contact messages starting from offset.
+// To read all offset should be zero. To read only new set offset to total number of previously read messages.
+func (api *PublicAPI) ReadContactMessages(ctx context.Context, contact Contact, offset int64) (rst []*protocol.Message, err error) {
+	if api.service.messenger == nil {
+		return nil, ErrMessengerNotSet
+	}
+	var c client.Contact
+	if len(contact.PublicKey) != 0 {
+		c, err = client.CreateContactPrivate(contact.Name, contact.PublicKey.String(), client.ContactAdded)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		c = client.CreateContactPublicRoom(contact.Name, client.ContactAdded)
+	}
+	return api.service.messenger.Messages(c, offset)
 }
 
 func unmarshalPubKey(b hexutil.Bytes) (*ecdsa.PublicKey, error) {
