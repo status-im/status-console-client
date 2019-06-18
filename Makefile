@@ -1,10 +1,16 @@
-SHELL := /bin/bash
-
 GO111MODULE = on
+
+ENABLE_METRICS ?= true
+BUILD_FLAGS ?= $(shell echo "-ldflags '\
+	-X github.com/status-im/status-console-client/vendor/github.com/ethereum/go-ethereum/metrics.EnabledStr=$(ENABLE_METRICS)'")
+
+
+DOCKER_IMAGE_NAME ?= statusteam/status-client
+DOCKER_CUSTOM_TAG ?= $(shell git rev-parse --short HEAD)
 
 build: GOFLAGS ?= "-mod=vendor"
 build:
-	GOFLAGS=$(GOFLAGS) go build -o ./bin/status-term-client .
+	GOFLAGS=$(GOFLAGS) go build $(BUILD_FLAGS) -o ./bin/status-term-client .
 .PHONY: build
 
 run: ARGS ?=
@@ -58,3 +64,7 @@ mock:
 gen-migrations:
 	pushd protocol/client/migrations/ && rm -f bindata.go && go-bindata -pkg migrations ./ && popd
 .PHONY: gen-migrations
+
+image:
+	docker build . -t $(DOCKER_IMAGE_NAME):latest -t $(DOCKER_IMAGE_NAME):$(DOCKER_CUSTOM_TAG)
+.PHONY: image
