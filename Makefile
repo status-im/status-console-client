@@ -29,6 +29,7 @@ lint-v110:
 .PHONY: lint-v110
 
 vendor:
+	go mod tidy
 	go mod vendor
 	modvendor -copy="**/*.c **/*.h" -v
 .PHONY: vendor
