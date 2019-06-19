@@ -113,7 +113,6 @@ github.com/elastic/gosigar v0.0.0-20180330100440-37f05ff46ffa/go.mod h1:cdorVVzy
 github.com/elastic/gosigar v0.10.2 h1:ktO7B8lAQQCf/CieNp1lQzKnbijg3FbfQqFUfAe6h/A=
 github.com/elastic/gosigar v0.10.2/go.mod h1:cdorVVzy1fhmEqmtgqkoE3bYtCfSCkVyjTyCIo22xvs=
 github.com/ethereum/go-ethereum v1.8.20/go.mod h1:PwpWDrCLZrV+tfrhqqF6kPknbISMHaJv9Ln3kPCZLwY=
-github.com/ethereum/go-ethereum v1.8.27/go.mod h1:PwpWDrCLZrV+tfrhqqF6kPknbISMHaJv9Ln3kPCZLwY=
 github.com/fatih/color v1.3.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
 github.com/fatih/color v1.7.0 h1:DkWD4oS2D8LGGgTQ6IvwJJXSL5Vp2ffcQg58nFV38Ys=
 github.com/fatih/color v1.7.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
@@ -493,8 +492,8 @@ github.com/status-im/migrate v3.5.1-status+incompatible h1:MhM/sOyGDrWMkJxamqc9A
 github.com/status-im/migrate v3.5.1-status+incompatible/go.mod h1:dZ3YxYs9/ik9SOXvNX3Yjl8kcaDbN5b4vZH5efdK+bk=
 github.com/status-im/migrate/v4 v4.3.1-status h1:tJwsEYLgbFkvlTSMk89APwRDfpr4yG8wcwPeudsqPwo=
 github.com/status-im/migrate/v4 v4.3.1-status/go.mod h1:r8HggRBZ/k7TRwByq/Hp3P/ubFppIna0nvyavVK0pjA=
-github.com/status-im/mvds v0.0.14 h1:CBZNgewqYBzpo1C1bCLuFfm/2N+qvr0P4qlolQi5AnU=
-github.com/status-im/mvds v0.0.14/go.mod h1:cgNgcRbLwE4TMPMSax7xl+Ca/Q8rIklZLDwAD6iBKjo=
+github.com/status-im/mvds v0.0.15 h1:w/1HKjMlHZdAdEzC8cahVQtztnpoAvBPpJhmfyc38tQ=
+github.com/status-im/mvds v0.0.15/go.mod h1:cgNgcRbLwE4TMPMSax7xl+Ca/Q8rIklZLDwAD6iBKjo=
 github.com/status-im/rendezvous v1.2.0 h1:d3HysveJI9w3QFFIGf0rz1HHW51LMb0F0sgGDF+Qq+c=
 github.com/status-im/rendezvous v1.2.0/go.mod h1:vUZNaCYr2AsFngV2IW5NsnPBRK/h+x57nsMINkhrVCQ=
 github.com/status-im/status-go v0.25.0-beta.2 h1:7o0CaezNhdHtxxeBliY7EoboDyaatRcsVtoKkTgr2gs=

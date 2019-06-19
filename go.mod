@@ -34,7 +34,7 @@ require (
 	github.com/status-im/doubleratchet v2.0.0+incompatible // indirect
 	github.com/status-im/migrate v3.5.1-status+incompatible // indirect
 	github.com/status-im/migrate/v4 v4.3.1-status
-	github.com/status-im/mvds v0.0.14
+	github.com/status-im/mvds v0.0.15
 	github.com/status-im/rendezvous v1.2.0 // indirect
 	github.com/status-im/status-go v0.25.0-beta.2
 	github.com/status-im/whisper v1.4.13
