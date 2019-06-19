@@ -1,18 +1,9 @@
 // Package state contains everything related to the synchronization state for MVDS.
 package state
 
-type MessageType int
-
-const (
-	OFFER   MessageType = iota
-	REQUEST
-	MESSAGE
-)
-
 type State struct {
-	Type      MessageType
-	SendCount uint64
-	SendEpoch int64
+	SendCount   uint64
+	SendEpoch   int64
 }
 
 type SyncState interface {
