@@ -320,7 +320,7 @@ github.com/status-im/migrate/database/postgres
 github.com/status-im/migrate/v4
 github.com/status-im/migrate/v4/database/sqlcipher
 github.com/status-im/migrate/v4/source/go_bindata
-# github.com/status-im/mvds v0.0.14
+# github.com/status-im/mvds v0.0.15
 github.com/status-im/mvds/node
 github.com/status-im/mvds/state
 github.com/status-im/mvds/store
