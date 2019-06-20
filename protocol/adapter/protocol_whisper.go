@@ -147,6 +147,13 @@ func (w *ProtocolWhisperAdapter) Request(ctx context.Context, params protocol.Re
 		To:       params.To,
 		Limit:    params.Limit,
 	}
+	for _, chat := range params.Chats {
+		topic, err := ToTopic(chat.ChatName)
+		if err != nil {
+			return err
+		}
+		transOptions.Topics = append(transOptions.Topics, topic)
+	}
 	now := time.Now()
 	err := w.transport.Request(ctx, transOptions)
 	log.Printf("[ProtocolWhisperAdapter::Request] took %s", time.Since(now))
