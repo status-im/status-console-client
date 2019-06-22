@@ -22,7 +22,7 @@ type ProtocolWhisperAdapter struct {
 // ProtocolWhisperAdapter must implement Protocol interface.
 var _ protocol.Protocol = (*ProtocolWhisperAdapter)(nil)
 
-func NewProtocolWhisperAdapter(t *transport.WhisperServiceTransport, pfs *chat.ProtocolService) *ProtocolWhisperAdapter {
+func NewProtocolWhisperAdapter(t transport.WhisperTransport, pfs *chat.ProtocolService) *ProtocolWhisperAdapter {
 	return &ProtocolWhisperAdapter{
 		transport: t,
 		pfs:       pfs,
