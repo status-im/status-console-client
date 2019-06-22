@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"context"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -30,15 +31,12 @@ func TestRequest(t *testing.T) {
 	}
 
 	transMock.EXPECT().
-		Request(
-			gomock.Any(),
-			reqOptions,
-		).
+		Request(gomock.Any(), reqOptions).
 		Return(nil).
 		Times(1)
 
 	a := NewProtocolWhisperAdapter(transMock, nil)
-	err = a.Request(nil, protocol.RequestOptions{
+	err = a.Request(context.TODO(), protocol.RequestOptions{
 		Chats: []protocol.ChatOptions{
 			protocol.ChatOptions{ChatName: "test"},
 		},
