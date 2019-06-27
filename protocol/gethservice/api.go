@@ -20,26 +20,20 @@ var (
 	ErrMessengerNotSet = errors.New("messenger is not set")
 )
 
-// ChatParams are chat specific options.
-type ChatParams struct {
-	RecipientPubKey hexutil.Bytes `json:"recipientPubKey"` // public key hex-encoded
-	PubChatName     string        `json:"pubChatName"`
-}
-
 // MessagesParams is an object with JSON-serializable parameters
 // for Messages method.
 type MessagesParams struct {
-	ChatParams
+	Contact
 }
 
 // SendParams is an object with JSON-serializable parameters for Send method.
 type SendParams struct {
-	ChatParams
+	Contact
 }
 
 // RequestParams is an object with JSON-serializable parameters for Request method.
 type RequestParams struct {
-	ChatParams
+	Contact
 	Limit int   `json:"limit"`
 	From  int64 `json:"from"`
 	To    int64 `json:"to"`
@@ -49,6 +43,16 @@ type RequestParams struct {
 type Contact struct {
 	Name      string        `json:"name"`
 	PublicKey hexutil.Bytes `json:"key"`
+}
+
+func parseContact(c Contact) (client.Contact, err) {
+	if len(params.Contact.PublicKey) != 0 {
+		c, err := client.CreateContactPrivate(params.Contact.Name, params.Contact.PublicKey.String(), client.ContactAdded)
+		if err != nil {
+			return c, err
+		}
+	}
+	return client.CreateContactPublicRoom(params.Contact.Name, client.ContactAdded), nil
 }
 
 // PublicAPI provides an JSON-RPC API to interact with
@@ -79,7 +83,7 @@ func (api *PublicAPI) Messages(ctx context.Context, params MessagesParams) (*rpc
 
 	adapterOptions := protocol.SubscribeOptions{
 		ChatOptions: protocol.ChatOptions{
-			ChatName: params.PubChatName, // no transformation required
+			ChatName: params.Name, // no transformation required
 		},
 	}
 
@@ -136,7 +140,7 @@ func (api *PublicAPI) Send(ctx context.Context, data hexutil.Bytes, params SendP
 
 	adapterOptions := protocol.SendOptions{
 		ChatOptions: protocol.ChatOptions{
-			ChatName: params.PubChatName, // no transformation required
+			ChatName: params.Name, // no transformation required
 		},
 	}
 
@@ -153,24 +157,16 @@ func (api *PublicAPI) Request(ctx context.Context, params RequestParams) (err er
 	if api.service.protocol == nil {
 		return ErrProtocolNotSet
 	}
-
-	adapterOptions := protocol.RequestOptions{
-		Chats: []protocol.ChatOptions{
-			protocol.ChatOptions{
-				ChatName: params.PubChatName, // no transformation required
-			},
-		},
+	c, err := parseContact(params.Contact)
+	if err != nil {
+		return err
+	}
+	options := protocol.RequestOptions{
 		Limit: params.Limit,
 		From:  params.From,
 		To:    params.To,
 	}
-
-	adapterOptions.Chats[0].Recipient, err = unmarshalPubKey(params.RecipientPubKey)
-	if err != nil {
-		return
-	}
-
-	return api.service.protocol.Request(ctx, adapterOptions)
+	return api.service.messenger.Request(ctx, c, options)
 }
 
 // Chat is a high-level subscription-based RPC method.
@@ -249,14 +245,9 @@ func (api *PublicAPI) AddContact(ctx context.Context, contact Contact) (err erro
 	if api.service.messenger == nil {
 		return ErrMessengerNotSet
 	}
-	var c client.Contact
-	if len(contact.PublicKey) != 0 {
-		c, err = client.CreateContactPrivate(contact.Name, contact.PublicKey.String(), client.ContactAdded)
-		if err != nil {
-			return err
-		}
-	} else {
-		c = client.CreateContactPublicRoom(contact.Name, client.ContactAdded)
+	c, err := parseContact(params.Contact)
+	if err != nil {
+		return err
 	}
 	err = api.service.messenger.AddContact(c)
 	if err != nil {
@@ -271,14 +262,9 @@ func (api *PublicAPI) SendToContact(ctx context.Context, contact Contact, payloa
 	if api.service.messenger == nil {
 		return ErrMessengerNotSet
 	}
-	var c client.Contact
-	if len(contact.PublicKey) != 0 {
-		c, err = client.CreateContactPrivate(contact.Name, contact.PublicKey.String(), client.ContactAdded)
-		if err != nil {
-			return err
-		}
-	} else {
-		c = client.CreateContactPublicRoom(contact.Name, client.ContactAdded)
+	c, err := parseContact(params.Contact)
+	if err != nil {
+		return err
 	}
 	return api.service.messenger.Send(c, []byte(payload))
 }
@@ -289,14 +275,9 @@ func (api *PublicAPI) ReadContactMessages(ctx context.Context, contact Contact, 
 	if api.service.messenger == nil {
 		return nil, ErrMessengerNotSet
 	}
-	var c client.Contact
-	if len(contact.PublicKey) != 0 {
-		c, err = client.CreateContactPrivate(contact.Name, contact.PublicKey.String(), client.ContactAdded)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		c = client.CreateContactPublicRoom(contact.Name, client.ContactAdded)
+	c, err := parseContact(params.Contact)
+	if err != nil {
+		return err
 	}
 	return api.service.messenger.Messages(c, offset)
 }
