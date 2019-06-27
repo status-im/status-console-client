@@ -121,19 +121,20 @@ func CreatePrivateTextMessage(data []byte, lastClock int64, chatID string) Messa
 }
 
 // DecodeMessage decodes a raw payload to Message struct.
-func DecodeMessage(data []byte) (message Message, err error) {
+func DecodeMessage(data []byte) (message interface{}, err error) {
 	buf := bytes.NewBuffer(data)
 	decoder := NewMessageDecoder(buf)
 	value, err := decoder.Decode()
 	if err != nil {
 		return
 	}
+	return value, nil
 
-	message, ok := value.(Message)
-	if !ok {
-		return message, ErrInvalidDecodedValue
-	}
-	return
+	//message, ok := value.(Message)
+	//	if !ok {
+	//		return message, ErrInvalidDecodedValue
+	//	}
+	//	return
 }
 
 // EncodeMessage encodes a Message using Transit serialization.
