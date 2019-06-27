@@ -45,14 +45,14 @@ type Contact struct {
 	PublicKey hexutil.Bytes `json:"key"`
 }
 
-func parseContact(c Contact) (client.Contact, err) {
-	if len(params.Contact.PublicKey) != 0 {
-		c, err := client.CreateContactPrivate(params.Contact.Name, params.Contact.PublicKey.String(), client.ContactAdded)
+func parseContact(c Contact) (client.Contact, error) {
+	if len(c.PublicKey) != 0 {
+		c, err := client.CreateContactPrivate(c.Name, c.PublicKey.String(), client.ContactAdded)
 		if err != nil {
 			return c, err
 		}
 	}
-	return client.CreateContactPublicRoom(params.Contact.Name, client.ContactAdded), nil
+	return client.CreateContactPublicRoom(c.Name, client.ContactAdded), nil
 }
 
 // PublicAPI provides an JSON-RPC API to interact with
@@ -87,7 +87,7 @@ func (api *PublicAPI) Messages(ctx context.Context, params MessagesParams) (*rpc
 		},
 	}
 
-	adapterOptions.Recipient, err = unmarshalPubKey(params.RecipientPubKey)
+	adapterOptions.Recipient, err = unmarshalPubKey(params.PublicKey)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +144,7 @@ func (api *PublicAPI) Send(ctx context.Context, data hexutil.Bytes, params SendP
 		},
 	}
 
-	adapterOptions.Recipient, err = unmarshalPubKey(params.RecipientPubKey)
+	adapterOptions.Recipient, err = unmarshalPubKey(params.PublicKey)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +245,7 @@ func (api *PublicAPI) AddContact(ctx context.Context, contact Contact) (err erro
 	if api.service.messenger == nil {
 		return ErrMessengerNotSet
 	}
-	c, err := parseContact(params.Contact)
+	c, err := parseContact(contact)
 	if err != nil {
 		return err
 	}
@@ -262,7 +262,7 @@ func (api *PublicAPI) SendToContact(ctx context.Context, contact Contact, payloa
 	if api.service.messenger == nil {
 		return ErrMessengerNotSet
 	}
-	c, err := parseContact(params.Contact)
+	c, err := parseContact(contact)
 	if err != nil {
 		return err
 	}
@@ -275,9 +275,9 @@ func (api *PublicAPI) ReadContactMessages(ctx context.Context, contact Contact, 
 	if api.service.messenger == nil {
 		return nil, ErrMessengerNotSet
 	}
-	c, err := parseContact(params.Contact)
+	c, err := parseContact(contact)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	return api.service.messenger.Messages(c, offset)
 }
