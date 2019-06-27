@@ -10,9 +10,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	gethnode "github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/p2p"
-
+	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/status-im/status-go/services/shhext"
 	whisper "github.com/status-im/whisper/whisperv6"
 
@@ -65,9 +63,14 @@ func (m *WhisperServiceKeysManager) GetRawSymKey(id string) ([]byte, error) {
 	return m.shh.GetSymKey(id)
 }
 
+type server interface {
+	Connected(enode.ID) (bool, error)
+	AddPeer(string) error
+}
+
 // WhisperServiceTransport is a transport based on Whisper service.
 type WhisperServiceTransport struct {
-	node        StatusNode // TODO: replace with an interface
+	node        server
 	shh         *whisper.Whisper
 	shhextAPI   *shhext.PublicAPI
 	keysManager *WhisperServiceKeysManager
@@ -78,14 +81,9 @@ type WhisperServiceTransport struct {
 
 var _ WhisperTransport = (*WhisperServiceTransport)(nil)
 
-type StatusNode interface {
-	GethNode() *gethnode.Node
-	AddPeer(string) error
-}
-
 // NewWhisperService returns a new WhisperServiceTransport.
 func NewWhisperServiceTransport(
-	node StatusNode,
+	node server,
 	mailservers []string,
 	shh *whisper.Whisper,
 	shhextService *shhext.Service,
@@ -187,35 +185,24 @@ func (a *WhisperServiceTransport) Request(ctx context.Context, options RequestOp
 }
 
 func (a *WhisperServiceTransport) selectAndAddMailServer() (string, error) {
+	var enodeAddr string
 	if a.selectedMailServerEnode != "" {
-		return a.selectedMailServerEnode, nil
-	}
-	if len(a.mailservers) == 0 {
-		return "", ErrNoMailservers
-	}
-
-	enode := randomItem(a.mailservers)
-	errCh := waitForPeerAsync(
-		a.node.GethNode().Server(),
-		enode,
-		p2p.PeerEventTypeAdd,
-		time.Second*5,
-	)
-
-	log.Printf("[WhisperServiceTransport::selectAndAddMailServer] randomly selected %s node", enode)
-
-	if err := a.node.AddPeer(enode); err != nil {
-		return "", err
-	}
-
-	err := <-errCh
-	if err != nil {
-		err = fmt.Errorf("failed to add mail server %s: %v", enode, err)
+		enodeAddr = a.selectedMailServerEnode
 	} else {
-		a.selectedMailServerEnode = enode
+		if len(a.mailservers) == 0 {
+			return "", ErrNoMailservers
+		}
+		enodeAddr = randomItem(a.mailservers)
 	}
-
-	return enode, err
+	log.Printf("dialing mail server %s", enodeAddr)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	err := Dial(ctx, a.node, enodeAddr, DialOpts{PollInterval: 200 * time.Millisecond})
+	cancel()
+	if err == nil {
+		a.selectedMailServerEnode = enodeAddr
+		return enodeAddr, nil
+	}
+	return "", fmt.Errorf("peer %s failed to connect: %v", enodeAddr, err)
 }
 
 func (a *WhisperServiceTransport) requestMessages(ctx context.Context, req shhext.MessagesRequest, followCursor bool) (resp shhext.MessagesResponse, err error) {

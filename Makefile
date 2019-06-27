@@ -63,6 +63,10 @@ mock:
 		-destination ./protocol/transport/mock/whisper_mock.go \
 		-package transport_mock \
 		github.com/status-im/status-console-client/protocol/transport WhisperTransport
+	mockgen \
+		-destination ./protocol/transport/server_mock.go \
+		-package transport \
+		github.com/status-im/status-console-client/protocol/transport Server
 .PHONY: mock
 
 gen-migrations:
