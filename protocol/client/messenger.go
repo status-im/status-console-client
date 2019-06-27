@@ -256,13 +256,6 @@ func (m *Messenger) Send(c Contact, data []byte) error {
 	}
 
 	log.Printf("[Messenger::Send] sent message with hash %x", hash)
-
-	message.ID = hash
-	message.SigPubKey = &m.identity.PublicKey
-	_, err = m.db.SaveMessages(c, []*protocol.Message{&message})
-	if err != nil {
-		return errors.Wrap(err, "failed to save the message")
-	}
 	return nil
 }
 
