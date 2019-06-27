@@ -92,7 +92,7 @@ func (api *PublicAPI) Messages(ctx context.Context, params MessagesParams) (*rpc
 		return nil, err
 	}
 
-	messages := make(chan *protocol.Message, 100)
+	messages := make(chan *protocol.StatusMessage, 100)
 	sub, err := api.service.protocol.Subscribe(ctx, messages, adapterOptions)
 	if err != nil {
 		log.Printf("failed to subscribe to the protocol: %v", err)

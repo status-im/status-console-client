@@ -34,7 +34,7 @@ func NewProtocolWhisperAdapter(t transport.WhisperTransport, p *publisher.Publis
 // Subscribe listens to new messages.
 func (w *ProtocolWhisperAdapter) Subscribe(
 	ctx context.Context,
-	messages chan<- *protocol.Message,
+	messages chan<- *protocol.StatusMessage,
 	options protocol.SubscribeOptions,
 ) (*subscription.Subscription, error) {
 	if err := options.Validate(); err != nil {
@@ -67,7 +67,7 @@ func (w *ProtocolWhisperAdapter) Subscribe(
 	return sub, nil
 }
 
-func (w *ProtocolWhisperAdapter) decodeMessage(message *whisper.ReceivedMessage) (*protocol.Message, error) {
+func (w *ProtocolWhisperAdapter) decodeMessage(message *whisper.ReceivedMessage) (*protocol.StatusMessage, error) {
 	payload := message.Payload
 	publicKey := message.SigToPubKey()
 	hash := message.EnvelopeHash.Bytes()
@@ -87,7 +87,7 @@ func (w *ProtocolWhisperAdapter) decodeMessage(message *whisper.ReceivedMessage)
 	decoded.ID = hash
 	decoded.SigPubKey = publicKey
 
-	return &decoded, nil
+	return decoded, nil
 }
 
 // Send sends a message to the network.

@@ -62,6 +62,13 @@ const (
 	MessageRead Flags = 1 << iota
 )
 
+type StatusMessage struct {
+	Message   interface{}
+	ID        []byte           `json:"-"`
+	SigPubKey *ecdsa.PublicKey `json:"-"`
+	Flags     Flags            `json:"-"`
+}
+
 // Message contains all message details.
 type Message struct {
 	Text      string        `json:"text"` // TODO: why is this duplicated?
@@ -75,6 +82,19 @@ type Message struct {
 	ID        []byte           `json:"-"`
 	SigPubKey *ecdsa.PublicKey `json:"-"`
 	Flags     Flags            `json:"-"`
+}
+
+func (m *StatusMessage) MarshalJSON() ([]byte, error) {
+	type MessageAlias StatusMessage
+	item := struct {
+		*MessageAlias
+		ID string `json:"id"`
+	}{
+		MessageAlias: (*MessageAlias)(m),
+		ID:           fmt.Sprintf("%#x", m.ID),
+	}
+
+	return json.Marshal(item)
 }
 
 func (m *Message) MarshalJSON() ([]byte, error) {
@@ -121,14 +141,14 @@ func CreatePrivateTextMessage(data []byte, lastClock int64, chatID string) Messa
 }
 
 // DecodeMessage decodes a raw payload to Message struct.
-func DecodeMessage(data []byte) (message interface{}, err error) {
+func DecodeMessage(data []byte) (message *StatusMessage, err error) {
 	buf := bytes.NewBuffer(data)
 	decoder := NewMessageDecoder(buf)
 	value, err := decoder.Decode()
 	if err != nil {
 		return
 	}
-	return value, nil
+	return &StatusMessage{Message: value}, nil
 
 	//message, ok := value.(Message)
 	//	if !ok {

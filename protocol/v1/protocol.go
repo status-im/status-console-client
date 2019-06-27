@@ -12,7 +12,7 @@ import (
 // Protocol is an interface defining basic methods to receive and send messages.
 type Protocol interface {
 	// Subscribe listens to new messages.
-	Subscribe(ctx context.Context, messages chan<- *Message, options SubscribeOptions) (*subscription.Subscription, error)
+	Subscribe(ctx context.Context, messages chan<- *StatusMessage, options SubscribeOptions) (*subscription.Subscription, error)
 
 	// Send sends a message to the network.
 	// Identity is required as the protocol requires

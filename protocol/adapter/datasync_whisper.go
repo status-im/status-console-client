@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"log"
-	"sort"
 
 	"github.com/gogo/protobuf/proto"
 
@@ -46,7 +45,7 @@ func NewDataSyncWhisperAdapter(n *node.Node, t transport.WhisperTransport, h Pac
 // Subscribe listens to new messages.
 func (w *DataSyncWhisperAdapter) Subscribe(
 	ctx context.Context,
-	messages chan<- *protocol.Message,
+	messages chan<- *protocol.StatusMessage,
 	options protocol.SubscribeOptions,
 ) (*subscription.Subscription, error) {
 	if err := options.Validate(); err != nil {
@@ -95,8 +94,8 @@ func (w *DataSyncWhisperAdapter) decodePayload(message *whisper.ReceivedMessage)
 	return
 }
 
-func (w *DataSyncWhisperAdapter) decodeMessages(payload protobuf.Payload) []*protocol.Message {
-	messages := make([]*protocol.Message, 0)
+func (w *DataSyncWhisperAdapter) decodeMessages(payload protobuf.Payload) []*protocol.StatusMessage {
+	messages := make([]*protocol.StatusMessage, 0)
 
 	for _, message := range payload.Messages {
 		decoded, err := protocol.DecodeMessage(message.Body)
@@ -108,12 +107,14 @@ func (w *DataSyncWhisperAdapter) decodeMessages(payload protobuf.Payload) []*pro
 		id := state.ID(*message)
 		decoded.ID = id[:]
 
-		messages = append(messages, &decoded)
+		messages = append(messages, decoded)
 	}
 
-	sort.Slice(messages, func(i, j int) bool {
-		return messages[i].Clock < messages[j].Clock
-	})
+	//TODO: do we need to sort them? this messages might not be chat messages, and some of the records
+	// don't have a clock value
+	//sort.Slice(messages, func(i, j int) bool {
+	//	return messages[i].Clock < messages[j].Clock
+	//})
 
 	return messages
 }
