@@ -335,7 +335,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 	var (
 		protocolAdapter protocol.Protocol
 		transp          = transport.NewWhisperServiceTransport(
-			statusNode,
+			&server{node: statusNode},
 			nodeConfig.ClusterConfig.TrustedMailServers,
 			shhService,
 			shhExtService,
