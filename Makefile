@@ -66,7 +66,7 @@ mock:
 .PHONY: mock
 
 gen-migrations:
-	pushd protocol/client/migrations/ && rm -f bindata.go && go-bindata -pkg migrations ./ && popd
+	go generate ./protocol/client/migrations/sql/
 .PHONY: gen-migrations
 
 image:
