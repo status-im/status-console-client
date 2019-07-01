@@ -15,6 +15,7 @@ import (
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
 
+	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/subscription"
 	"github.com/status-im/status-console-client/protocol/v1"
 	protomock "github.com/status-im/status-console-client/protocol/v1/mock"
@@ -34,8 +35,8 @@ func TestPublicAPISend(t *testing.T) {
 
 	data := []byte("some payload")
 	params := SendParams{
-		ChatParams: ChatParams{
-			PubChatName: "test-chat",
+		Contact{
+			Name: "test-chat",
 		},
 	}
 	result := hexutil.Bytes("abc")
@@ -46,7 +47,7 @@ func TestPublicAPISend(t *testing.T) {
 			gomock.Eq(data),
 			gomock.Eq(protocol.SendOptions{
 				ChatOptions: protocol.ChatOptions{
-					ChatName: params.PubChatName,
+					ChatName: params.Name,
 				},
 			}),
 		).
@@ -69,8 +70,8 @@ func TestPublicAPIRequest(t *testing.T) {
 
 	now := time.Now().Unix()
 	params := RequestParams{
-		ChatParams: ChatParams{
-			PubChatName: "test-chat",
+		Contact: Contact{
+			Name: "test-chat",
 		},
 		Limit: 100,
 		From:  now,
@@ -83,7 +84,7 @@ func TestPublicAPIRequest(t *testing.T) {
 			gomock.Eq(protocol.RequestOptions{
 				Chats: []protocol.ChatOptions{
 					protocol.ChatOptions{
-						ChatName: params.PubChatName,
+						ChatName: params.Name,
 					},
 				},
 				Limit: 100,
@@ -109,8 +110,8 @@ func TestPublicAPIMessages(t *testing.T) {
 
 	messages := make(chan protocol.Message)
 	params := MessagesParams{
-		ChatParams: ChatParams{
-			PubChatName: "test-chat",
+		Contact{
+			Name: "test-chat",
 		},
 	}
 
@@ -120,7 +121,7 @@ func TestPublicAPIMessages(t *testing.T) {
 			gomock.Any(),
 			gomock.Eq(protocol.SubscribeOptions{
 				ChatOptions: protocol.ChatOptions{
-					ChatName: params.PubChatName,
+					ChatName: params.Name,
 				},
 			}),
 		).
@@ -140,11 +141,11 @@ func createAndStartNode(privateKey *ecdsa.PrivateKey) (*node.StatusNode, *Servic
 			return service, nil
 		},
 		// func(*gethnode.ServiceContext) (gethnode.Service, error) {
-		// 	config := &whisper.Config{
-		// 		MinimumAcceptedPOW: 0.001,
-		// 		MaxMessageSize:     whisper.DefaultMaxMessageSize,
-		// 	}
-		// 	return whisper.New(config), nil
+		//	config := &whisper.Config{
+		//		MinimumAcceptedPOW: 0.001,
+		//		MaxMessageSize:     whisper.DefaultMaxMessageSize,
+		//	}
+		//	return whisper.New(config), nil
 		// },
 	}
 
@@ -166,6 +167,7 @@ func setupRPCClient(proto protocol.Protocol) (*rpc.Client, *node.StatusNode, err
 		return nil, nil, err
 	}
 
+	service.SetMessenger(client.NewMessenger(nil, proto, nil))
 	service.SetProtocol(proto)
 
 	client, err := n.GethNode().Attach()
