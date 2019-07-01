@@ -499,8 +499,8 @@ github.com/spaolacci/murmur3 v1.1.0/go.mod h1:JwIasOWyU6f++ZhiEuf87xNszmSA2myDM2
 github.com/spf13/pflag v1.0.3/go.mod h1:DYY7MBk1bdzusC3SYhjObp+wFpr4gzcvqqNjLnInEg4=
 github.com/status-im/doubleratchet v2.0.0+incompatible h1:s77lF1lDubK0RKftxN2vH8G9gwtVVp13ggWfyY4O1q4=
 github.com/status-im/doubleratchet v2.0.0+incompatible/go.mod h1:1sqR0+yhiM/bd+wrdX79AOt2csZuJOni0nUDzKNuqOU=
-github.com/status-im/go-ethereum v1.8.27-status h1:QHUPjJeZHQcgqDJ9nyJDl1u2hzAw8NDtACYGNJg+w6I=
-github.com/status-im/go-ethereum v1.8.27-status/go.mod h1:Ulij8LMpMvXnbnPcmDqrpI+iXoXSjxItuY/wmbasTZU=
+github.com/status-im/go-ethereum v1.8.27-status.4 h1:8jTQsYDLtKd/XCa++ZkexTPHfANIDh084JbO2SBAwp4=
+github.com/status-im/go-ethereum v1.8.27-status.4/go.mod h1:Ulij8LMpMvXnbnPcmDqrpI+iXoXSjxItuY/wmbasTZU=
 github.com/status-im/go-multiaddr-ethv4 v1.1.0 h1:7+BdGNaqb66f/dO7mx/12LjaT+6wr4G8l4wvkONfctg=
 github.com/status-im/go-multiaddr-ethv4 v1.1.0/go.mod h1:H/WC6o3//elWzBWBe/UhvLl4tqtseVLzO5SFNBtT5SU=
 github.com/status-im/migrate v3.5.1-status+incompatible h1:MhM/sOyGDrWMkJxamqc9AA3atDXC/RDJzyMJ8XDL3Yg=
