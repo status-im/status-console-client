@@ -260,10 +260,15 @@ func (m *Messenger) Send(c Contact, data []byte) error {
 	message.ID = hash
 	message.SigPubKey = &m.identity.PublicKey
 	_, err = m.db.SaveMessages(c, []*protocol.Message{&message})
-	if err != nil {
+	switch err {
+	case ErrMsgAlreadyExist:
+		log.Printf("[Messenger::Send] message with ID %x already exists", message.ID)
+		return nil
+	case nil:
+		return nil
+	default:
 		return errors.Wrap(err, "failed to save the message")
 	}
-	return nil
 }
 
 func (m *Messenger) RemoveContact(c Contact) error {
