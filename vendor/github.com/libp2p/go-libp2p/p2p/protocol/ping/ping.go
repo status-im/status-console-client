@@ -9,9 +9,9 @@ import (
 
 	u "github.com/ipfs/go-ipfs-util"
 	logging "github.com/ipfs/go-log"
-	host "github.com/libp2p/go-libp2p-host"
-	inet "github.com/libp2p/go-libp2p-net"
-	peer "github.com/libp2p/go-libp2p-peer"
+	"github.com/libp2p/go-libp2p-core/host"
+	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 var log = logging.Logger("ping")
@@ -32,7 +32,7 @@ func NewPingService(h host.Host) *PingService {
 	return ps
 }
 
-func (p *PingService) PingHandler(s inet.Stream) {
+func (p *PingService) PingHandler(s network.Stream) {
 	buf := make([]byte, PingSize)
 
 	errCh := make(chan error, 1)
@@ -129,7 +129,7 @@ func Ping(ctx context.Context, h host.Host, p peer.ID) <-chan Result {
 	return out
 }
 
-func ping(s inet.Stream) (time.Duration, error) {
+func ping(s network.Stream) (time.Duration, error) {
 	buf := make([]byte, PingSize)
 	u.NewTimeSeededRand().Read(buf)
 

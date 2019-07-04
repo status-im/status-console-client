@@ -9,16 +9,18 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/rlp"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/rlp"
+
 	"github.com/status-im/status-go/db"
 	"github.com/status-im/status-go/mailserver"
-	"github.com/status-im/status-go/services/shhext/chat"
+	"github.com/status-im/status-go/messaging/chat"
+	"github.com/status-im/status-go/messaging/filter"
+	"github.com/status-im/status-go/messaging/multidevice"
 	"github.com/status-im/status-go/services/shhext/dedup"
 	"github.com/status-im/status-go/services/shhext/mailservers"
 	whisper "github.com/status-im/whisper/whisperv6"
@@ -137,6 +139,9 @@ type SyncMessagesRequest struct {
 
 	// Cursor is used as starting point for paginated requests
 	Cursor string `json:"cursor"`
+
+	// FollowCursor if true loads messages until cursor is empty.
+	FollowCursor bool `json:"followCursor"`
 
 	// Topics is a list of Whisper topics.
 	// If empty, a full bloom filter will be used.
@@ -372,44 +377,36 @@ func createSyncMessagesResponse(r whisper.SyncEventResponse) SyncMessagesRespons
 // SyncMessages sends a request to a given MailServerPeer to sync historic messages.
 // MailServerPeers needs to be added as a trusted peer first.
 func (api *PublicAPI) SyncMessages(ctx context.Context, r SyncMessagesRequest) (SyncMessagesResponse, error) {
+	log.Info("SyncMessages start", "request", r)
+
 	var response SyncMessagesResponse
 
 	mailServerEnode, err := enode.ParseV4(r.MailServerPeer)
 	if err != nil {
 		return response, fmt.Errorf("invalid MailServerPeer: %v", err)
 	}
+	mailServerID := mailServerEnode.ID().Bytes()
 
 	request, err := createSyncMailRequest(r)
 	if err != nil {
 		return response, fmt.Errorf("failed to create a sync mail request: %v", err)
 	}
 
-	if err := api.service.w.SyncMessages(mailServerEnode.ID().Bytes(), request); err != nil {
-		return response, fmt.Errorf("failed to send a sync request: %v", err)
-	}
-
-	// Wait for the response which is received asynchronously as a p2p packet.
-	// This packet handler will send an event which contains the response payload.
-	events := make(chan whisper.EnvelopeEvent)
-	sub := api.service.w.SubscribeEnvelopeEvents(events)
-	defer sub.Unsubscribe()
-
 	for {
-		select {
-		case event := <-events:
-			if event.Event != whisper.EventMailServerSyncFinished {
-				continue
-			}
+		log.Info("Sending a request to sync messages", "request", request)
 
-			log.Info("received EventMailServerSyncFinished event", "data", event.Data)
-
-			if resp, ok := event.Data.(whisper.SyncEventResponse); ok {
-				return createSyncMessagesResponse(resp), nil
-			}
-			return response, fmt.Errorf("did not understand the response event data")
-		case <-ctx.Done():
-			return response, ctx.Err()
+		resp, err := api.service.syncMessages(ctx, mailServerID, request)
+		if err != nil {
+			return response, err
 		}
+
+		log.Info("Syncing messages response", "error", resp.Error, "cursor", fmt.Sprintf("%#x", resp.Cursor))
+
+		if resp.Error != "" || len(resp.Cursor) == 0 || !r.FollowCursor {
+			return createSyncMessagesResponse(resp), nil
+		}
+
+		request.Cursor = resp.Cursor
 	}
 }
 
@@ -422,13 +419,25 @@ func (api *PublicAPI) GetNewFilterMessages(filterID string) ([]dedup.Deduplicate
 
 	dedupMessages := api.service.deduplicator.Deduplicate(msgs)
 
-	if api.service.pfsEnabled {
-		// Attempt to decrypt message, otherwise leave unchanged
-		for _, dedupMessage := range dedupMessages {
+	// Attempt to decrypt message, otherwise leave unchanged
+	for _, dedupMessage := range dedupMessages {
+		err := api.service.ProcessMessage(dedupMessage.Message, dedupMessage.DedupID)
+		switch err {
+		case chat.ErrNotPairedDevice:
+			api.log.Info("Received a message from non-paired device", "err", err)
+		case chat.ErrDeviceNotFound:
+			api.log.Warn("Device not found, sending signal", "err", err)
 
-			if err := api.processPFSMessage(dedupMessage); err != nil {
-				return nil, err
+			publicKey, err := crypto.UnmarshalPubkey(dedupMessage.Message.Sig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to handler chat.ErrDeviceNotFound: %v", err)
 			}
+
+			keyString := fmt.Sprintf("%#x", crypto.FromECDSAPub(publicKey))
+			handler := PublisherSignalHandler{}
+			handler.DecryptMessageFailed(keyString)
+		default:
+			api.log.Error("Failed handling message with error", "err", err)
 		}
 	}
 
@@ -460,7 +469,7 @@ func (api *PublicAPI) ConfirmMessagesProcessed(messages []*whisper.Message) (err
 // ConfirmMessagesProcessedByID is a method to confirm that messages was consumed by
 // the client side.
 func (api *PublicAPI) ConfirmMessagesProcessedByID(messageIDs [][]byte) error {
-	if err := api.service.protocol.ConfirmMessagesProcessed(messageIDs); err != nil {
+	if err := api.service.ConfirmMessagesProcessed(messageIDs); err != nil {
 		return err
 	}
 
@@ -468,37 +477,22 @@ func (api *PublicAPI) ConfirmMessagesProcessedByID(messageIDs [][]byte) error {
 }
 
 // SendPublicMessage sends a public chat message to the underlying transport
-func (api *PublicAPI) SendPublicMessage(ctx context.Context, msg chat.SendPublicMessageRPC) (hexutil.Bytes, error) {
+func (api *PublicAPI) SendPublicMessage(ctx context.Context, msg SendPublicMessageRPC) (hexutil.Bytes, error) {
 	privateKey, err := api.service.w.GetPrivateKey(msg.Sig)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to obtain a private key from Sig: %v", err)
 	}
 
-	// This is transport layer agnostic
-	protocolMessage, err := api.service.protocol.BuildPublicMessage(privateKey, msg.Payload)
+	message, err := api.service.CreatePublicMessage(privateKey, msg.Chat, msg.Payload, false)
 	if err != nil {
 		return nil, err
 	}
 
-	symKeyID, err := api.service.w.AddSymKeyFromPassword(msg.Chat)
-	if err != nil {
-		return nil, err
-	}
-
-	// Enrich with transport layer info
-	whisperMessage := chat.PublicMessageToWhisper(msg, protocolMessage)
-	whisperMessage.SymKeyID = symKeyID
-
-	// And dispatch
-	return api.Post(ctx, whisperMessage)
+	return api.Post(ctx, *message)
 }
 
 // SendDirectMessage sends a 1:1 chat message to the underlying transport
-func (api *PublicAPI) SendDirectMessage(ctx context.Context, msg chat.SendDirectMessageRPC) (hexutil.Bytes, error) {
-	if !api.service.pfsEnabled {
-		return nil, ErrPFSNotEnabled
-	}
-	// To be completely agnostic from whisper we should not be using whisper to store the key
+func (api *PublicAPI) SendDirectMessage(ctx context.Context, msg SendDirectMessageRPC) (hexutil.Bytes, error) {
 	privateKey, err := api.service.w.GetPrivateKey(msg.Sig)
 	if err != nil {
 		return nil, err
@@ -509,24 +503,12 @@ func (api *PublicAPI) SendDirectMessage(ctx context.Context, msg chat.SendDirect
 		return nil, err
 	}
 
-	// This is transport layer-agnostic
-	var protocolMessage []byte
-
-	if msg.DH {
-		protocolMessage, err = api.service.protocol.BuildDHMessage(privateKey, &privateKey.PublicKey, msg.Payload)
-	} else {
-		protocolMessage, err = api.service.protocol.BuildDirectMessage(privateKey, publicKey, msg.Payload)
-	}
-
+	message, err := api.service.CreateDirectMessage(privateKey, publicKey, msg.DH, msg.Payload)
 	if err != nil {
 		return nil, err
 	}
 
-	// Enrich with transport layer info
-	whisperMessage := chat.DirectMessageToWhisper(msg, protocolMessage)
-
-	// And dispatch
-	return api.Post(ctx, whisperMessage)
+	return api.Post(ctx, *message)
 }
 
 func (api *PublicAPI) requestMessagesUsingPayload(request db.HistoryRequest, peer, symkeyID string, payload []byte, force bool, timeout time.Duration, topics []whisper.TopicType) (hash common.Hash, err error) {
@@ -637,85 +619,39 @@ func (api *PublicAPI) CompleteRequest(parent context.Context, hex string) (err e
 	return err
 }
 
-// DEPRECATED: use SendDirectMessage with DH flag
-// SendPairingMessage sends a 1:1 chat message to our own devices to initiate a pairing session
-func (api *PublicAPI) SendPairingMessage(ctx context.Context, msg chat.SendDirectMessageRPC) ([]hexutil.Bytes, error) {
-	if !api.service.pfsEnabled {
-		return nil, ErrPFSNotEnabled
-	}
-	// To be completely agnostic from whisper we should not be using whisper to store the key
-	privateKey, err := api.service.w.GetPrivateKey(msg.Sig)
-	if err != nil {
-		return nil, err
-	}
-
-	msg.PubKey = crypto.FromECDSAPub(&privateKey.PublicKey)
-	if err != nil {
-		return nil, err
-	}
-
-	protocolMessage, err := api.service.protocol.BuildDHMessage(privateKey, &privateKey.PublicKey, msg.Payload)
-	if err != nil {
-		return nil, err
-	}
-
-	var response []hexutil.Bytes
-
-	// Enrich with transport layer info
-	whisperMessage := chat.DirectMessageToWhisper(msg, protocolMessage)
-
-	// And dispatch
-	hash, err := api.Post(ctx, whisperMessage)
-	if err != nil {
-		return nil, err
-	}
-	response = append(response, hash)
-
-	return response, nil
+// LoadFilters load all the necessary filters
+func (api *PublicAPI) LoadFilters(parent context.Context, chats []*filter.Chat) ([]*filter.Chat, error) {
+	return api.service.LoadFilters(chats)
 }
 
-func (api *PublicAPI) processPFSMessage(dedupMessage dedup.DeduplicateMessage) error {
-	msg := dedupMessage.Message
+// LoadFilter load a single filter
+func (api *PublicAPI) LoadFilter(parent context.Context, chat *filter.Chat) ([]*filter.Chat, error) {
+	return api.service.LoadFilter(chat)
+}
 
-	privateKeyID := api.service.w.SelectedKeyPairID()
-	if privateKeyID == "" {
-		return errors.New("no key selected")
-	}
+// RemoveFilter remove a single filter
+func (api *PublicAPI) RemoveFilters(parent context.Context, chats []*filter.Chat) error {
+	return api.service.RemoveFilters(chats)
+}
 
-	privateKey, err := api.service.w.GetPrivateKey(privateKeyID)
-	if err != nil {
-		return err
-	}
+// EnableInstallation enables an installation for multi-device sync.
+func (api *PublicAPI) EnableInstallation(installationID string) error {
+	return api.service.EnableInstallation(installationID)
+}
 
-	publicKey, err := crypto.UnmarshalPubkey(msg.Sig)
-	if err != nil {
-		return err
-	}
+// DisableInstallation disables an installation for multi-device sync.
+func (api *PublicAPI) DisableInstallation(installationID string) error {
+	return api.service.DisableInstallation(installationID)
+}
 
-	response, err := api.service.protocol.HandleMessage(privateKey, publicKey, msg.Payload, dedupMessage.DedupID)
+// GetOurInstallations returns all the installations available given an identity
+func (api *PublicAPI) GetOurInstallations() ([]*multidevice.Installation, error) {
+	return api.service.GetOurInstallations()
+}
 
-	switch err {
-	case nil:
-		// Set the decrypted payload
-		msg.Payload = response
-	case chat.ErrDeviceNotFound:
-		// Notify that someone tried to contact us using an invalid bundle
-		if privateKey.PublicKey != *publicKey {
-			api.log.Warn("Device not found, sending signal", "err", err)
-			keyString := fmt.Sprintf("0x%x", crypto.FromECDSAPub(publicKey))
-			handler := EnvelopeSignalHandler{}
-			handler.DecryptMessageFailed(keyString)
-		}
-	case chat.ErrNotProtocolMessage:
-		// Not using encryption, pass directly to the layer below
-		api.log.Debug("Not a protocol message", "err", err)
-	default:
-		// Log and pass to the client, even if failed to decrypt
-		api.log.Error("Failed handling message with error", "err", err)
-
-	}
-
-	return nil
+// SetInstallationMetadata sets the metadata for our own installation
+func (api *PublicAPI) SetInstallationMetadata(installationID string, data *multidevice.InstallationMetadata) error {
+	return api.service.SetInstallationMetadata(installationID, data)
 }
 
 // -----

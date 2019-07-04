@@ -9,23 +9,25 @@ import (
 	"github.com/status-im/status-console-client/protocol/transport"
 	"github.com/status-im/status-console-client/protocol/v1"
 
+	"github.com/pkg/errors"
 	whisper "github.com/status-im/whisper/whisperv6"
 
-	"github.com/status-im/status-go/services/shhext/chat"
+	msgfilter "github.com/status-im/status-go/messaging/filter"
+	"github.com/status-im/status-go/messaging/publisher"
 )
 
 type ProtocolWhisperAdapter struct {
 	transport transport.WhisperTransport
-	pfs       *chat.ProtocolService
+	publisher *publisher.Publisher
 }
 
 // ProtocolWhisperAdapter must implement Protocol interface.
 var _ protocol.Protocol = (*ProtocolWhisperAdapter)(nil)
 
-func NewProtocolWhisperAdapter(t transport.WhisperTransport, pfs *chat.ProtocolService) *ProtocolWhisperAdapter {
+func NewProtocolWhisperAdapter(t transport.WhisperTransport, p *publisher.Publisher) *ProtocolWhisperAdapter {
 	return &ProtocolWhisperAdapter{
 		transport: t,
-		pfs:       pfs,
+		publisher: p,
 	}
 }
 
@@ -69,19 +71,13 @@ func (w *ProtocolWhisperAdapter) decodeMessage(message *whisper.ReceivedMessage)
 	payload := message.Payload
 	publicKey := message.SigToPubKey()
 	hash := message.EnvelopeHash.Bytes()
+	msg := whisper.ToWhisperMessage(message)
 
-	if w.pfs != nil {
-		decryptedPayload, err := w.pfs.HandleMessage(
-			w.transport.KeysManager().PrivateKey(),
-			publicKey,
-			payload,
-			hash,
-		)
-		if err != nil {
-			log.Printf("failed to handle message %#+x by PFS: %v", hash, err)
-		} else {
-			payload = decryptedPayload
+	if w.publisher != nil {
+		if err := w.publisher.ProcessMessage(msg, msg.Hash); err != nil {
+			log.Printf("failed to process message: %#x: %v", hash, err)
 		}
+		payload = msg.Payload
 	}
 
 	decoded, err := protocol.DecodeMessage(payload)
@@ -102,40 +98,38 @@ func (w *ProtocolWhisperAdapter) Send(ctx context.Context, data []byte, options 
 		return nil, err
 	}
 
-	if w.pfs != nil {
-		var (
-			encryptedData []byte
-			err           error
-		)
+	var newMessage *whisper.NewMessage
 
+	if w.publisher != nil {
 		privateKey := w.transport.KeysManager().PrivateKey()
+
+		var err error
 
 		// TODO: rethink this
 		if options.Recipient != nil {
-			encryptedData, err = w.pfs.BuildDirectMessage(
-				privateKey,
-				options.Recipient,
-				data,
-			)
+			newMessage, err = w.publisher.CreateDirectMessage(privateKey, options.Recipient, false, data)
 		} else {
-			encryptedData, err = w.pfs.BuildPublicMessage(privateKey, data)
+			_, filterErr := w.publisher.LoadFilter(&msgfilter.Chat{
+				ChatID: options.ChatName,
+			})
+			if filterErr != nil {
+				return nil, errors.Wrap(filterErr, "failed to load filter")
+			}
+
+			// Public messages are not wrapped (i.e have not bundle),
+			// when sending in public chats as it would be a breaking change.
+			// When we send a contact code, we send a public message but wrapped,
+			// as PFS enabled client are the only ones using it.
+			// Thus, we keep it to false here.
+			newMessage, err = w.publisher.CreatePublicMessage(privateKey, options.ChatName, data, false)
 		}
 
 		if err != nil {
 			return nil, err
 		}
-		data = encryptedData
 	}
 
-	newMessage, err := NewNewMessage(w.transport.KeysManager(), data)
-	if err != nil {
-		return nil, err
-	}
-	if err := updateNewMessageFromSendOptions(newMessage, options); err != nil {
-		return nil, err
-	}
-
-	return w.transport.Send(ctx, newMessage.NewMessage)
+	return w.transport.Send(ctx, *newMessage)
 }
 
 // Request retrieves historic messages.

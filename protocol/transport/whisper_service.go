@@ -88,7 +88,12 @@ func NewWhisperServiceTransport(
 	shh *whisper.Whisper,
 	shhextService *shhext.Service,
 	privateKey *ecdsa.PrivateKey,
-) *WhisperServiceTransport {
+) (*WhisperServiceTransport, error) {
+	// TODO: this should not be necessary after refactoring.
+	if err := shh.SelectKeyPair(privateKey); err != nil {
+		return nil, err
+	}
+
 	return &WhisperServiceTransport{
 		node:        node,
 		shh:         shh,
@@ -99,7 +104,7 @@ func NewWhisperServiceTransport(
 			privateKey:        privateKey,
 			passToSymKeyCache: make(map[string]string),
 		},
-	}
+	}, nil
 }
 
 func (a *WhisperServiceTransport) KeysManager() *WhisperServiceKeysManager {
