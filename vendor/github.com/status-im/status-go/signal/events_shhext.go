@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 
 	"github.com/ethereum/go-ethereum/common"
+	whisper "github.com/status-im/whisper/whisperv6"
 )
 
 const (
@@ -31,6 +32,9 @@ const (
 
 	// EventBundleAdded is triggered when we receive a bundle
 	EventBundleAdded = "bundles.added"
+
+	// EventWhisperFilterAdded is triggered when we setup a new filter or restore existing ones
+	EventWhisperFilterAdded = "whisper.filter.added"
 )
 
 // EnvelopeSignal includes hash of the envelope.
@@ -56,6 +60,25 @@ type DecryptMessageFailedSignal struct {
 type BundleAddedSignal struct {
 	Identity       string `json:"identity"`
 	InstallationID string `json:"installationID"`
+}
+
+type Filter struct {
+	// ChatID is the identifier of the chat
+	ChatID string `json:"chatId"`
+	// SymKeyID is the symmetric key id used for symmetric chats
+	SymKeyID string `json:"symKeyId"`
+	// OneToOne tells us if we need to use asymmetric encryption for this chat
+	Listen bool `json:"listen"`
+	// FilterID the whisper filter id generated
+	FilterID string `json:"filterId"`
+	// Identity is the public key of the other recipient for non-public chats
+	Identity string `json:"identity"`
+	// Topic is the whisper topic
+	Topic whisper.TopicType `json:"topic"`
+}
+
+type WhisperFilterAddedSignal struct {
+	Filters []*Filter `json:"filters"`
 }
 
 // SendEnvelopeSent triggered when envelope delivered at least to 1 peer.
@@ -113,4 +136,8 @@ func SendDecryptMessageFailed(sender string) {
 
 func SendBundleAdded(identity string, installationID string) {
 	send(EventBundleAdded, BundleAddedSignal{Identity: identity, InstallationID: installationID})
+}
+
+func SendWhisperFilterAdded(filters []*Filter) {
+	send(EventWhisperFilterAdded, WhisperFilterAddedSignal{Filters: filters})
 }
