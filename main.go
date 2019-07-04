@@ -378,6 +378,9 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 			exitErr(errors.Wrap(err, "failed to create databases dir"))
 		}
 		persistence, err := initPersistence(databasesDir)
+		if err != nil {
+			exitErr(errors.Wrap(err, "failed to init persistence layer"))
+		}
 
 		var protocol *chat.ProtocolService
 
