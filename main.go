@@ -399,9 +399,13 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 			return nil, errors.Wrap(err, "failed to init Filter service")
 		}
 
-		// Init publisher
+		// Init and start Publisher
 		publisher.Init(persistence.DB, protocol, filterService)
-		if err := publisher.Start(func() bool { return true }, true); err != nil {
+		online := func() bool {
+			return statusNode.Server().PeerCount() > 0
+		}
+		broadcastContactCode := true
+		if err := publisher.Start(online, broadcastContactCode); err != nil {
 			return nil, errors.Wrap(err, "failed to start Publisher")
 		}
 

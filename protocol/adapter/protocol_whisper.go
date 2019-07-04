@@ -75,7 +75,6 @@ func (w *ProtocolWhisperAdapter) decodeMessage(message *whisper.ReceivedMessage)
 
 	if w.publisher != nil {
 		if err := w.publisher.ProcessMessage(msg, msg.Hash); err != nil {
-			// TODO(adam): err can be chat.ErrNotPairedDevice, chat.ErrDeviceNotFound and in that case it requires special handling.
 			log.Printf("failed to process message: %#x: %v", hash, err)
 		}
 		payload = msg.Payload
@@ -117,7 +116,11 @@ func (w *ProtocolWhisperAdapter) Send(ctx context.Context, data []byte, options 
 				return nil, errors.Wrap(filterErr, "failed to load filter")
 			}
 
-			// TODO(adam): when wrap (the last argument) is important?
+			// Public messages are not wrapped (i.e have not bundle),
+			// when sending in public chats as it would be a breaking change.
+			// When we send a contact code, we send a public message but wrapped,
+			// as PFS enabled client are the only ones using it.
+			// Thus, we keep it to false here.
 			newMessage, err = w.publisher.CreatePublicMessage(privateKey, options.ChatName, data, false)
 		}
 

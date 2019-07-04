@@ -89,7 +89,7 @@ func NewWhisperServiceTransport(
 	shhextService *shhext.Service,
 	privateKey *ecdsa.PrivateKey,
 ) (*WhisperServiceTransport, error) {
-	// TODO: this should not be necessary.
+	// TODO: this should not be necessary after refactoring.
 	if err := shh.SelectKeyPair(privateKey); err != nil {
 		return nil, err
 	}
