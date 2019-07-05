@@ -204,10 +204,6 @@ func (c *ChatViewController) writeMessage(message *protocol.Message) error {
 	)
 
 	println := fmt.Fprintln
-	// TODO: This should never happens, but happens, figure out where
-	if pubKey == nil {
-		return nil
-	}
 	// TODO: extract
 	if pubKey.X.Cmp(myPubKey.X) == 0 && pubKey.Y.Cmp(myPubKey.Y) == 0 {
 		println = color.New(color.FgGreen).Fprintln

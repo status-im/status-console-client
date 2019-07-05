@@ -77,6 +77,7 @@ type Database interface {
 	PublicContactExist(Contact) (bool, error)
 	Histories() ([]History, error)
 	UpdateHistories([]History) error
+	GetPublicChat(name string) (*Contact, error)
 }
 
 // Migrate applies migrations.
@@ -332,6 +333,19 @@ func (db SQLLiteDatabase) PublicContactExist(c Contact) (exists bool, err error)
 	return
 }
 
+func (db SQLLiteDatabase) GetPublicChat(name string) (*Contact, error) {
+	c := &Contact{}
+	err := db.db.QueryRow("SELECT name, state, topic FROM user_contacts WHERE id = ?", formatID(name, ContactPublicRoom)).Scan(&c.Name, &c.State, &c.Topic)
+	c.Type = ContactPublicRoom
+	if err == sql.ErrNoRows {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	return c, nil
+}
+
 func (db SQLLiteDatabase) LastMessageClock(c Contact) (int64, error) {
 	var last sql.NullInt64
 	err := db.db.QueryRow("SELECT max(clock) FROM user_messages WHERE contact_id = ?", contactID(c)).Scan(&last)
@@ -517,5 +531,9 @@ func (db SQLLiteDatabase) UnreadMessages(c Contact) ([]*protocol.Message, error)
 }
 
 func contactID(c Contact) string {
-	return fmt.Sprintf("%s:%d", c.Name, c.Type)
+	return formatID(c.Name, c.Type)
+}
+
+func formatID(name string, t ContactType) string {
+	return fmt.Sprintf("%s:%d", name, t)
 }

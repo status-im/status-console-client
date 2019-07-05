@@ -19,7 +19,6 @@ import (
 
 	"github.com/status-im/status-go/logutils"
 	"github.com/status-im/status-go/messaging/chat"
-	"github.com/status-im/status-go/messaging/filter"
 	"github.com/status-im/status-go/messaging/multidevice"
 	"github.com/status-im/status-go/messaging/publisher"
 	"github.com/status-im/status-go/messaging/sharedsecret"
@@ -385,7 +384,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		var protocol *chat.ProtocolService
 
 		if *pfsEnabled {
-			protocol, err = initProtocol(persistence)
+			protocol, err = initProtocol(persistence, publisher)
 			if err != nil {
 				exitErr(errors.Wrap(err, "initialize protocol"))
 			}
@@ -393,29 +392,18 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 			log.Printf("Protocol has been initialized")
 		}
 
-		// Initialize sharedsecret
-		sharedSecretService := sharedsecret.NewService(persistence.GetSharedSecretStorage())
-
-		newMessagesHandler := func(messages []*filter.Messages) {
-			log.Printf("Received messages: %+v\n", messages)
-		}
-		// Initialize filter
-		filterService := filter.New(shhService, filter.NewSQLLitePersistence(persistence.DB), sharedSecretService, newMessagesHandler)
-		if _, err := filterService.Init(nil); err != nil {
-			return nil, errors.Wrap(err, "failed to init Filter service")
-		}
-
-		// Init and start Publisher
-		publisher.Init(persistence.DB, protocol, filterService)
 		online := func() bool {
 			return statusNode.Server().PeerCount() > 0
 		}
 		broadcastContactCode := true
+
+		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, publisher)
+		// Init and start Publisher
+		publisher.Init(persistence.DB, protocol, protocolAdapter.OnNewMessages)
 		if err := publisher.Start(online, broadcastContactCode); err != nil {
 			return nil, errors.Wrap(err, "failed to start Publisher")
 		}
 
-		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, publisher)
 	}
 
 	messenger := client.NewMessenger(pk, protocolAdapter, db)
@@ -665,7 +653,7 @@ func initPersistence(baseDir string) (*chat.SQLLitePersistence, error) {
 	return chat.NewSQLLitePersistence(dbPath, sqlSecretKey)
 }
 
-func initProtocol(p *chat.SQLLitePersistence) (*chat.ProtocolService, error) {
+func initProtocol(p *chat.SQLLitePersistence, publisher *publisher.Publisher) (*chat.ProtocolService, error) {
 	const (
 		installationID   = "installation-1"
 		maxInstallations = 3
@@ -673,10 +661,6 @@ func initProtocol(p *chat.SQLLitePersistence) (*chat.ProtocolService, error) {
 
 	addedBundlesHandler := func(addedBundles []*multidevice.Installation) {
 		log.Printf("added bundles: %v", addedBundles)
-	}
-
-	sharedSecretHandler := func(sharedSecrets []*sharedsecret.Secret) {
-		log.Printf("new shared secrets: %v", sharedSecrets)
 	}
 
 	sharedSecretService := sharedsecret.NewService(p.GetSharedSecretStorage())
@@ -699,6 +683,6 @@ func initProtocol(p *chat.SQLLitePersistence) (*chat.ProtocolService, error) {
 		sharedSecretService,
 		multideviceService,
 		addedBundlesHandler,
-		sharedSecretHandler,
+		publisher.ProcessNegotiatedSecret,
 	), nil
 }

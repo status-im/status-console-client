@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"log"
 	"time"
@@ -21,6 +22,7 @@ import (
 type ProtocolWhisperAdapter struct {
 	transport transport.WhisperTransport
 	publisher *publisher.Publisher
+	messages  chan *protocol.ReceivedMessages
 }
 
 // ProtocolWhisperAdapter must implement Protocol interface.
@@ -30,13 +32,18 @@ func NewProtocolWhisperAdapter(t transport.WhisperTransport, p *publisher.Publis
 	return &ProtocolWhisperAdapter{
 		transport: t,
 		publisher: p,
+		messages:  make(chan *protocol.ReceivedMessages),
 	}
+}
+
+func (w *ProtocolWhisperAdapter) GetMessagesChan() chan *protocol.ReceivedMessages {
+	return w.messages
 }
 
 // Subscribe listens to new messages.
 func (w *ProtocolWhisperAdapter) Subscribe(
 	ctx context.Context,
-	messages chan<- *protocol.StatusMessage,
+	messages chan *protocol.StatusMessage,
 	options protocol.SubscribeOptions,
 ) (*subscription.Subscription, error) {
 	if err := options.Validate(); err != nil {
@@ -57,7 +64,8 @@ func (w *ProtocolWhisperAdapter) Subscribe(
 
 	go func() {
 		for item := range in {
-			message, err := w.decodeMessage(item)
+			whisperMessage := whisper.ToWhisperMessage(item)
+			message, err := w.decodeMessage(whisperMessage)
 			if err != nil {
 				log.Printf("failed to decode message %#+x: %v", item.EnvelopeHash.Bytes(), err)
 				continue
@@ -69,17 +77,20 @@ func (w *ProtocolWhisperAdapter) Subscribe(
 	return sub, nil
 }
 
-func (w *ProtocolWhisperAdapter) decodeMessage(message *whisper.ReceivedMessage) (*protocol.StatusMessage, error) {
+func (w *ProtocolWhisperAdapter) decodeMessage(message *whisper.Message) (*protocol.StatusMessage, error) {
 	payload := message.Payload
-	publicKey := message.SigToPubKey()
-	hash := message.EnvelopeHash.Bytes()
-	msg := whisper.ToWhisperMessage(message)
+	var err error
+	var publicKey *ecdsa.PublicKey
+	if publicKey, err = crypto.UnmarshalPubkey(message.Sig); err != nil {
+		return nil, errors.New("can't unmarshal pubkey")
+	}
+	hash := message.Hash
 
 	if w.publisher != nil {
-		if err := w.publisher.ProcessMessage(msg, msg.Hash); err != nil {
+		if err := w.publisher.ProcessMessage(message, hash); err != nil {
 			log.Printf("failed to process message: %#x: %v", hash, err)
 		}
-		payload = msg.Payload
+		payload = message.Payload
 	}
 
 	decoded, err := protocol.DecodeMessage(payload)
@@ -90,6 +101,36 @@ func (w *ProtocolWhisperAdapter) decodeMessage(message *whisper.ReceivedMessage)
 	decoded.SigPubKey = publicKey
 
 	return decoded, nil
+}
+
+func (w *ProtocolWhisperAdapter) OnNewMessages(messages []*msgfilter.Messages) {
+	for _, filterMessages := range messages {
+
+		receivedMessages := &protocol.ReceivedMessages{}
+
+		var options protocol.ChatOptions
+
+		if filterMessages.Chat.OneToOne || filterMessages.Chat.Negotiated || filterMessages.Chat.Discovery {
+			options.ChatName = filterMessages.Chat.Identity
+			options.OneToOne = true
+		} else {
+			options.ChatName = filterMessages.Chat.ChatID
+		}
+
+		receivedMessages.ChatOptions = options
+		for _, message := range filterMessages.Messages {
+			decodedMessage, err := w.decodeMessage(message)
+			if err != nil {
+				log.Printf("failed to process message: %v", err)
+				continue
+			}
+			receivedMessages.Messages = append(receivedMessages.Messages, decodedMessage)
+
+		}
+
+		w.messages <- receivedMessages
+	}
+	return
 }
 
 // Send sends a message to the network.
@@ -162,12 +203,14 @@ func chatOptionsToFilterChat(chatOption protocol.ChatOptions) *msgfilter.Chat {
 	if chatOption.Recipient != nil {
 		oneToOne = true
 		chatName = fmt.Sprintf("%x", crypto.FromECDSAPub(chatOption.Recipient))
+	} else {
+
+		chatName = chatOption.ChatName
 	}
 	return &msgfilter.Chat{
 		ChatID:   chatName,
 		OneToOne: oneToOne,
 	}
-
 }
 
 func (w *ProtocolWhisperAdapter) LoadChats(ctx context.Context, params []protocol.ChatOptions) error {
@@ -193,6 +236,7 @@ func (w *ProtocolWhisperAdapter) RemoveChats(ctx context.Context, params []proto
 		if !filterChat.OneToOne {
 			filterChats = append(filterChats, filterChat)
 		}
+
 	}
 
 	return w.publisher.RemoveFilters(filterChats)

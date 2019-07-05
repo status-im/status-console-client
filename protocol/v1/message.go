@@ -149,12 +149,6 @@ func DecodeMessage(data []byte) (message *StatusMessage, err error) {
 		return
 	}
 	return &StatusMessage{Message: value}, nil
-
-	//message, ok := value.(Message)
-	//	if !ok {
-	//		return message, ErrInvalidDecodedValue
-	//	}
-	//	return
 }
 
 // EncodeMessage encodes a Message using Transit serialization.

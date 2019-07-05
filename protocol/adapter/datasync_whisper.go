@@ -18,6 +18,7 @@ import (
 	"github.com/status-im/status-console-client/protocol/transport"
 	"github.com/status-im/status-console-client/protocol/v1"
 
+	msgfilter "github.com/status-im/status-go/messaging/filter"
 	whisper "github.com/status-im/whisper/whisperv6"
 )
 
@@ -29,6 +30,7 @@ type DataSyncWhisperAdapter struct {
 	node      *node.Node
 	transport transport.WhisperTransport
 	packets   PacketHandler
+	messages  chan *protocol.ReceivedMessages
 }
 
 // DataSyncWhisperAdapter must implement Protocol interface.
@@ -39,13 +41,14 @@ func NewDataSyncWhisperAdapter(n *node.Node, t transport.WhisperTransport, h Pac
 		node:      n,
 		transport: t,
 		packets:   h,
+		messages:  make(chan *protocol.ReceivedMessages),
 	}
 }
 
 // Subscribe listens to new messages.
 func (w *DataSyncWhisperAdapter) Subscribe(
 	ctx context.Context,
-	messages chan<- *protocol.StatusMessage,
+	messages chan *protocol.StatusMessage,
 	options protocol.SubscribeOptions,
 ) (*subscription.Subscription, error) {
 	if err := options.Validate(); err != nil {
@@ -92,6 +95,11 @@ func (w *DataSyncWhisperAdapter) Subscribe(
 func (w *DataSyncWhisperAdapter) decodePayload(message *whisper.ReceivedMessage) (payload protobuf.Payload, err error) {
 	err = proto.Unmarshal(message.Payload, &payload)
 	return
+}
+
+func (w *DataSyncWhisperAdapter) OnNewMessages(messages []*msgfilter.Messages) {
+
+	log.Printf("Received messages: %+v\n", messages)
 }
 
 func (w *DataSyncWhisperAdapter) decodeMessages(payload protobuf.Payload) []*protocol.StatusMessage {
@@ -179,4 +187,12 @@ func (w *DataSyncWhisperAdapter) LoadChats(ctx context.Context, params []protoco
 
 func (w *DataSyncWhisperAdapter) RemoveChats(ctx context.Context, params []protocol.ChatOptions) error {
 	return nil
+}
+
+func (w *DataSyncWhisperAdapter) GetMessagesChan() chan *protocol.ReceivedMessages {
+	return w.messages
+}
+
+func (w *DataSyncWhisperAdapter) OnNewMessagesHandler(messages []*msgfilter.Messages) {
+	return
 }

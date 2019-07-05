@@ -54,7 +54,6 @@ func DecodePairInstallationMessage(data []byte) (message PairInstallationMessage
 
 	message, ok := value.(PairInstallationMessage)
 	if !ok {
-		fmt.Println("NOT OK")
 		return message, ErrInvalidDecodedValue
 	}
 	return

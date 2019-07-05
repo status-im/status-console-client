@@ -42,7 +42,7 @@ require (
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/status-im/migrate/v4 v4.3.1-status
 	github.com/status-im/mvds v0.0.16
-	github.com/status-im/status-go v0.30.0-beta.0
+	github.com/status-im/status-go v0.30.0-beta.0.0.20190705124613-966be5202bdb
 	github.com/status-im/whisper v1.4.14
 	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.3.0
