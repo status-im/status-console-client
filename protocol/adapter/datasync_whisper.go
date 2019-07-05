@@ -172,3 +172,11 @@ func toGroupId(topicType whisper.TopicType) state.GroupID {
 	copy(g[:], topicType[:])
 	return g
 }
+
+func (w *DataSyncWhisperAdapter) LoadChats(ctx context.Context, params []protocol.ChatOptions) error {
+	return nil
+}
+
+func (w *DataSyncWhisperAdapter) RemoveChats(ctx context.Context, params []protocol.ChatOptions) error {
+	return nil
+}

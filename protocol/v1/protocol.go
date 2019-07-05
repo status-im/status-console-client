@@ -21,6 +21,11 @@ type Protocol interface {
 
 	// Request retrieves historic messages.
 	Request(ctx context.Context, params RequestOptions) error
+	// LoadChats loads and sets up the chats
+	LoadChats(ctx context.Context, chats []ChatOptions) error
+
+	// RemoveChats removes the corresponding chats
+	RemoveChats(ctx context.Context, chats []ChatOptions) error
 }
 
 // ChatOptions are chat specific options, usually related to the recipient/destination.

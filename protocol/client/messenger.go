@@ -38,8 +38,16 @@ func NewMessenger(identity *ecdsa.PrivateKey, proto protocol.Protocol, db Databa
 	}
 }
 
+func contactToChatOptions(c Contact) protocol.ChatOptions {
+	return protocol.ChatOptions{
+		ChatName:  c.Name,
+		Recipient: c.PublicKey,
+	}
+}
+
 func (m *Messenger) Start() error {
 	log.Printf("[Messenger::Start]")
+	var chatOptions []protocol.ChatOptions
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -57,9 +65,16 @@ func (m *Messenger) Start() error {
 	// This means that we don't know from which contact the message
 	// came from until it is examined.
 	for i := range contacts {
-		if err := m.addStream(contacts[i]); err != nil {
+		contact := contacts[i]
+		if err := m.addStream(contact); err != nil {
 			return err
 		}
+
+		chatOptions = append(chatOptions, contactToChatOptions(contact))
+	}
+
+	if err := m.proto.LoadChats(context.Background(), chatOptions); err != nil {
+		return err
 	}
 
 	log.Printf("[Messenger::Start] request messages from mail sever")
@@ -137,6 +152,10 @@ func (m *Messenger) Join(ctx context.Context, c Contact) error {
 	defer m.mu.Unlock()
 
 	if err := m.addStream(c); err != nil {
+		return err
+	}
+
+	if err := m.proto.LoadChats(context.Background(), []protocol.ChatOptions{contactToChatOptions(c)}); err != nil {
 		return err
 	}
 
@@ -308,6 +327,10 @@ func (m *Messenger) Leave(c Contact) error {
 	}
 
 	stream.Stop()
+
+	if err := m.proto.RemoveChats(context.Background(), []protocol.ChatOptions{contactToChatOptions(c)}); err != nil {
+		return err
+	}
 
 	return nil
 }

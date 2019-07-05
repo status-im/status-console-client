@@ -20,10 +20,10 @@ func StreamStoreHandlerForContact(db Database, c Contact) StreamHandler {
 	return func(sm *protocol.StatusMessage) error {
 		switch sm.Message.(type) {
 		case protocol.Message:
-			m := sm.Message.(*protocol.Message)
+			m := sm.Message.(protocol.Message)
 			m.ID = sm.ID
 			m.SigPubKey = sm.SigPubKey
-			return streamStoreHandlerForContact(db, c, m)
+			return streamStoreHandlerForContact(db, c, &m)
 		}
 		return nil
 	}
@@ -92,12 +92,12 @@ func streamStoreHandlerMultiplexed(db Database, sm *protocol.StatusMessage) erro
 		}
 	}
 
-	m := sm.Message.(*protocol.Message)
+	m := sm.Message.(protocol.Message)
 	m.ID = sm.ID
-	m.SigPubKey = m.SigPubKey
+	m.SigPubKey = sm.SigPubKey
 
 	// TODO: discard message from blocked contact (State != ContactBlocked)
-	_, err = db.SaveMessages(contact, []*protocol.Message{m})
+	_, err = db.SaveMessages(contact, []*protocol.Message{&m})
 	if err == ErrMsgAlreadyExist {
 		return err
 	} else if err != nil {

@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/status-im/status-console-client/protocol/transport"
 	"github.com/status-im/status-console-client/protocol/v1"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/pkg/errors"
 	whisper "github.com/status-im/whisper/whisperv6"
 
@@ -152,4 +154,46 @@ func (w *ProtocolWhisperAdapter) Request(ctx context.Context, params protocol.Re
 	err := w.transport.Request(ctx, transOptions)
 	log.Printf("[ProtocolWhisperAdapter::Request] took %s", time.Since(now))
 	return err
+}
+
+func chatOptionsToFilterChat(chatOption protocol.ChatOptions) *msgfilter.Chat {
+	var chatName string
+	var oneToOne bool
+	if chatOption.Recipient != nil {
+		oneToOne = true
+		chatName = fmt.Sprintf("%x", crypto.FromECDSAPub(chatOption.Recipient))
+	}
+	return &msgfilter.Chat{
+		ChatID:   chatName,
+		OneToOne: oneToOne,
+	}
+
+}
+
+func (w *ProtocolWhisperAdapter) LoadChats(ctx context.Context, params []protocol.ChatOptions) error {
+	var filterChats []*msgfilter.Chat
+	var err error
+	for _, chatOption := range params {
+		filterChats = append(filterChats, chatOptionsToFilterChat(chatOption))
+	}
+	filterChats, err = w.publisher.LoadFilters(filterChats)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (w *ProtocolWhisperAdapter) RemoveChats(ctx context.Context, params []protocol.ChatOptions) error {
+	var filterChats []*msgfilter.Chat
+	for _, chatOption := range params {
+		filterChat := chatOptionsToFilterChat(chatOption)
+		// We only remove public chats, as we can't remove one-to-one
+		// filters as otherwise we won't be receiving any messages
+		// from the user, which is the equivalent of a block feature
+		if !filterChat.OneToOne {
+			filterChats = append(filterChats, filterChat)
+		}
+	}
+
+	return w.publisher.RemoveFilters(filterChats)
 }
