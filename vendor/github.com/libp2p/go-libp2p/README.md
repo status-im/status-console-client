@@ -116,7 +116,7 @@ If you experience any issues migrating from gx to gomod, please [join the discus
 
 List of packages currently in existence for libp2p:
 
-| Name | CI | Coverage | Description |
+| Name | CI/Travis | Coverage | Description |
 | ---------|---------|---------|--------- |
 | **Libp2p** |
 | [`go-libp2p`](//github.com/libp2p/go-libp2p) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p) | go-libp2p entry point |
@@ -184,10 +184,13 @@ List of packages currently in existence for libp2p:
 | [`go-reuseport`](//github.com/libp2p/go-reuseport) | [![Travis CI](https://travis-ci.com/libp2p/go-reuseport.svg?branch=master)](https://travis-ci.com/libp2p/go-reuseport) | [![codecov](https://codecov.io/gh/libp2p/go-reuseport/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-reuseport) | enables reuse of addresses |
 | [`go-sockaddr`](//github.com/libp2p/go-sockaddr) | [![Travis CI](https://travis-ci.com/libp2p/go-sockaddr.svg?branch=master)](https://travis-ci.com/libp2p/go-sockaddr) | [![codecov](https://codecov.io/gh/libp2p/go-sockaddr/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-sockaddr) | utils for sockaddr conversions |
 | [`go-flow-metrics`](//github.com/libp2p/go-flow-metrics) | [![Travis CI](https://travis-ci.com/libp2p/go-flow-metrics.svg?branch=master)](https://travis-ci.com/libp2p/go-flow-metrics) | [![codecov](https://codecov.io/gh/libp2p/go-flow-metrics/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-flow-metrics) | metrics library |
+| [`go-libp2p-gostream`](//github.com/libp2p/go-libp2p-gostream) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-gostream.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-gostream) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-gostream/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-gostream) | Go 'net' wrappers for libp2p |
+| [`go-libp2p-http`](//github.com/libp2p/go-libp2p-http) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-http.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-http) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-http/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-http) | HTTP on top of libp2p streams |
 | **Testing and examples** |
 | [`go-testutil`](//github.com/libp2p/go-testutil) | [![Travis CI](https://travis-ci.com/libp2p/go-testutil.svg?branch=master)](https://travis-ci.com/libp2p/go-testutil) | [![codecov](https://codecov.io/gh/libp2p/go-testutil/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-testutil) | a collection of testing utilities for ipfs and libp2p |
 | [`go-libp2p-examples`](//github.com/libp2p/go-libp2p-examples) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-examples.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-examples) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-examples/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-examples) | go-libp2p examples and tutorials |
 | [`go-libp2p-circuit-progs`](//github.com/libp2p/go-libp2p-circuit-progs) | [![Travis CI](https://travis-ci.com/libp2p/go-libp2p-circuit-progs.svg?branch=master)](https://travis-ci.com/libp2p/go-libp2p-circuit-progs) | [![codecov](https://codecov.io/gh/libp2p/go-libp2p-circuit-progs/branch/master/graph/badge.svg)](https://codecov.io/gh/libp2p/go-libp2p-circuit-progs) | testing programs for go-libp2p-circuit |
+
 
 # Contribute
 

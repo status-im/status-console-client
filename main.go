@@ -396,8 +396,11 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		// Initialize sharedsecret
 		sharedSecretService := sharedsecret.NewService(persistence.GetSharedSecretStorage())
 
+		newMessagesHandler := func(messages []*filter.Messages) {
+			log.Printf("Received messages: %+v\n", messages)
+		}
 		// Initialize filter
-		filterService := filter.New(shhService, filter.NewSQLLitePersistence(persistence.DB), sharedSecretService)
+		filterService := filter.New(shhService, filter.NewSQLLitePersistence(persistence.DB), sharedSecretService, newMessagesHandler)
 		if _, err := filterService.Init(nil); err != nil {
 			return nil, errors.Wrap(err, "failed to init Filter service")
 		}
