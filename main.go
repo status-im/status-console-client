@@ -26,6 +26,7 @@ import (
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/signal"
 
+	"github.com/google/uuid"
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
@@ -58,11 +59,13 @@ var (
 
 	// flags for in-proc node
 	dataDir         = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
+	installationID  = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
 	noNamespace     = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
 	fleet           = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
 	configFile      = fs.String("node-config", "", "a JSON file with node config")
 	pfsEnabled      = fs.Bool("pfs", true, "enable PFS")
 	dataSyncEnabled = fs.Bool("ds", false, "enable data sync")
+	listenAddr      = fs.String("listen-addr", ":30303", "The address the geth node should be listening to")
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -283,7 +286,7 @@ func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database
 	}
 
 	// TODO: provide Mail Servers in a different way.
-	_, err = generateStatusNodeConfig(*dataDir, *fleet, *configFile)
+	_, err = generateStatusNodeConfig(*dataDir, *fleet, *listenAddr, *configFile)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate node config")
 	}
@@ -303,7 +306,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		filterMailTypesHandler(signalsForwarder.in),
 	)
 
-	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
+	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *listenAddr, *configFile)
 	if err != nil {
 		exitErr(errors.Wrap(err, "failed to generate node config"))
 	}
@@ -376,7 +379,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		if err := os.MkdirAll(databasesDir, 0755); err != nil {
 			exitErr(errors.Wrap(err, "failed to create databases dir"))
 		}
-		persistence, err := initPersistence(databasesDir)
+		persistence, err := initPersistence(databasesDir, *installationID)
 		if err != nil {
 			exitErr(errors.Wrap(err, "failed to init persistence layer"))
 		}
@@ -384,7 +387,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		var protocol *chat.ProtocolService
 
 		if *pfsEnabled {
-			protocol, err = initProtocol(persistence, publisher)
+			protocol, err = initProtocol(*installationID, persistence, publisher)
 			if err != nil {
 				exitErr(errors.Wrap(err, "initialize protocol"))
 			}
@@ -642,20 +645,19 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 	return nil
 }
 
-func initPersistence(baseDir string) (*chat.SQLLitePersistence, error) {
+func initPersistence(baseDir string, installationID string) (*chat.SQLLitePersistence, error) {
 	const (
 		// TODO: manage these values properly
-		dbFileName   = "pfs_v1.db"
-		sqlSecretKey = "enc-key-abc"
+		sqlSecretKey = ""
 	)
 
+	dbFileName := fmt.Sprintf("%s.v1.db", installationID)
 	dbPath := filepath.Join(baseDir, dbFileName)
 	return chat.NewSQLLitePersistence(dbPath, sqlSecretKey)
 }
 
-func initProtocol(p *chat.SQLLitePersistence, publisher *publisher.Publisher) (*chat.ProtocolService, error) {
+func initProtocol(installationID string, p *chat.SQLLitePersistence, publisher *publisher.Publisher) (*chat.ProtocolService, error) {
 	const (
-		installationID   = "installation-1"
 		maxInstallations = 3
 	)
 

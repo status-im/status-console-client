@@ -76,48 +76,35 @@ func (m *Messenger) Stop() {
 	defer m.mu.Unlock()
 }
 
-func (m *Messenger) handleDirectMessage(chatType protocol.ChatOptions, message protocol.Message) {
-	contact := Contact{
-		Type:      ContactPrivate,
-		State:     ContactNew,
-		Name:      pubkeyToHex(message.SigPubKey), // TODO(dshulyak) replace with 3-word funny name
-		PublicKey: message.SigPubKey,
-		Topic:     DefaultPrivateTopic(),
-	}
-	exists, err := m.db.PublicContactExist(contact)
+func (m *Messenger) handleDirectMessage(chatType protocol.ChatOptions, message protocol.Message) error {
+	contact, err := m.db.GetOneToOneChat(message.SigPubKey)
 	if err != nil {
-		log.Println(errors.Wrap(err, "error verifying if a contact exist"))
+		return errors.Wrap(err, "could not fetch chat from database")
 	}
-	if !exists {
-		err := m.db.SaveContacts([]Contact{contact})
-		if err != nil {
-			log.Println(errors.Wrap(err, "can't save a new contact"))
+	if contact == nil {
+		contact = &Contact{
+			Type:      ContactPrivate,
+			State:     ContactNew,
+			Name:      pubkeyToHex(message.SigPubKey), // TODO(dshulyak) replace with 3-word funny name
+			PublicKey: message.SigPubKey,
+			Topic:     DefaultPrivateTopic(),
 		}
-	} else {
-		// TODO: replace with db.ContactByPublicKey()
-		contacts, err := m.db.Contacts()
-		if err != nil {
-			log.Println(errors.Wrap(err, "error getting contacts"))
-		}
-		for _, c := range contacts {
-			if c.PublicKey == nil {
-				continue
-			}
 
-			// TODO: extract
-			if message.SigPubKey.X.Cmp(c.PublicKey.X) == 0 && message.SigPubKey.Y.Cmp(c.PublicKey.Y) == 0 {
-				contact = c
-				break
-			}
+		err := m.db.SaveContacts([]Contact{*contact})
+		if err != nil {
+			return errors.Wrap(err, "can't save a new contact")
 		}
 	}
-	_, err = m.db.SaveMessages(contact, []*protocol.Message{&message})
+
+	_, err = m.db.SaveMessages(*contact, []*protocol.Message{&message})
 	if err == ErrMsgAlreadyExist {
 		log.Printf("Message already exists")
+		return nil
 	} else if err != nil {
-		log.Println(errors.Wrap(err, "can't add a message"))
+		return errors.Wrap(err, "can't add a message")
 	}
 
+	return nil
 }
 
 func (m *Messenger) handlePublicMessage(chatType protocol.ChatOptions, message protocol.Message) {

@@ -198,18 +198,18 @@ func (w *ProtocolWhisperAdapter) Request(ctx context.Context, params protocol.Re
 }
 
 func chatOptionsToFilterChat(chatOption protocol.ChatOptions) *msgfilter.Chat {
-	var chatName string
-	var oneToOne bool
 	if chatOption.Recipient != nil {
-		oneToOne = true
-		chatName = fmt.Sprintf("%x", crypto.FromECDSAPub(chatOption.Recipient))
-	} else {
-
-		chatName = chatOption.ChatName
+		identityStr := fmt.Sprintf("0x%x", crypto.FromECDSAPub(chatOption.Recipient))
+		return &msgfilter.Chat{
+			ChatID:   fmt.Sprintf("0x%s", identityStr),
+			OneToOne: true,
+			Identity: identityStr,
+		}
 	}
+
+	// Public chat
 	return &msgfilter.Chat{
-		ChatID:   chatName,
-		OneToOne: oneToOne,
+		ChatID: chatOption.ChatName,
 	}
 }
 
