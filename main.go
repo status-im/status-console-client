@@ -19,7 +19,6 @@ import (
 
 	"github.com/status-im/status-go/logutils"
 	"github.com/status-im/status-go/messaging/chat"
-	"github.com/status-im/status-go/messaging/filter"
 	"github.com/status-im/status-go/messaging/multidevice"
 	"github.com/status-im/status-go/messaging/publisher"
 	"github.com/status-im/status-go/messaging/sharedsecret"
@@ -27,6 +26,7 @@ import (
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/signal"
 
+	"github.com/google/uuid"
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
@@ -59,11 +59,13 @@ var (
 
 	// flags for in-proc node
 	dataDir         = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
+	installationID  = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
 	noNamespace     = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
 	fleet           = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
 	configFile      = fs.String("node-config", "", "a JSON file with node config")
-	pfsEnabled      = fs.Bool("pfs", false, "enable PFS")
+	pfsEnabled      = fs.Bool("pfs", true, "enable PFS")
 	dataSyncEnabled = fs.Bool("ds", false, "enable data sync")
+	listenAddr      = fs.String("listen-addr", ":30303", "The address the geth node should be listening to")
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -284,7 +286,7 @@ func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database
 	}
 
 	// TODO: provide Mail Servers in a different way.
-	_, err = generateStatusNodeConfig(*dataDir, *fleet, *configFile)
+	_, err = generateStatusNodeConfig(*dataDir, *fleet, *listenAddr, *configFile)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate node config")
 	}
@@ -304,7 +306,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		filterMailTypesHandler(signalsForwarder.in),
 	)
 
-	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *configFile)
+	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *listenAddr, *configFile)
 	if err != nil {
 		exitErr(errors.Wrap(err, "failed to generate node config"))
 	}
@@ -351,6 +353,30 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		protocolAdapter protocol.Protocol
 	)
 
+	publisherService := publisher.New(
+		shhService,
+		publisher.Config{PFSEnabled: *pfsEnabled},
+	)
+	databasesDir := filepath.Join(*dataDir, "databases")
+	if err := os.MkdirAll(databasesDir, 0755); err != nil {
+		exitErr(errors.Wrap(err, "failed to create databases dir"))
+	}
+
+	persistence, err := initPersistence(databasesDir, *installationID)
+	if err != nil {
+		exitErr(errors.Wrap(err, "failed to init persistence layer"))
+	}
+	var protocol *chat.ProtocolService
+
+	if *pfsEnabled {
+		protocol, err = initProtocol(*installationID, persistence, publisherService)
+		if err != nil {
+			exitErr(errors.Wrap(err, "initialize protocol"))
+		}
+
+		log.Printf("Protocol has been initialized")
+	}
+
 	if *dataSyncEnabled {
 		dataSyncTransport := datasync.NewDataSyncNodeTransport(transp)
 		dataSyncStore := store.NewDummyStore()
@@ -366,53 +392,22 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 
 		dataSyncNode.Start()
 
-		protocolAdapter = adapter.NewDataSyncWhisperAdapter(dataSyncNode, transp, dataSyncTransport)
+		protocolAdapter = adapter.NewDataSyncWhisperAdapter(dataSyncNode, transp, dataSyncTransport, publisherService)
+
 	} else {
-		publisher := publisher.New(
-			shhService,
-			publisher.Config{PFSEnabled: *pfsEnabled},
-		)
+		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, publisherService)
 
-		databasesDir := filepath.Join(*dataDir, "databases")
-		if err := os.MkdirAll(databasesDir, 0755); err != nil {
-			exitErr(errors.Wrap(err, "failed to create databases dir"))
-		}
-		persistence, err := initPersistence(databasesDir)
-		if err != nil {
-			exitErr(errors.Wrap(err, "failed to init persistence layer"))
-		}
+	}
 
-		var protocol *chat.ProtocolService
+	// Init and start Publisher
+	broadcastContactCode := true
+	online := func() bool {
+		return statusNode.Server().PeerCount() > 0
+	}
 
-		if *pfsEnabled {
-			protocol, err = initProtocol(persistence)
-			if err != nil {
-				exitErr(errors.Wrap(err, "initialize protocol"))
-			}
-
-			log.Printf("Protocol has been initialized")
-		}
-
-		// Initialize sharedsecret
-		sharedSecretService := sharedsecret.NewService(persistence.GetSharedSecretStorage())
-
-		// Initialize filter
-		filterService := filter.New(shhService, filter.NewSQLLitePersistence(persistence.DB), sharedSecretService)
-		if _, err := filterService.Init(nil); err != nil {
-			return nil, errors.Wrap(err, "failed to init Filter service")
-		}
-
-		// Init and start Publisher
-		publisher.Init(persistence.DB, protocol, filterService)
-		online := func() bool {
-			return statusNode.Server().PeerCount() > 0
-		}
-		broadcastContactCode := true
-		if err := publisher.Start(online, broadcastContactCode); err != nil {
-			return nil, errors.Wrap(err, "failed to start Publisher")
-		}
-
-		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, publisher)
+	publisherService.Init(persistence.DB, protocol, protocolAdapter.OnNewMessages)
+	if err := publisherService.Start(online, broadcastContactCode); err != nil {
+		return nil, errors.Wrap(err, "failed to start Publisher")
 	}
 
 	messenger := client.NewMessenger(pk, protocolAdapter, db)
@@ -651,29 +646,24 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 	return nil
 }
 
-func initPersistence(baseDir string) (*chat.SQLLitePersistence, error) {
+func initPersistence(baseDir string, installationID string) (*chat.SQLLitePersistence, error) {
 	const (
 		// TODO: manage these values properly
-		dbFileName   = "pfs_v1.db"
-		sqlSecretKey = "enc-key-abc"
+		sqlSecretKey = ""
 	)
 
+	dbFileName := fmt.Sprintf("%s.v1.db", installationID)
 	dbPath := filepath.Join(baseDir, dbFileName)
 	return chat.NewSQLLitePersistence(dbPath, sqlSecretKey)
 }
 
-func initProtocol(p *chat.SQLLitePersistence) (*chat.ProtocolService, error) {
+func initProtocol(installationID string, p *chat.SQLLitePersistence, publisher *publisher.Publisher) (*chat.ProtocolService, error) {
 	const (
-		installationID   = "installation-1"
 		maxInstallations = 3
 	)
 
 	addedBundlesHandler := func(addedBundles []*multidevice.Installation) {
 		log.Printf("added bundles: %v", addedBundles)
-	}
-
-	sharedSecretHandler := func(sharedSecrets []*sharedsecret.Secret) {
-		log.Printf("new shared secrets: %v", sharedSecrets)
 	}
 
 	sharedSecretService := sharedsecret.NewService(p.GetSharedSecretStorage())
@@ -696,6 +686,6 @@ func initProtocol(p *chat.SQLLitePersistence) (*chat.ProtocolService, error) {
 		sharedSecretService,
 		multideviceService,
 		addedBundlesHandler,
-		sharedSecretHandler,
+		publisher.ProcessNegotiatedSecret,
 	), nil
 }

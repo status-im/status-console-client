@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/status-im/status-console-client/protocol/subscription"
+	"github.com/status-im/status-go/messaging/filter"
+	"github.com/status-im/status-go/messaging/multidevice"
 )
 
 // Protocol is an interface defining basic methods to receive and send messages.
 type Protocol interface {
 	// Subscribe listens to new messages.
-	Subscribe(ctx context.Context, messages chan<- *Message, options SubscribeOptions) (*subscription.Subscription, error)
+	Subscribe(ctx context.Context, messages chan *StatusMessage, options SubscribeOptions) (*subscription.Subscription, error)
 
 	// Send sends a message to the network.
 	// Identity is required as the protocol requires
@@ -21,13 +23,34 @@ type Protocol interface {
 
 	// Request retrieves historic messages.
 	Request(ctx context.Context, params RequestOptions) error
+	// LoadChats loads and sets up the chats
+	LoadChats(ctx context.Context, chats []ChatOptions) error
+
+	// RemoveChats removes the corresponding chats
+	RemoveChats(ctx context.Context, chats []ChatOptions) error
+
+	//GetMessagesChan returns a channel with messages
+	GetMessagesChan() chan *ReceivedMessages
+
+	//TODO: Change signature so that is not whisper specific
+	//OnNewMessagesHandler is called for each message received
+	OnNewMessages(messages []*filter.Messages)
+
+	// SetInstallationMetadata sets an installation metadata
+	SetInstallationMetadata(ctx context.Context, installationID string, data *multidevice.InstallationMetadata) error
 }
 
 // ChatOptions are chat specific options, usually related to the recipient/destination.
 // TODO: split it into PublicRoomOptions and PrivateChatOptions.
 type ChatOptions struct {
-	ChatName  string           // for public chats
+	ChatName  string // for public chats
+	OneToOne  bool
 	Recipient *ecdsa.PublicKey // for private chats
+}
+
+type ReceivedMessages struct {
+	ChatOptions ChatOptions
+	Messages    []*StatusMessage
 }
 
 func (o ChatOptions) Validate() error {

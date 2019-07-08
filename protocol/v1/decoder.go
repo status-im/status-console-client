@@ -14,10 +14,14 @@ import (
 func NewMessageDecoder(r io.Reader) *transit.Decoder {
 	decoder := transit.NewDecoder(r)
 	decoder.AddHandler(statusMessageTag, statusMessageHandler)
+	decoder.AddHandler(statusPairInstallationMessageTag, statusPairInstallationMessageHandler)
 	return decoder
 }
 
-const statusMessageTag = "c4"
+const (
+	statusMessageTag                 = "c4"
+	statusPairInstallationMessageTag = "p2"
+)
 
 func statusMessageHandler(d transit.Decoder, value interface{}) (interface{}, error) {
 	taggedValue, ok := value.(transit.TaggedValue)
@@ -73,6 +77,41 @@ func statusMessageHandler(d transit.Decoder, value interface{}) (interface{}, er
 					sm.Content.ChatID, ok = contentVal.(string)
 				}
 			}
+		default:
+			// skip any other values
+			ok = true
+		}
+
+		if !ok {
+			return nil, fmt.Errorf("invalid value for index: %d", idx)
+		}
+	}
+	return sm, nil
+}
+
+func statusPairInstallationMessageHandler(d transit.Decoder, value interface{}) (interface{}, error) {
+	taggedValue, ok := value.(transit.TaggedValue)
+	if !ok {
+		return nil, errors.New("not a tagged value")
+	}
+	values, ok := taggedValue.Value.([]interface{})
+	if !ok {
+		return nil, errors.New("tagged value does not contain values")
+	}
+
+	sm := PairInstallationMessage{}
+	for idx, v := range values {
+		var ok bool
+
+		switch idx {
+		case 0:
+			sm.InstallationID, ok = v.(string)
+		case 1:
+			sm.DeviceType, ok = v.(string)
+		case 2:
+			sm.Name, ok = v.(string)
+		case 3:
+			sm.FCMToken, ok = v.(string)
 		default:
 			// skip any other values
 			ok = true

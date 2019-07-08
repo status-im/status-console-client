@@ -9,6 +9,8 @@ import (
 	gomock "github.com/golang/mock/gomock"
 	subscription "github.com/status-im/status-console-client/protocol/subscription"
 	v1 "github.com/status-im/status-console-client/protocol/v1"
+	"github.com/status-im/status-go/messaging/filter"
+	"github.com/status-im/status-go/messaging/multidevice"
 	reflect "reflect"
 )
 
@@ -16,6 +18,7 @@ import (
 type MockProtocol struct {
 	ctrl     *gomock.Controller
 	recorder *MockProtocolMockRecorder
+	messages chan *v1.ReceivedMessages
 }
 
 // MockProtocolMockRecorder is the mock recorder for MockProtocol
@@ -25,7 +28,9 @@ type MockProtocolMockRecorder struct {
 
 // NewMockProtocol creates a new mock instance
 func NewMockProtocol(ctrl *gomock.Controller) *MockProtocol {
-	mock := &MockProtocol{ctrl: ctrl}
+	mock := &MockProtocol{ctrl: ctrl,
+		messages: make(chan *v1.ReceivedMessages),
+	}
 	mock.recorder = &MockProtocolMockRecorder{mock}
 	return mock
 }
@@ -65,7 +70,7 @@ func (mr *MockProtocolMockRecorder) Send(arg0, arg1, arg2 interface{}) *gomock.C
 }
 
 // Subscribe mocks base method
-func (m *MockProtocol) Subscribe(arg0 context.Context, arg1 chan<- *v1.Message, arg2 v1.SubscribeOptions) (*subscription.Subscription, error) {
+func (m *MockProtocol) Subscribe(arg0 context.Context, arg1 chan *v1.StatusMessage, arg2 v1.SubscribeOptions) (*subscription.Subscription, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Subscribe", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*subscription.Subscription)
@@ -73,8 +78,38 @@ func (m *MockProtocol) Subscribe(arg0 context.Context, arg1 chan<- *v1.Message, 
 	return ret0, ret1
 }
 
+// SetInstallationMetadata mocks base method
+func (m *MockProtocol) SetInstallationMetadata(arg0 context.Context, arg1 string, arg2 *multidevice.InstallationMetadata) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetInstallationMetadata", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+func (w *MockProtocol) GetMessagesChan() chan *v1.ReceivedMessages {
+	return w.messages
+}
+
+func (w *MockProtocol) LoadChats(ctx context.Context, chats []v1.ChatOptions) error {
+	return nil
+}
+
+func (w *MockProtocol) RemoveChats(ctx context.Context, chats []v1.ChatOptions) error {
+	return nil
+}
+
+func (w *MockProtocol) OnNewMessages(messages []*filter.Messages) {
+	return
+}
+
 // Subscribe indicates an expected call of Subscribe
 func (mr *MockProtocolMockRecorder) Subscribe(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subscribe", reflect.TypeOf((*MockProtocol)(nil).Subscribe), arg0, arg1, arg2)
+}
+
+// SetInstallationMetadata indicates an expected call of SetInstallationMetadat
+func (mr *MockProtocolMockRecorder) SetInstallationMetadata(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetInstallationMetadata", reflect.TypeOf((*MockProtocol)(nil).SetInstallationMetadata), arg0, arg1, arg2)
 }
