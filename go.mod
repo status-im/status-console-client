@@ -17,6 +17,7 @@ require (
 	github.com/fjl/memsize v0.0.0-20180929194037-2a09253e352a // indirect
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/mock v1.3.1
+	github.com/google/uuid v1.1.1
 	github.com/gorilla/mux v1.7.3 // indirect
 	github.com/influxdata/influxdb v1.7.7 // indirect
 	github.com/jroimartin/gocui v0.4.0
@@ -42,7 +43,7 @@ require (
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/status-im/migrate/v4 v4.3.1-status
 	github.com/status-im/mvds v0.0.16
-	github.com/status-im/status-go v0.30.0-beta.0.0.20190705124613-966be5202bdb
+	github.com/status-im/status-go v0.30.0-beta.0.0.20190708063125-f86469075a09
 	github.com/status-im/whisper v1.4.14
 	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.3.0

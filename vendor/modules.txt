@@ -326,16 +326,16 @@ github.com/status-im/mvds/transport
 # github.com/status-im/rendezvous v1.3.0
 github.com/status-im/rendezvous
 github.com/status-im/rendezvous/protocol
-# github.com/status-im/status-go v0.30.0-beta.0.0.20190705124613-966be5202bdb
+# github.com/status-im/status-go v0.30.0-beta.0.0.20190708063125-f86469075a09
 github.com/status-im/status-go/logutils
 github.com/status-im/status-go/messaging/chat
-github.com/status-im/status-go/messaging/filter
 github.com/status-im/status-go/messaging/multidevice
 github.com/status-im/status-go/messaging/publisher
 github.com/status-im/status-go/messaging/sharedsecret
 github.com/status-im/status-go/node
 github.com/status-im/status-go/params
 github.com/status-im/status-go/signal
+github.com/status-im/status-go/messaging/filter
 github.com/status-im/status-go/services/shhext
 github.com/status-im/status-go/messaging/chat/protobuf
 github.com/status-im/status-go/messaging/crypto
@@ -362,6 +362,7 @@ github.com/status-im/status-go/contracts
 github.com/status-im/status-go/mailserver/registry
 github.com/status-im/status-go/peers/verifier
 github.com/status-im/status-go/account
+github.com/status-im/status-go/services/wallet/ierc20
 github.com/status-im/status-go/services/wallet/migrations
 github.com/status-im/status-go/sqlite
 # github.com/status-im/whisper v1.4.14
