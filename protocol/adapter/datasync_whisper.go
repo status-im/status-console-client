@@ -20,6 +20,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	msgfilter "github.com/status-im/status-go/messaging/filter"
+	"github.com/status-im/status-go/messaging/multidevice"
 	"github.com/status-im/status-go/messaging/publisher"
 	whisper "github.com/status-im/whisper/whisperv6"
 )
@@ -128,7 +129,6 @@ func (w *DataSyncWhisperAdapter) OnNewMessages(messages []*msgfilter.Messages) {
 
 		w.messages <- receivedMessages
 	}
-	return
 }
 
 func (w *DataSyncWhisperAdapter) decodeMessage(message *whisper.Message) (*protocol.StatusMessage, error) {
@@ -172,12 +172,6 @@ func (w *DataSyncWhisperAdapter) decodeMessages(payload protobuf.Payload) []*pro
 
 		messages = append(messages, decoded)
 	}
-
-	//TODO: do we need to sort them? this messages might not be chat messages, and some of the records
-	// don't have a clock value
-	//sort.Slice(messages, func(i, j int) bool {
-	//	return messages[i].Clock < messages[j].Clock
-	//})
 
 	return messages
 }
@@ -240,13 +234,17 @@ func (w *DataSyncWhisperAdapter) GetMessagesChan() chan *protocol.ReceivedMessag
 	return w.messages
 }
 
+func (w *DataSyncWhisperAdapter) SetInstallationMetadata(ctx context.Context, installationID string, data *multidevice.InstallationMetadata) error {
+	return w.publisher.SetInstallationMetadata(installationID, data)
+}
+
 func (w *DataSyncWhisperAdapter) LoadChats(ctx context.Context, params []protocol.ChatOptions) error {
 	var filterChats []*msgfilter.Chat
 	var err error
 	for _, chatOption := range params {
 		filterChats = append(filterChats, chatOptionsToFilterChat(chatOption))
 	}
-	filterChats, err = w.publisher.LoadFilters(filterChats)
+	_, err = w.publisher.LoadFilters(filterChats)
 	if err != nil {
 		return err
 	}

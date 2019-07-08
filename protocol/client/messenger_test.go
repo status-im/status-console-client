@@ -8,6 +8,8 @@ import (
 
 	"github.com/status-im/status-console-client/protocol/subscription"
 	"github.com/status-im/status-console-client/protocol/v1"
+	"github.com/status-im/status-go/messaging/filter"
+	"github.com/status-im/status-go/messaging/multidevice"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,13 +21,32 @@ func (proto *requestsMock) Send(ctx context.Context, data []byte, options protoc
 	return nil, nil
 }
 
-func (proto *requestsMock) Subscribe(ctx context.Context, messages chan<- *protocol.Message, options protocol.SubscribeOptions) (*subscription.Subscription, error) {
+func (proto *requestsMock) Subscribe(ctx context.Context, messages chan *protocol.StatusMessage, options protocol.SubscribeOptions) (*subscription.Subscription, error) {
 	return nil, nil
 }
 
 func (proto *requestsMock) Request(ctx context.Context, params protocol.RequestOptions) error {
 	proto.requests = append(proto.requests, params)
 	return nil
+}
+
+func (proto *requestsMock) GetMessagesChan() chan *protocol.ReceivedMessages {
+	return nil
+}
+
+func (proto *requestsMock) LoadChats(ctx context.Context, chats []protocol.ChatOptions) error {
+	return nil
+}
+
+func (proto *requestsMock) RemoveChats(ctx context.Context, chats []protocol.ChatOptions) error {
+	return nil
+}
+
+func (proto *requestsMock) SetInstallationMetadata(ctx context.Context, installationID string, data *multidevice.InstallationMetadata) error {
+	return nil
+}
+
+func (proto *requestsMock) OnNewMessages(messages []*filter.Messages) {
 }
 
 func TestRequestHistoryOneRequest(t *testing.T) {

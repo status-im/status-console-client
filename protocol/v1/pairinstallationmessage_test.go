@@ -19,7 +19,7 @@ var (
 func TestDecodePairInstallationMessageMessage(t *testing.T) {
 	val, err := DecodeMessage(testPairInstallationMessageBytes)
 	require.NoError(t, err)
-	require.EqualValues(t, testPairInstallationMessageStruct, val)
+	require.EqualValues(t, &StatusMessage{Message: testPairInstallationMessageStruct}, val)
 }
 
 func TestEncodePairInstallationMessage(t *testing.T) {
@@ -29,5 +29,5 @@ func TestEncodePairInstallationMessage(t *testing.T) {
 	// and it is not possible to compare bytes.
 	val, err := DecodeMessage(data)
 	require.NoError(t, err)
-	require.EqualValues(t, testPairInstallationMessageStruct, val)
+	require.EqualValues(t, &StatusMessage{Message: testPairInstallationMessageStruct}, val)
 }

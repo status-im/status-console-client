@@ -158,22 +158,22 @@ func TestGetLastMessageClock(t *testing.T) {
 	require.Equal(t, int64(count), last)
 }
 
-func TestPublicContactExist(t *testing.T) {
+func TestGetOneToOneChat(t *testing.T) {
 	db, err := InitializeTmpDB()
 	require.NoError(t, err)
 	defer db.Close()
 	pk, err := crypto.GenerateKey()
 	require.NoError(t, err)
-	contact := Contact{
+	expectedContact := Contact{
 		Name:      "first",
 		Type:      ContactPrivate,
 		PublicKey: &pk.PublicKey,
 		Topic:     "first",
 	}
-	require.NoError(t, db.SaveContacts([]Contact{contact}))
-	exists, err := db.PublicContactExist(contact)
+	require.NoError(t, db.SaveContacts([]Contact{expectedContact}))
+	contact, err := db.GetOneToOneChat(&pk.PublicKey)
 	require.NoError(t, err)
-	require.True(t, exists, "contact expected to exist in database")
+	require.Equal(t, &expectedContact, contact, "contact expected to exist in database")
 }
 
 func TestLoadHistories(t *testing.T) {

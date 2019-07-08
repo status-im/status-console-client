@@ -340,7 +340,6 @@ func (db SQLLiteDatabase) GetOneToOneChat(publicKey *ecdsa.PublicKey) (*Contact,
 	}
 
 	return c, nil
-
 }
 
 func (db SQLLiteDatabase) GetPublicChat(name string) (*Contact, error) {

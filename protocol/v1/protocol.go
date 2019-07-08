@@ -8,6 +8,7 @@ import (
 
 	"github.com/status-im/status-console-client/protocol/subscription"
 	"github.com/status-im/status-go/messaging/filter"
+	"github.com/status-im/status-go/messaging/multidevice"
 )
 
 // Protocol is an interface defining basic methods to receive and send messages.
@@ -34,6 +35,9 @@ type Protocol interface {
 	//TODO: Change signature so that is not whisper specific
 	//OnNewMessagesHandler is called for each message received
 	OnNewMessages(messages []*filter.Messages)
+
+	// SetInstallationMetadata sets an installation metadata
+	SetInstallationMetadata(ctx context.Context, installationID string, data *multidevice.InstallationMetadata) error
 }
 
 // ChatOptions are chat specific options, usually related to the recipient/destination.

@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/pkg/errors"
 	"github.com/status-im/status-console-client/protocol/v1"
+	"github.com/status-im/status-go/messaging/multidevice"
 )
 
 type Messenger struct {
@@ -107,30 +108,43 @@ func (m *Messenger) handleDirectMessage(chatType protocol.ChatOptions, message p
 	return nil
 }
 
-func (m *Messenger) handlePublicMessage(chatType protocol.ChatOptions, message protocol.Message) {
+func (m *Messenger) handlePublicMessage(chatType protocol.ChatOptions, message protocol.Message) error {
 	contact, err := m.db.GetPublicChat(chatType.ChatName)
 	if err != nil {
-		log.Println(errors.Wrap(err, "error getting public chat"))
-		return
+		return errors.Wrap(err, "error getting public chat")
 	} else if contact == nil {
-		log.Println(errors.Wrap(err, "no chat for this message, is that a deleted chat?"))
-		return
+		return errors.Wrap(err, "no chat for this message, is that a deleted chat?")
 	}
 	_, err = m.db.SaveMessages(*contact, []*protocol.Message{&message})
 	if err == ErrMsgAlreadyExist {
 		log.Printf("Message already exists")
+		return nil
 	} else if err != nil {
-		log.Println(errors.Wrap(err, "can't add a message"))
+		return errors.Wrap(err, "can't add a message")
 	}
 
+	return nil
 }
 
-func (m *Messenger) handleMessageType(chatType protocol.ChatOptions, message protocol.Message) {
+func (m *Messenger) handleMessageType(chatType protocol.ChatOptions, message protocol.Message) error {
+	// TODO: handle group chats messages
 	if chatType.OneToOne {
-		m.handleDirectMessage(chatType, message)
-	} else {
-		m.handlePublicMessage(chatType, message)
+		return m.handleDirectMessage(chatType, message)
 	}
+	return m.handlePublicMessage(chatType, message)
+}
+
+func (m *Messenger) handlePairInstallationMessageType(chatType protocol.ChatOptions, sm *protocol.StatusMessage, message protocol.PairInstallationMessage) error {
+	if !isPubKeyEqual(sm.SigPubKey, &m.identity.PublicKey) {
+		return errors.New("Not coming from our identity, ignoring")
+	}
+
+	metadata := &multidevice.InstallationMetadata{
+		Name:       message.Name,
+		FCMToken:   message.FCMToken,
+		DeviceType: message.DeviceType,
+	}
+	return m.proto.SetInstallationMetadata(context.TODO(), message.InstallationID, metadata)
 }
 
 func (m *Messenger) processMessage(message *protocol.ReceivedMessages) {
@@ -147,7 +161,16 @@ func (m *Messenger) processMessage(message *protocol.ReceivedMessages) {
 			m1.ID = sm.ID
 			m1.SigPubKey = sm.SigPubKey
 
-			m.handleMessageType(message.ChatOptions, m1)
+			if err := m.handleMessageType(message.ChatOptions, m1); err != nil {
+				log.Printf("failed handling message: %+v", err)
+				continue
+			}
+		case protocol.PairInstallationMessage:
+			m1 := sm.Message.(protocol.PairInstallationMessage)
+			if err := m.handlePairInstallationMessageType(message.ChatOptions, sm, m1); err != nil {
+				log.Printf("failed handling message: %+v", err)
+				continue
+			}
 		}
 
 	}
@@ -155,10 +178,11 @@ func (m *Messenger) processMessage(message *protocol.ReceivedMessages) {
 
 func (m *Messenger) ProcessMessages() {
 	for {
-		select {
-		case msg := <-m.proto.GetMessagesChan():
-			m.processMessage(msg)
+		msg, more := <-m.proto.GetMessagesChan()
+		if !more {
+			return
 		}
+		m.processMessage(msg)
 	}
 }
 
@@ -331,4 +355,10 @@ func (m *Messenger) Subscribe(events chan Event) event.Subscription {
 func pubkeyToHex(key *ecdsa.PublicKey) string {
 	buf := crypto.FromECDSAPub(key)
 	return hexutil.Encode(buf)
+}
+
+// isPubKeyEqual checks that two public keys are equal
+func isPubKeyEqual(a, b *ecdsa.PublicKey) bool {
+	// the curve is always the same, just compare the points
+	return a.X.Cmp(b.X) == 0 && a.Y.Cmp(b.Y) == 0
 }

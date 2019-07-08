@@ -16,6 +16,7 @@ import (
 	whisper "github.com/status-im/whisper/whisperv6"
 
 	msgfilter "github.com/status-im/status-go/messaging/filter"
+	"github.com/status-im/status-go/messaging/multidevice"
 	"github.com/status-im/status-go/messaging/publisher"
 )
 
@@ -130,7 +131,6 @@ func (w *ProtocolWhisperAdapter) OnNewMessages(messages []*msgfilter.Messages) {
 
 		w.messages <- receivedMessages
 	}
-	return
 }
 
 // Send sends a message to the network.
@@ -213,13 +213,17 @@ func chatOptionsToFilterChat(chatOption protocol.ChatOptions) *msgfilter.Chat {
 	}
 }
 
+func (w *ProtocolWhisperAdapter) SetInstallationMetadata(ctx context.Context, installationID string, data *multidevice.InstallationMetadata) error {
+	return w.publisher.SetInstallationMetadata(installationID, data)
+}
+
 func (w *ProtocolWhisperAdapter) LoadChats(ctx context.Context, params []protocol.ChatOptions) error {
 	var filterChats []*msgfilter.Chat
 	var err error
 	for _, chatOption := range params {
 		filterChats = append(filterChats, chatOptionsToFilterChat(chatOption))
 	}
-	filterChats, err = w.publisher.LoadFilters(filterChats)
+	_, err = w.publisher.LoadFilters(filterChats)
 	if err != nil {
 		return err
 	}

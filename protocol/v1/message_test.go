@@ -22,7 +22,10 @@ var (
 func TestDecodeMessage(t *testing.T) {
 	val, err := DecodeMessage(testMessageBytes)
 	require.NoError(t, err)
-	require.EqualValues(t, testMessageStruct, val)
+	require.EqualValues(t,
+		&StatusMessage{
+			Message: testMessageStruct,
+		}, val)
 }
 
 func BenchmarkDecodeMessage(b *testing.B) {
@@ -45,7 +48,7 @@ func TestEncodeMessage(t *testing.T) {
 	// and it is not possible to compare bytes.
 	val, err := DecodeMessage(data)
 	require.NoError(t, err)
-	require.EqualValues(t, testMessageStruct, val)
+	require.EqualValues(t, &StatusMessage{Message: testMessageStruct}, val)
 }
 
 func TestTimestampInMs(t *testing.T) {

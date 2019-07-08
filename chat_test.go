@@ -11,7 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/status-im/status-console-client/protocol/client"
-	"github.com/status-im/status-console-client/protocol/subscription"
 	protomock "github.com/status-im/status-console-client/protocol/v1/mock"
 )
 
@@ -31,15 +30,6 @@ func TestSendMessage(t *testing.T) {
 
 	messenger := client.NewMessenger(identity, protoMock, db)
 	vc := NewChatViewController(nil, nil, messenger, nil)
-
-	protoMock.EXPECT().
-		Subscribe(
-			gomock.Any(),
-			gomock.Any(),
-			gomock.Any(),
-		).
-		Return(subscription.New(), nil).
-		Times(1)
 
 	protoMock.EXPECT().
 		Request(
