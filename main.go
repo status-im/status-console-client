@@ -353,6 +353,30 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		protocolAdapter protocol.Protocol
 	)
 
+	publisherService := publisher.New(
+		shhService,
+		publisher.Config{PFSEnabled: *pfsEnabled},
+	)
+	databasesDir := filepath.Join(*dataDir, "databases")
+	if err := os.MkdirAll(databasesDir, 0755); err != nil {
+		exitErr(errors.Wrap(err, "failed to create databases dir"))
+	}
+
+	persistence, err := initPersistence(databasesDir, *installationID)
+	if err != nil {
+		exitErr(errors.Wrap(err, "failed to init persistence layer"))
+	}
+	var protocol *chat.ProtocolService
+
+	if *pfsEnabled {
+		protocol, err = initProtocol(*installationID, persistence, publisherService)
+		if err != nil {
+			exitErr(errors.Wrap(err, "initialize protocol"))
+		}
+
+		log.Printf("Protocol has been initialized")
+	}
+
 	if *dataSyncEnabled {
 		dataSyncTransport := datasync.NewDataSyncNodeTransport(transp)
 		dataSyncStore := store.NewDummyStore()
@@ -368,45 +392,22 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 
 		dataSyncNode.Start()
 
-		protocolAdapter = adapter.NewDataSyncWhisperAdapter(dataSyncNode, transp, dataSyncTransport)
+		protocolAdapter = adapter.NewDataSyncWhisperAdapter(dataSyncNode, transp, dataSyncTransport, publisherService)
+
 	} else {
-		publisher := publisher.New(
-			shhService,
-			publisher.Config{PFSEnabled: *pfsEnabled},
-		)
+		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, publisherService)
 
-		databasesDir := filepath.Join(*dataDir, "databases")
-		if err := os.MkdirAll(databasesDir, 0755); err != nil {
-			exitErr(errors.Wrap(err, "failed to create databases dir"))
-		}
-		persistence, err := initPersistence(databasesDir, *installationID)
-		if err != nil {
-			exitErr(errors.Wrap(err, "failed to init persistence layer"))
-		}
+	}
 
-		var protocol *chat.ProtocolService
+	// Init and start Publisher
+	broadcastContactCode := true
+	online := func() bool {
+		return statusNode.Server().PeerCount() > 0
+	}
 
-		if *pfsEnabled {
-			protocol, err = initProtocol(*installationID, persistence, publisher)
-			if err != nil {
-				exitErr(errors.Wrap(err, "initialize protocol"))
-			}
-
-			log.Printf("Protocol has been initialized")
-		}
-
-		online := func() bool {
-			return statusNode.Server().PeerCount() > 0
-		}
-		broadcastContactCode := true
-
-		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, publisher)
-		// Init and start Publisher
-		publisher.Init(persistence.DB, protocol, protocolAdapter.OnNewMessages)
-		if err := publisher.Start(online, broadcastContactCode); err != nil {
-			return nil, errors.Wrap(err, "failed to start Publisher")
-		}
-
+	publisherService.Init(persistence.DB, protocol, protocolAdapter.OnNewMessages)
+	if err := publisherService.Start(online, broadcastContactCode); err != nil {
+		return nil, errors.Wrap(err, "failed to start Publisher")
 	}
 
 	messenger := client.NewMessenger(pk, protocolAdapter, db)
