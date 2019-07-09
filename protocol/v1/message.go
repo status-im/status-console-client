@@ -66,6 +66,7 @@ type StatusMessage struct {
 	Message   interface{}
 	ID        []byte           `json:"-"`
 	SigPubKey *ecdsa.PublicKey `json:"-"`
+	Signature []byte           `json:"-"`
 	Flags     Flags            `json:"-"`
 }
 
@@ -77,8 +78,6 @@ type Message struct {
 	Clock     int64            `json:"clock"` // lamport timestamp; see CalcMessageClock for more details
 	Timestamp TimestampInMs    `json:"timestamp"`
 	Content   Content          `json:"content"`
-	Signature []byte           `json:"signature"`
-	Sender    *ecdsa.PublicKey `json:"sender"`
 
 	// not protocol defined fields
 	ID        []byte           `json:"-"`
