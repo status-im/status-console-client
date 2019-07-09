@@ -72,12 +72,12 @@ type StatusMessage struct {
 
 // Message contains all message details.
 type Message struct {
-	Text      string           `json:"text"` // TODO: why is this duplicated?
-	ContentT  string           `json:"content_type"`
-	MessageT  string           `json:"message_type"`
-	Clock     int64            `json:"clock"` // lamport timestamp; see CalcMessageClock for more details
-	Timestamp TimestampInMs    `json:"timestamp"`
-	Content   Content          `json:"content"`
+	Text      string        `json:"text"` // TODO: why is this duplicated?
+	ContentT  string        `json:"content_type"`
+	MessageT  string        `json:"message_type"`
+	Clock     int64         `json:"clock"` // lamport timestamp; see CalcMessageClock for more details
+	Timestamp TimestampInMs `json:"timestamp"`
+	Content   Content       `json:"content"`
 
 	// not protocol defined fields
 	ID        []byte           `json:"-"`
