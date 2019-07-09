@@ -393,9 +393,8 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		dataSyncNode.Start()
 
 		protocolAdapter = adapter.NewDataSyncWhisperAdapter(dataSyncNode, transp, dataSyncTransport, publisherService)
-
 	} else {
-		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, publisherService)
+		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, publisherService, adapter.Config{PFSEnabled: *pfsEnabled})
 
 	}
 
@@ -405,17 +404,9 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		return statusNode.Server().PeerCount() > 0
 	}
 
-<<<<<<< HEAD
-		protocolAdapter = adapter.NewProtocolWhisperAdapter(
-			transp,
-			publisher,
-			adapter.Config{PFSEnabled: *pfsEnabled},
-		)
-=======
 	publisherService.Init(persistence.DB, protocol, protocolAdapter.OnNewMessages)
 	if err := publisherService.Start(online, broadcastContactCode); err != nil {
 		return nil, errors.Wrap(err, "failed to start Publisher")
->>>>>>> master
 	}
 
 	messenger := client.NewMessenger(pk, protocolAdapter, db)

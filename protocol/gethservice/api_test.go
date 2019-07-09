@@ -16,7 +16,7 @@ import (
 	"github.com/status-im/status-go/params"
 
 	"github.com/status-im/status-console-client/protocol/client"
-	"github.com/status-im/status-console-client/protocol/subscription"
+	clientmock "github.com/status-im/status-console-client/protocol/client/mock"
 	"github.com/status-im/status-console-client/protocol/v1"
 	protomock "github.com/status-im/status-console-client/protocol/v1/mock"
 
@@ -25,46 +25,60 @@ import (
 )
 
 func TestPublicAPISend(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	proto := protomock.NewMockProtocol(ctrl)
+	ctrlProto := gomock.NewController(t)
+	defer ctrlProto.Finish()
+	proto := protomock.NewMockProtocol(ctrlProto)
 
-	client, aNode, err := setupRPCClient(proto)
+	ctrlDatabase := gomock.NewController(t)
+	defer ctrlDatabase.Finish()
+	database := clientmock.NewMockDatabase(ctrlDatabase)
+
+	client, aNode, err := setupRPCClient(database, proto)
 	require.NoError(t, err)
 	defer func() { go discardStop(aNode) }() // Stop() is slow so do it in a goroutine
 
 	data := []byte("some payload")
-	params := SendParams{
-		Contact{
-			Name: "test-chat",
-		},
+	contact := Contact{
+		Name: "test-chat",
 	}
 	result := hexutil.Bytes("abc")
+
+	database.EXPECT().
+		LastMessageClock(gomock.Any()).
+		Return(time.Now().Unix(), nil)
+
+	database.EXPECT().
+		SaveMessages(gomock.Any(), gomock.Any()).
+		Return(int64(0), nil)
 
 	proto.EXPECT().
 		Send(
 			gomock.Any(),
-			gomock.Eq(data),
+			gomock.Any(),
 			gomock.Eq(protocol.SendOptions{
 				ChatOptions: protocol.ChatOptions{
-					ChatName: params.Name,
+					ChatName: contact.Name,
 				},
 			}),
 		).
 		Return(result, nil)
 
 	var hash hexutil.Bytes
-	err = client.Call(&hash, createRPCMethod("send"), hexutil.Encode(data), params)
+	err = client.Call(&hash, createRPCMethod("send"), contact, hexutil.Encode(data))
 	require.NoError(t, err)
 	require.Equal(t, result, hash)
 }
 
 func TestPublicAPIRequest(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	proto := protomock.NewMockProtocol(ctrl)
+	ctrlProto := gomock.NewController(t)
+	defer ctrlProto.Finish()
+	proto := protomock.NewMockProtocol(ctrlProto)
 
-	client, aNode, err := setupRPCClient(proto)
+	ctrlDatabase := gomock.NewController(t)
+	defer ctrlDatabase.Finish()
+	database := clientmock.NewMockDatabase(ctrlDatabase)
+
+	client, aNode, err := setupRPCClient(database, proto)
 	require.NoError(t, err)
 	defer func() { go discardStop(aNode) }() // Stop() is slow so do it in a goroutine
 
@@ -100,35 +114,38 @@ func TestPublicAPIRequest(t *testing.T) {
 }
 
 func TestPublicAPIMessages(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	proto := protomock.NewMockProtocol(ctrl)
+	ctrlProto := gomock.NewController(t)
+	defer ctrlProto.Finish()
+	proto := protomock.NewMockProtocol(ctrlProto)
 
-	client, aNode, err := setupRPCClient(proto)
+	ctrlDatabase := gomock.NewController(t)
+	defer ctrlDatabase.Finish()
+	database := clientmock.NewMockDatabase(ctrlDatabase)
+
+	rpcClient, aNode, err := setupRPCClient(database, proto)
 	require.NoError(t, err)
 	defer func() { go discardStop(aNode) }() // Stop() is slow so do it in a goroutine
 
-	messages := make(chan protocol.Message)
-	params := MessagesParams{
-		Contact{
-			Name: "test-chat",
-		},
-	}
-
 	proto.EXPECT().
-		Subscribe(
+		LoadChats(
 			gomock.Any(),
-			gomock.Any(),
-			gomock.Eq(protocol.SubscribeOptions{
-				ChatOptions: protocol.ChatOptions{
-					ChatName: params.Name,
-				},
+			gomock.Eq([]protocol.ChatOptions{
+				protocol.ChatOptions{ChatName: "test-chat"},
 			}),
 		).
-		Return(subscription.New(), nil)
+		Return(nil)
 
+	proto.EXPECT().
+		Request(gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	database.EXPECT().
+		UpdateHistories(gomock.Any()).
+		Return(nil)
+
+	messages := make(chan protocol.Message)
 	// The first argument is a name of the method to use for subscription.
-	_, err = client.Subscribe(context.Background(), StatusSecureMessagingProtocolAPIName, messages, "messages", params)
+	_, err = rpcClient.Subscribe(context.Background(), StatusSecureMessagingProtocolAPIName, messages, "messages", client.Contact{Type: 1, Name: "test-chat"})
 	require.NoError(t, err)
 }
 
@@ -159,7 +176,7 @@ func discardStop(n *node.StatusNode) {
 	_ = n.Stop()
 }
 
-func setupRPCClient(proto protocol.Protocol) (*rpc.Client, *node.StatusNode, error) {
+func setupRPCClient(db client.Database, proto protocol.Protocol) (*rpc.Client, *node.StatusNode, error) {
 	privateKey, _ := crypto.GenerateKey()
 
 	n, service, err := createAndStartNode(privateKey)
@@ -167,8 +184,7 @@ func setupRPCClient(proto protocol.Protocol) (*rpc.Client, *node.StatusNode, err
 		return nil, nil, err
 	}
 
-	service.SetMessenger(client.NewMessenger(nil, proto, nil))
-	service.SetProtocol(proto)
+	service.SetMessenger(client.NewMessenger(privateKey, proto, db))
 
 	client, err := n.GethNode().Attach()
 	return client, n, err

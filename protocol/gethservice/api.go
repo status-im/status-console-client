@@ -2,12 +2,10 @@ package gethservice
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"errors"
 	"log"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/status-im/status-console-client/protocol/client"
 	"github.com/status-im/status-console-client/protocol/v1"
@@ -199,11 +197,4 @@ func (api *PublicAPI) ReadContactMessages(ctx context.Context, contact Contact, 
 		return nil, err
 	}
 	return api.service.messenger.Messages(c, offset)
-}
-
-func unmarshalPubKey(b hexutil.Bytes) (*ecdsa.PublicKey, error) {
-	if len(b) == 0 {
-		return nil, nil
-	}
-	return crypto.UnmarshalPubkey(b)
 }

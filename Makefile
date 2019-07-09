@@ -63,10 +63,15 @@ mock:
 		-destination ./protocol/transport/mock/whisper_mock.go \
 		-package transport_mock \
 		github.com/status-im/status-console-client/protocol/transport WhisperTransport
+	# TODO(adam): fix me
+	# mockgen \
+	# 	-destination ./protocol/transport/server_mock.go \
+	# 	-package transport \
+	# 	github.com/status-im/status-console-client/protocol/transport server
 	mockgen \
-		-destination ./protocol/transport/server_mock.go \
-		-package transport \
-		github.com/status-im/status-console-client/protocol/transport Server
+		-destination ./protocol/client/mock/database_mock.go \
+		-package client \
+		github.com/status-im/status-console-client/protocol/client Database
 .PHONY: mock
 
 gen-migrations:

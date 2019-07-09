@@ -187,6 +187,8 @@ func (m *Messenger) ProcessMessages() {
 }
 
 func (m *Messenger) Join(ctx context.Context, c Contact) error {
+	log.Printf("[Messenger::Join] Joining a chat with contact %#v", c)
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
