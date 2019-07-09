@@ -38,7 +38,7 @@
     "Stream Muxers",
     ["libp2p/go-stream-muxer", "go-stream-muxer", "interfaces"],
     ["whyrusleeping/go-smux-yamux", "go-smux-yamux", "YAMUX stream multiplexer"],
-    ["whyrusleeping/go-smux-mplex", "go-smux-mplex", "MPLEX stream multiplexer"],
+    ["whyrusleeping/go-smux-multiplex", "go-smux-multiplex", "MPLEX stream multiplexer"],
 
     "NAT Traversal",
     ["libp2p/go-libp2p-nat", "go-libp2p-nat"],
@@ -87,6 +87,8 @@
     ["libp2p/go-reuseport", "go-reuseport", "enables reuse of addresses"],
     ["libp2p/go-sockaddr", "go-sockaddr", "utils for sockaddr conversions"],
     ["libp2p/go-flow-metrics", "go-flow-metrics", "metrics library"],
+    ["libp2p/go-libp2p-gostream", "go-libp2p-gostream", "Go 'net' wrappers for libp2p"],
+    ["libp2p/go-libp2p-http", "go-libp2p-http", "HTTP on top of libp2p streams"],
 
     "Testing and examples",
     ["libp2p/go-testutil", "go-testutil", "a collection of testing utilities for ipfs and libp2p"],

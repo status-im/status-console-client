@@ -68,10 +68,10 @@ func NewPublicAPI(s *Service) *PublicAPI {
 	}
 }
 
-// SendToContact send payload to specified contact.
+// Send sends payload to specified contact.
 // Contact should be added before sending message,
 // otherwise error will be received.
-func (api *PublicAPI) SendToContact(ctx context.Context, contact Contact, payload string) (hexutil.Bytes, error) {
+func (api *PublicAPI) Send(ctx context.Context, contact Contact, payload string) (hexutil.Bytes, error) {
 	if api.service.messenger == nil {
 		return nil, ErrMessengerNotSet
 	}
@@ -101,10 +101,10 @@ func (api *PublicAPI) Request(ctx context.Context, params RequestParams) (err er
 	return api.service.messenger.Request(ctx, c, options)
 }
 
-// Chat is a high-level subscription-based RPC method.
+// Messages is a high-level subscription-based RPC method.
 // It joins a chat for selected contact and streams
 // events for that chat.
-func (api *PublicAPI) Chat(ctx context.Context, contact client.Contact) (*rpc.Subscription, error) {
+func (api *PublicAPI) Messages(ctx context.Context, contact client.Contact) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
 	if !supported {
 		return nil, rpc.ErrNotificationsUnsupported

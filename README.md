@@ -18,7 +18,7 @@ $ ./bin/status-term-client -create-key-pair
 Your private key: <KEY>
 
 # start
-$ ./bin/status-term-client -keyhex=<KEY>
+$ ./bin/status-term-client -keyhex=<KEY> -installation-id=any-string -data-dir=your-data-dir
 
 # or start and redirect logs
 $ ./bin/status-term-client -keyhex=<KEY> 2>/tmp/status-term-client.log

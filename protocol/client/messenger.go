@@ -8,9 +8,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/pkg/errors"
 	"github.com/status-im/status-console-client/protocol/v1"
+	"github.com/status-im/status-go/messaging/multidevice"
 )
 
 type Messenger struct {
@@ -18,9 +21,7 @@ type Messenger struct {
 	proto    protocol.Protocol
 	db       Database
 
-	mu      sync.Mutex         // guards public and private maps
-	public  map[string]*Stream // key is Contact.Topic
-	private map[string]*Stream // key is Contact.Topic
+	mu sync.Mutex // guards public and private maps
 
 	events *event.Feed
 }
@@ -32,14 +33,20 @@ func NewMessenger(identity *ecdsa.PrivateKey, proto protocol.Protocol, db Databa
 		proto:    proto,
 		db:       NewDatabaseWithEvents(db, events),
 
-		public:  make(map[string]*Stream),
-		private: make(map[string]*Stream),
-		events:  events,
+		events: events,
+	}
+}
+
+func contactToChatOptions(c Contact) protocol.ChatOptions {
+	return protocol.ChatOptions{
+		ChatName:  c.Name,
+		Recipient: c.PublicKey,
 	}
 }
 
 func (m *Messenger) Start() error {
 	log.Printf("[Messenger::Start]")
+	var chatOptions []protocol.ChatOptions
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -49,20 +56,16 @@ func (m *Messenger) Start() error {
 		return errors.Wrap(err, "unable to read contacts from database")
 	}
 
-	// For each contact, a new Stream is created that subscribes to the protocol
-	// and forwards incoming messages to the Stream instance.
-	// We iterate over all contacts, however, there are two cases:
-	// (1) Public chats where each has a unique topic,
-	// (2) Private chats where a single or shared topic is used.
-	// This means that we don't know from which contact the message
-	// came from until it is examined.
 	for i := range contacts {
-		if err := m.addStream(contacts[i]); err != nil {
-			return err
-		}
+		chatOptions = append(chatOptions, contactToChatOptions(contacts[i]))
+	}
+
+	if err := m.proto.LoadChats(context.Background(), chatOptions); err != nil {
+		return err
 	}
 
 	log.Printf("[Messenger::Start] request messages from mail sever")
+	go m.ProcessMessages()
 
 	return m.RequestAll(context.Background(), true)
 }
@@ -72,71 +75,122 @@ func (m *Messenger) Stop() {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	for _, s := range m.private {
-		s.Stop()
-	}
-	for _, s := range m.public {
-		s.Stop()
-	}
 }
 
-// addStream creates a new Stream and adds it to the Messenger.
-// For contacts with public key, we just need to make sure
-// each possible topic has a stream. For a single topic
-// for all private conversations, the map will have a len of 1.
-// In the future, private conversations will have sharded topics,
-// which means there will be many conversation over a particular topic
-// but there will be more than one topic.
-func (m *Messenger) addStream(c Contact) error {
-	options, err := createSubscribeOptions(c)
+func (m *Messenger) handleDirectMessage(chatType protocol.ChatOptions, message protocol.Message) error {
+	contact, err := m.db.GetOneToOneChat(message.SigPubKey)
 	if err != nil {
-		return errors.Wrap(err, "failed to create SubscribeOptions")
+		return errors.Wrap(err, "could not fetch chat from database")
+	}
+	if contact == nil {
+		contact = &Contact{
+			Type:      ContactPrivate,
+			State:     ContactNew,
+			Name:      pubkeyToHex(message.SigPubKey), // TODO(dshulyak) replace with 3-word funny name
+			PublicKey: message.SigPubKey,
+			Topic:     DefaultPrivateTopic(),
+		}
+
+		err := m.db.SaveContacts([]Contact{*contact})
+		if err != nil {
+			return errors.Wrap(err, "can't save a new contact")
+		}
 	}
 
-	switch c.Type {
-	case ContactPrivate:
-		_, exist := m.private[c.Topic]
-		if exist {
-			return nil
-		}
-
-		stream := NewStream(
-			m.proto,
-			StreamStoreHandlerMultiplexed(m.db),
-		)
-		if err := stream.Start(context.Background(), options); err != nil {
-			return errors.Wrap(err, "can't subscribe to a stream")
-		}
-
-		m.private[c.Name] = stream
-	case ContactPublicRoom:
-		_, exist := m.public[c.Topic]
-		if exist {
-			return nil
-		}
-
-		stream := NewStream(
-			m.proto,
-			StreamStoreHandlerForContact(m.db, c),
-		)
-		if err := stream.Start(context.Background(), options); err != nil {
-			return errors.Wrap(err, "can't subscribe to a stream")
-		}
-
-		m.public[c.Name] = stream
-	default:
-		return fmt.Errorf("unsupported contect type: %s", c.Type)
+	_, err = m.db.SaveMessages(*contact, []*protocol.Message{&message})
+	if err == ErrMsgAlreadyExist {
+		log.Printf("Message already exists")
+		return nil
+	} else if err != nil {
+		return errors.Wrap(err, "can't add a message")
 	}
 
 	return nil
+}
+
+func (m *Messenger) handlePublicMessage(chatType protocol.ChatOptions, message protocol.Message) error {
+	contact, err := m.db.GetPublicChat(chatType.ChatName)
+	if err != nil {
+		return errors.Wrap(err, "error getting public chat")
+	} else if contact == nil {
+		return errors.Wrap(err, "no chat for this message, is that a deleted chat?")
+	}
+	_, err = m.db.SaveMessages(*contact, []*protocol.Message{&message})
+	if err == ErrMsgAlreadyExist {
+		log.Printf("Message already exists")
+		return nil
+	} else if err != nil {
+		return errors.Wrap(err, "can't add a message")
+	}
+
+	return nil
+}
+
+func (m *Messenger) handleMessageType(chatType protocol.ChatOptions, message protocol.Message) error {
+	// TODO: handle group chats messages
+	if chatType.OneToOne {
+		return m.handleDirectMessage(chatType, message)
+	}
+	return m.handlePublicMessage(chatType, message)
+}
+
+func (m *Messenger) handlePairInstallationMessageType(chatType protocol.ChatOptions, sm *protocol.StatusMessage, message protocol.PairInstallationMessage) error {
+	if !isPubKeyEqual(sm.SigPubKey, &m.identity.PublicKey) {
+		return errors.New("Not coming from our identity, ignoring")
+	}
+
+	metadata := &multidevice.InstallationMetadata{
+		Name:       message.Name,
+		FCMToken:   message.FCMToken,
+		DeviceType: message.DeviceType,
+	}
+	return m.proto.SetInstallationMetadata(context.TODO(), message.InstallationID, metadata)
+}
+
+func (m *Messenger) processMessage(message *protocol.ReceivedMessages) {
+	for _, sm := range message.Messages {
+		publicKey := sm.SigPubKey
+		if publicKey == nil {
+			log.Printf("No public key, ignoring")
+		}
+
+		switch sm.Message.(type) {
+		case protocol.Message:
+			// TODO: this fields should be in any message type
+			m1 := sm.Message.(protocol.Message)
+			m1.ID = sm.ID
+			m1.SigPubKey = sm.SigPubKey
+
+			if err := m.handleMessageType(message.ChatOptions, m1); err != nil {
+				log.Printf("failed handling message: %+v", err)
+				continue
+			}
+		case protocol.PairInstallationMessage:
+			m1 := sm.Message.(protocol.PairInstallationMessage)
+			if err := m.handlePairInstallationMessageType(message.ChatOptions, sm, m1); err != nil {
+				log.Printf("failed handling message: %+v", err)
+				continue
+			}
+		}
+
+	}
+}
+
+func (m *Messenger) ProcessMessages() {
+	for {
+		msg, more := <-m.proto.GetMessagesChan()
+		if !more {
+			return
+		}
+		m.processMessage(msg)
+	}
 }
 
 func (m *Messenger) Join(ctx context.Context, c Contact) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if err := m.addStream(c); err != nil {
+	if err := m.proto.LoadChats(context.Background(), []protocol.ChatOptions{contactToChatOptions(c)}); err != nil {
 		return err
 	}
 
@@ -163,7 +217,6 @@ func (m *Messenger) Request(ctx context.Context, c Contact, options protocol.Req
 
 func (m *Messenger) requestHistories(ctx context.Context, histories []History, opts protocol.RequestOptions) error {
 	log.Printf("[Messenger::requestHistories] requesting messages for chats %+v: from %d to %d\n", opts.Chats, opts.From, opts.To)
-
 	start := time.Now()
 
 	err := m.proto.Request(ctx, opts)
@@ -284,34 +337,28 @@ func (m *Messenger) Contacts() ([]Contact, error) {
 }
 
 func (m *Messenger) Leave(c Contact) error {
-	var stream *Stream
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	switch c.Type {
-	case ContactPublicRoom:
-		stream = m.public[c.Topic]
-		if stream != nil {
-			delete(m.public, c.Topic)
-		}
-	case ContactPrivate:
-		// TODO: should we additionally block that peer?
-		stream = m.private[c.Topic]
-		if stream != nil {
-			delete(m.private, c.Topic)
-		}
+	if err := m.proto.RemoveChats(context.Background(), []protocol.ChatOptions{contactToChatOptions(c)}); err != nil {
+		return err
 	}
-
-	if stream == nil {
-		return errors.New("stream not found")
-	}
-
-	stream.Stop()
 
 	return nil
 }
 
 func (m *Messenger) Subscribe(events chan Event) event.Subscription {
 	return m.events.Subscribe(events)
+}
+
+func pubkeyToHex(key *ecdsa.PublicKey) string {
+	buf := crypto.FromECDSAPub(key)
+	return hexutil.Encode(buf)
+}
+
+// isPubKeyEqual checks that two public keys are equal
+func isPubKeyEqual(a, b *ecdsa.PublicKey) bool {
+	// the curve is always the same, just compare the points
+	return a.X.Cmp(b.X) == 0 && a.Y.Cmp(b.Y) == 0
 }

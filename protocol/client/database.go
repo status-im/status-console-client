@@ -74,9 +74,10 @@ type Database interface {
 	SaveContacts(contacts []Contact) error
 	DeleteContact(Contact) error
 	ContactExist(Contact) (bool, error)
-	PublicContactExist(Contact) (bool, error)
 	Histories() ([]History, error)
 	UpdateHistories([]History) error
+	GetPublicChat(name string) (*Contact, error)
+	GetOneToOneChat(*ecdsa.PublicKey) (*Contact, error)
 }
 
 // Migrate applies migrations.
@@ -318,18 +319,40 @@ func (db SQLLiteDatabase) ContactExist(c Contact) (exists bool, err error) {
 	return
 }
 
-func (db SQLLiteDatabase) PublicContactExist(c Contact) (exists bool, err error) {
-	var pkey []byte
-	if c.PublicKey != nil {
-		pkey, err = marshalEcdsaPub(c.PublicKey)
-		if err != nil {
-			return false, err
-		}
-	} else {
-		return false, errors.New("no public key")
+func (db SQLLiteDatabase) GetOneToOneChat(publicKey *ecdsa.PublicKey) (*Contact, error) {
+	if publicKey == nil {
+		return nil, errors.New("No public key provided")
 	}
-	err = db.db.QueryRow("SELECT EXISTS(SELECT id FROM user_contacts WHERE public_key = ?)", pkey).Scan(&exists)
-	return
+
+	pkey, err := marshalEcdsaPub(publicKey)
+	if err != nil {
+		return nil, err
+	}
+
+	c := &Contact{}
+	err = db.db.QueryRow("SELECT name, state, topic FROM user_contacts WHERE public_key = ?", pkey).Scan(&c.Name, &c.State, &c.Topic)
+	c.Type = ContactPrivate
+	c.PublicKey = publicKey
+	if err == sql.ErrNoRows {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	return c, nil
+}
+
+func (db SQLLiteDatabase) GetPublicChat(name string) (*Contact, error) {
+	c := &Contact{}
+	err := db.db.QueryRow("SELECT name, state, topic FROM user_contacts WHERE id = ?", formatID(name, ContactPublicRoom)).Scan(&c.Name, &c.State, &c.Topic)
+	c.Type = ContactPublicRoom
+	if err == sql.ErrNoRows {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	return c, nil
 }
 
 func (db SQLLiteDatabase) LastMessageClock(c Contact) (int64, error) {
@@ -517,5 +540,9 @@ func (db SQLLiteDatabase) UnreadMessages(c Contact) ([]*protocol.Message, error)
 }
 
 func contactID(c Contact) string {
-	return fmt.Sprintf("%s:%d", c.Name, c.Type)
+	return formatID(c.Name, c.Type)
+}
+
+func formatID(name string, t ContactType) string {
+	return fmt.Sprintf("%s:%d", name, t)
 }

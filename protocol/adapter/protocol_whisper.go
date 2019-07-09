@@ -2,6 +2,8 @@ package adapter
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"fmt"
 	"log"
 	"time"
 
@@ -9,10 +11,12 @@ import (
 	"github.com/status-im/status-console-client/protocol/transport"
 	"github.com/status-im/status-console-client/protocol/v1"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/pkg/errors"
 	whisper "github.com/status-im/whisper/whisperv6"
 
 	msgfilter "github.com/status-im/status-go/messaging/filter"
+	"github.com/status-im/status-go/messaging/multidevice"
 	"github.com/status-im/status-go/messaging/publisher"
 )
 
@@ -20,6 +24,7 @@ type ProtocolWhisperAdapter struct {
 	c         Config
 	transport transport.WhisperTransport
 	publisher *publisher.Publisher
+	messages  chan *protocol.ReceivedMessages
 }
 
 // ProtocolWhisperAdapter must implement Protocol interface.
@@ -34,13 +39,18 @@ func NewProtocolWhisperAdapter(t transport.WhisperTransport, p *publisher.Publis
 		c:         c,
 		transport: t,
 		publisher: p,
+		messages:  make(chan *protocol.ReceivedMessages),
 	}
+}
+
+func (w *ProtocolWhisperAdapter) GetMessagesChan() chan *protocol.ReceivedMessages {
+	return w.messages
 }
 
 // Subscribe listens to new messages.
 func (w *ProtocolWhisperAdapter) Subscribe(
 	ctx context.Context,
-	messages chan<- *protocol.Message,
+	messages chan *protocol.StatusMessage,
 	options protocol.SubscribeOptions,
 ) (*subscription.Subscription, error) {
 	if err := options.Validate(); err != nil {
@@ -61,7 +71,8 @@ func (w *ProtocolWhisperAdapter) Subscribe(
 
 	go func() {
 		for item := range in {
-			message, err := w.decodeMessage(item)
+			whisperMessage := whisper.ToWhisperMessage(item)
+			message, err := w.decodeMessage(whisperMessage)
 			if err != nil {
 				log.Printf("failed to decode message %#+x: %v", item.EnvelopeHash.Bytes(), err)
 				continue
@@ -73,17 +84,20 @@ func (w *ProtocolWhisperAdapter) Subscribe(
 	return sub, nil
 }
 
-func (w *ProtocolWhisperAdapter) decodeMessage(message *whisper.ReceivedMessage) (*protocol.Message, error) {
+func (w *ProtocolWhisperAdapter) decodeMessage(message *whisper.Message) (*protocol.StatusMessage, error) {
 	payload := message.Payload
-	publicKey := message.SigToPubKey()
-	hash := message.EnvelopeHash.Bytes()
-	msg := whisper.ToWhisperMessage(message)
+	var err error
+	var publicKey *ecdsa.PublicKey
+	if publicKey, err = crypto.UnmarshalPubkey(message.Sig); err != nil {
+		return nil, errors.New("can't unmarshal pubkey")
+	}
+	hash := message.Hash
 
 	if w.publisher != nil {
-		if err := w.publisher.ProcessMessage(msg, msg.Hash); err != nil {
+		if err := w.publisher.ProcessMessage(message, hash); err != nil {
 			log.Printf("failed to process message: %#x: %v", hash, err)
 		}
-		payload = msg.Payload
+		payload = message.Payload
 	}
 
 	decoded, err := protocol.DecodeMessage(payload)
@@ -93,7 +107,36 @@ func (w *ProtocolWhisperAdapter) decodeMessage(message *whisper.ReceivedMessage)
 	decoded.ID = hash
 	decoded.SigPubKey = publicKey
 
-	return &decoded, nil
+	return decoded, nil
+}
+
+func (w *ProtocolWhisperAdapter) OnNewMessages(messages []*msgfilter.Messages) {
+	for _, filterMessages := range messages {
+
+		receivedMessages := &protocol.ReceivedMessages{}
+
+		var options protocol.ChatOptions
+
+		if filterMessages.Chat.OneToOne || filterMessages.Chat.Negotiated || filterMessages.Chat.Discovery {
+			options.ChatName = filterMessages.Chat.Identity
+			options.OneToOne = true
+		} else {
+			options.ChatName = filterMessages.Chat.ChatID
+		}
+
+		receivedMessages.ChatOptions = options
+		for _, message := range filterMessages.Messages {
+			decodedMessage, err := w.decodeMessage(message)
+			if err != nil {
+				log.Printf("failed to process message: %v", err)
+				continue
+			}
+			receivedMessages.Messages = append(receivedMessages.Messages, decodedMessage)
+
+		}
+
+		w.messages <- receivedMessages
+	}
 }
 
 // Send sends a message to the network.
@@ -168,4 +211,53 @@ func (w *ProtocolWhisperAdapter) Request(ctx context.Context, params protocol.Re
 	err := w.transport.Request(ctx, transOptions)
 	log.Printf("[ProtocolWhisperAdapter::Request] took %s", time.Since(now))
 	return err
+}
+
+func chatOptionsToFilterChat(chatOption protocol.ChatOptions) *msgfilter.Chat {
+	if chatOption.Recipient != nil {
+		identityStr := fmt.Sprintf("0x%x", crypto.FromECDSAPub(chatOption.Recipient))
+		return &msgfilter.Chat{
+			ChatID:   fmt.Sprintf("0x%s", identityStr),
+			OneToOne: true,
+			Identity: identityStr,
+		}
+	}
+
+	// Public chat
+	return &msgfilter.Chat{
+		ChatID: chatOption.ChatName,
+	}
+}
+
+func (w *ProtocolWhisperAdapter) SetInstallationMetadata(ctx context.Context, installationID string, data *multidevice.InstallationMetadata) error {
+	return w.publisher.SetInstallationMetadata(installationID, data)
+}
+
+func (w *ProtocolWhisperAdapter) LoadChats(ctx context.Context, params []protocol.ChatOptions) error {
+	var filterChats []*msgfilter.Chat
+	var err error
+	for _, chatOption := range params {
+		filterChats = append(filterChats, chatOptionsToFilterChat(chatOption))
+	}
+	_, err = w.publisher.LoadFilters(filterChats)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (w *ProtocolWhisperAdapter) RemoveChats(ctx context.Context, params []protocol.ChatOptions) error {
+	var filterChats []*msgfilter.Chat
+	for _, chatOption := range params {
+		filterChat := chatOptionsToFilterChat(chatOption)
+		// We only remove public chats, as we can't remove one-to-one
+		// filters as otherwise we won't be receiving any messages
+		// from the user, which is the equivalent of a block feature
+		if !filterChat.OneToOne {
+			filterChats = append(filterChats, filterChat)
+		}
+
+	}
+
+	return w.publisher.RemoveFilters(filterChats)
 }

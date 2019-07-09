@@ -7,7 +7,14 @@ import (
 	"github.com/status-im/status-go/params"
 )
 
-func generateStatusNodeConfig(dataDir, fleet, configFile string) (*params.NodeConfig, error) {
+func withListenAddr(listenAddr string) params.Option {
+	return func(c *params.NodeConfig) error {
+		c.ListenAddr = listenAddr
+		return nil
+	}
+}
+
+func generateStatusNodeConfig(dataDir, fleet, listenAddr string, configFile string) (*params.NodeConfig, error) {
 	if err := os.MkdirAll(dataDir, os.ModeDir|0755); err != nil {
 		return nil, fmt.Errorf("failed to create a data dir: %v", err)
 	}
@@ -20,7 +27,10 @@ func generateStatusNodeConfig(dataDir, fleet, configFile string) (*params.NodeCo
 	config, err := params.NewNodeConfigWithDefaultsAndFiles(
 		dataDir,
 		params.MainNetworkID,
-		[]params.Option{params.WithFleet(fleet)},
+		[]params.Option{
+			params.WithFleet(fleet),
+			withListenAddr(listenAddr),
+		},
 		configFiles,
 	)
 	if err != nil {
