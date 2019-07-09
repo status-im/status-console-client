@@ -17,6 +17,7 @@ import (
 )
 
 type ProtocolWhisperAdapter struct {
+	c         Config
 	transport transport.WhisperTransport
 	publisher *publisher.Publisher
 }
@@ -24,8 +25,13 @@ type ProtocolWhisperAdapter struct {
 // ProtocolWhisperAdapter must implement Protocol interface.
 var _ protocol.Protocol = (*ProtocolWhisperAdapter)(nil)
 
-func NewProtocolWhisperAdapter(t transport.WhisperTransport, p *publisher.Publisher) *ProtocolWhisperAdapter {
+type Config struct {
+	PFSEnabled bool
+}
+
+func NewProtocolWhisperAdapter(t transport.WhisperTransport, p *publisher.Publisher, c Config) *ProtocolWhisperAdapter {
 	return &ProtocolWhisperAdapter{
+		c:         c,
 		transport: t,
 		publisher: p,
 	}
@@ -100,7 +106,7 @@ func (w *ProtocolWhisperAdapter) Send(ctx context.Context, data []byte, options 
 
 	var newMessage *whisper.NewMessage
 
-	if w.publisher != nil {
+	if w.c.PFSEnabled {
 		privateKey := w.transport.KeysManager().PrivateKey()
 
 		var err error
@@ -127,6 +133,16 @@ func (w *ProtocolWhisperAdapter) Send(ctx context.Context, data []byte, options 
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		message, err := NewNewMessage(w.transport.KeysManager(), data)
+		if err != nil {
+			return nil, err
+		}
+		if err := updateNewMessageFromSendOptions(message, options); err != nil {
+			return nil, err
+		}
+
+		newMessage = &message.NewMessage
 	}
 
 	return w.transport.Send(ctx, *newMessage)

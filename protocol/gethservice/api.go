@@ -68,95 +68,27 @@ func NewPublicAPI(s *Service) *PublicAPI {
 	}
 }
 
-// Messages creates an RPC subscription which delivers received messages.
-func (api *PublicAPI) Messages(ctx context.Context, params MessagesParams) (*rpc.Subscription, error) {
-	notifier, supported := rpc.NotifierFromContext(ctx)
-	if !supported {
-		return nil, rpc.ErrNotificationsUnsupported
+// SendToContact send payload to specified contact.
+// Contact should be added before sending message,
+// otherwise error will be received.
+func (api *PublicAPI) SendToContact(ctx context.Context, contact Contact, payload string) (hexutil.Bytes, error) {
+	if api.service.messenger == nil {
+		return nil, ErrMessengerNotSet
 	}
 
-	if api.service.protocol == nil {
-		return nil, ErrProtocolNotSet
-	}
-
-	var err error
-
-	adapterOptions := protocol.SubscribeOptions{
-		ChatOptions: protocol.ChatOptions{
-			ChatName: params.Name, // no transformation required
-		},
-	}
-
-	adapterOptions.Recipient, err = unmarshalPubKey(params.PublicKey)
+	c, err := parseContact(contact)
 	if err != nil {
 		return nil, err
 	}
-
-	messages := make(chan *protocol.Message, 100)
-	sub, err := api.service.protocol.Subscribe(ctx, messages, adapterOptions)
-	if err != nil {
-		log.Printf("failed to subscribe to the protocol: %v", err)
-		return nil, err
-	}
-
-	rpcSub := notifier.CreateSubscription()
-
-	go func() {
-		defer sub.Unsubscribe()
-
-		for {
-			select {
-			case m := <-messages:
-				if err := notifier.Notify(rpcSub.ID, m); err != nil {
-					log.Printf("failed to notify %s about new message", rpcSub.ID)
-				}
-			case <-sub.Done():
-				if err := sub.Err(); err != nil {
-					log.Printf("subscription to adapter errored: %v", err)
-				}
-				return
-			case err := <-rpcSub.Err():
-				if err != nil {
-					log.Printf("RPC subscription errored: %v", err)
-				}
-				return
-			case <-notifier.Closed():
-				log.Printf("notifier closed")
-				return
-			}
-		}
-	}()
-
-	return rpcSub, nil
-}
-
-// Send sends a message to the network.
-func (api *PublicAPI) Send(ctx context.Context, data hexutil.Bytes, params SendParams) (hexutil.Bytes, error) {
-	if api.service.protocol == nil {
-		return nil, ErrProtocolNotSet
-	}
-
-	var err error
-
-	adapterOptions := protocol.SendOptions{
-		ChatOptions: protocol.ChatOptions{
-			ChatName: params.Name, // no transformation required
-		},
-	}
-
-	adapterOptions.Recipient, err = unmarshalPubKey(params.PublicKey)
-	if err != nil {
-		return nil, err
-	}
-
-	return api.service.protocol.Send(ctx, data, adapterOptions)
+	return api.service.messenger.Send(c, []byte(payload))
 }
 
 // Request sends a request for historic messages matching the provided RequestParams.
 func (api *PublicAPI) Request(ctx context.Context, params RequestParams) (err error) {
-	if api.service.protocol == nil {
-		return ErrProtocolNotSet
+	if api.service.messenger == nil {
+		return ErrMessengerNotSet
 	}
+
 	c, err := parseContact(params.Contact)
 	if err != nil {
 		return err
@@ -254,19 +186,6 @@ func (api *PublicAPI) AddContact(ctx context.Context, contact Contact) (err erro
 		return err
 	}
 	return api.service.messenger.Join(ctx, c)
-}
-
-// SendToContact send payload to specified contact. Contact should be added before sending message, otherwise error will
-// be received.
-func (api *PublicAPI) SendToContact(ctx context.Context, contact Contact, payload string) (err error) {
-	if api.service.messenger == nil {
-		return ErrMessengerNotSet
-	}
-	c, err := parseContact(contact)
-	if err != nil {
-		return err
-	}
-	return api.service.messenger.Send(c, []byte(payload))
 }
 
 // ReadContactMessages read contact messages starting from offset.

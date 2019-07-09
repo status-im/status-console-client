@@ -169,7 +169,8 @@ func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) err
 // Send sends a payload as a message.
 func (c *ChatViewController) Send(data []byte) error {
 	log.Printf("[ChatViewController::Send]")
-	return c.messenger.Send(c.contact, data)
+	_, err := c.messenger.Send(c.contact, data)
+	return err
 }
 
 func (c *ChatViewController) printMessages(clear bool, messages ...*protocol.Message) {

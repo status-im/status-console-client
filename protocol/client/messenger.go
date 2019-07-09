@@ -219,11 +219,11 @@ func (m *Messenger) RequestAll(ctx context.Context, newest bool) error {
 	return nil
 }
 
-func (m *Messenger) Send(c Contact, data []byte) error {
+func (m *Messenger) Send(c Contact, data []byte) ([]byte, error) {
 	// FIXME(dshulyak) sending must be locked by contact to prevent sending second msg with same clock
 	clock, err := m.db.LastMessageClock(c)
 	if err != nil {
-		return errors.Wrap(err, "failed to read last message clock for contact")
+		return nil, errors.Wrap(err, "failed to read last message clock for contact")
 	}
 	var message protocol.Message
 
@@ -233,16 +233,16 @@ func (m *Messenger) Send(c Contact, data []byte) error {
 	case ContactPrivate:
 		message = protocol.CreatePrivateTextMessage(data, clock, c.Name)
 	default:
-		return fmt.Errorf("failed to send message: unsupported contact type")
+		return nil, fmt.Errorf("failed to send message: unsupported contact type")
 	}
 
 	encodedMessage, err := protocol.EncodeMessage(message)
 	if err != nil {
-		return errors.Wrap(err, "failed to encode message")
+		return nil, errors.Wrap(err, "failed to encode message")
 	}
 	opts, err := createSendOptions(c)
 	if err != nil {
-		return errors.Wrap(err, "failed to prepare send options")
+		return nil, errors.Wrap(err, "failed to prepare send options")
 	}
 
 	log.Printf("[Messenger::Send] sending message")
@@ -252,7 +252,7 @@ func (m *Messenger) Send(c Contact, data []byte) error {
 
 	hash, err := m.proto.Send(ctx, encodedMessage, opts)
 	if err != nil {
-		return errors.Wrap(err, "can't send a message")
+		return nil, errors.Wrap(err, "can't send a message")
 	}
 
 	log.Printf("[Messenger::Send] sent message with hash %x", hash)
@@ -263,11 +263,11 @@ func (m *Messenger) Send(c Contact, data []byte) error {
 	switch err {
 	case ErrMsgAlreadyExist:
 		log.Printf("[Messenger::Send] message with ID %x already exists", message.ID)
-		return nil
+		return hash, nil
 	case nil:
-		return nil
+		return hash, nil
 	default:
-		return errors.Wrap(err, "failed to save the message")
+		return nil, errors.Wrap(err, "failed to save the message")
 	}
 }
 

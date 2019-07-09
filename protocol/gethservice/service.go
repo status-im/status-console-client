@@ -4,7 +4,6 @@ import (
 	"crypto/ecdsa"
 
 	"github.com/status-im/status-console-client/protocol/client"
-	"github.com/status-im/status-console-client/protocol/v1"
 
 	"github.com/status-im/status-go/node"
 
@@ -31,7 +30,6 @@ type KeysGetter interface {
 type Service struct {
 	node      *node.StatusNode
 	keys      KeysGetter
-	protocol  protocol.Protocol
 	messenger *client.Messenger
 }
 
@@ -41,11 +39,6 @@ func New(node *node.StatusNode, keys KeysGetter) *Service {
 		node: node,
 		keys: keys,
 	}
-}
-
-// SetProtocol sets a given Protocol implementation.
-func (s *Service) SetProtocol(proto protocol.Protocol) {
-	s.protocol = proto
 }
 
 // SetMessenger sets a Messenger.

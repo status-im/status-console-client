@@ -412,12 +412,15 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 			return nil, errors.Wrap(err, "failed to start Publisher")
 		}
 
-		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, publisher)
+		protocolAdapter = adapter.NewProtocolWhisperAdapter(
+			transp,
+			publisher,
+			adapter.Config{PFSEnabled: *pfsEnabled},
+		)
 	}
 
 	messenger := client.NewMessenger(pk, protocolAdapter, db)
 
-	protocolGethService.SetProtocol(protocolAdapter)
 	protocolGethService.SetMessenger(messenger)
 
 	return messenger, nil
