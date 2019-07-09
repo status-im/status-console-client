@@ -393,9 +393,8 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		dataSyncNode.Start()
 
 		protocolAdapter = adapter.NewDataSyncWhisperAdapter(dataSyncNode, transp, dataSyncTransport, publisherService)
-
 	} else {
-		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, publisherService)
+		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, publisherService, adapter.Config{PFSEnabled: *pfsEnabled})
 
 	}
 
@@ -412,7 +411,6 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 
 	messenger := client.NewMessenger(pk, protocolAdapter, db)
 
-	protocolGethService.SetProtocol(protocolAdapter)
 	protocolGethService.SetMessenger(messenger)
 
 	return messenger, nil

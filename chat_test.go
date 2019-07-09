@@ -32,6 +32,14 @@ func TestSendMessage(t *testing.T) {
 	vc := NewChatViewController(nil, nil, messenger, nil)
 
 	protoMock.EXPECT().
+		LoadChats(
+			gomock.Any(),
+			gomock.Any(),
+		).
+		Return(nil).
+		Times(1)
+
+	protoMock.EXPECT().
 		Request(
 			gomock.Any(),
 			gomock.Any(),

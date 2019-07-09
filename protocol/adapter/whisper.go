@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/status-im/status-console-client/protocol/v1"
 	whisper "github.com/status-im/whisper/whisperv6"
 	"golang.org/x/crypto/sha3"
@@ -113,6 +114,37 @@ func NewNewMessage(keys keysManager, data []byte) (*NewMessage, error) {
 		},
 		keys: keys,
 	}, nil
+}
+
+func (m *NewMessage) updateForPrivate(name string, recipient *ecdsa.PublicKey) (err error) {
+	m.Topic, err = ToTopic(name)
+	if err != nil {
+		return
+	}
+
+	m.PublicKey = crypto.FromECDSAPub(recipient)
+
+	return
+}
+
+func (m *NewMessage) updateForPublicGroup(name string) (err error) {
+	m.Topic, err = ToTopic(name)
+	if err != nil {
+		return
+	}
+
+	m.SymKeyID, err = m.keys.AddOrGetSymKeyFromPassword(name)
+	return
+}
+
+func updateNewMessageFromSendOptions(m *NewMessage, options protocol.SendOptions) error {
+	if options.Recipient != nil && options.ChatName != "" {
+		return m.updateForPrivate(options.ChatName, options.Recipient)
+	} else if options.ChatName != "" {
+		return m.updateForPublicGroup(options.ChatName)
+	} else {
+		return errors.New("unrecognized options")
+	}
 }
 
 func ToTopic(name string) (whisper.TopicType, error) {

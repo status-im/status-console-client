@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/status-im/status-console-client/protocol/transport"
-	"github.com/status-im/status-console-client/protocol/v1"
 	transmock "github.com/status-im/status-console-client/protocol/transport/mock"
+	"github.com/status-im/status-console-client/protocol/v1"
 
 	whisper "github.com/status-im/whisper/whisperv6"
 )
@@ -35,13 +35,13 @@ func TestRequest(t *testing.T) {
 		Return(nil).
 		Times(1)
 
-	a := NewProtocolWhisperAdapter(transMock, nil)
+	a := NewProtocolWhisperAdapter(transMock, nil, Config{PFSEnabled: false})
 	err = a.Request(context.TODO(), protocol.RequestOptions{
 		Chats: []protocol.ChatOptions{
 			protocol.ChatOptions{ChatName: "test"},
 		},
-		From: 10,
-		To: 20,
+		From:  10,
+		To:    20,
 		Limit: 5,
 	})
 	require.NoError(t, err)
