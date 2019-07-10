@@ -7,30 +7,30 @@ import (
 )
 
 var (
-	errUnsupportedContactType = fmt.Errorf("unsupported contact type")
+	errUnsupportedChatType = fmt.Errorf("unsupported chat type")
 )
 
-func createSendOptions(c Contact) (opts protocol.SendOptions, err error) {
-	opts.ChatName = c.Topic
+func createSendOptions(c Chat) (opts protocol.SendOptions, err error) {
+	opts.ChatName = c.Name
 	switch c.Type {
-	case ContactPublicRoom:
-	case ContactPrivate:
+	case PublicChat:
+	case OneToOneChat:
 		opts.Recipient = c.PublicKey
 	default:
-		err = errUnsupportedContactType
+		err = errUnsupportedChatType
 	}
 	return
 }
 
-func enhanceRequestOptions(c Contact, opts *protocol.RequestOptions) error {
+func enhanceRequestOptions(c Chat, opts *protocol.RequestOptions) error {
 	var chatOptions protocol.ChatOptions
-	chatOptions.ChatName = c.Topic
+	chatOptions.ChatName = c.Name
 	switch c.Type {
-	case ContactPublicRoom:
-	case ContactPrivate:
+	case PublicChat:
+	case OneToOneChat:
 		chatOptions.Recipient = c.PublicKey
 	default:
-		return errUnsupportedContactType
+		return errUnsupportedChatType
 	}
 
 	opts.Chats = append(opts.Chats, chatOptions)

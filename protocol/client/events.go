@@ -14,7 +14,7 @@ func NewDatabaseWithEvents(db Database, feed *event.Feed) DatabaseWithEvents {
 	return DatabaseWithEvents{Database: db, feed: feed}
 }
 
-func (db DatabaseWithEvents) SaveMessages(c Contact, msgs []*protocol.Message) (int64, error) {
+func (db DatabaseWithEvents) SaveMessages(c Chat, msgs []*protocol.Message) (int64, error) {
 	rowid, err := db.Database.SaveMessages(c, msgs)
 	if err != nil {
 		return rowid, err
@@ -22,8 +22,8 @@ func (db DatabaseWithEvents) SaveMessages(c Contact, msgs []*protocol.Message) (
 	for _, m := range msgs {
 		ev := messageEvent{
 			baseEvent: baseEvent{
-				Contact: c,
-				Type:    EventTypeMessage,
+				Chat: c,
+				Type: EventTypeMessage,
 			},
 			Message: m,
 		}

@@ -67,40 +67,38 @@ func bytesToArgs(b []byte) []string {
 	return argsStr
 }
 
-func contactAddCmdHandler(args []string) (c client.Contact, err error) {
+func chatAddCmdHandler(args []string) (c client.Chat, err error) {
 	if len(args) == 1 {
 		name := args[0]
-		c = client.Contact{
-			Name:  name,
-			Type:  client.ContactPublicRoom,
-			Topic: name,
+		c = client.Chat{
+			Name: name,
+			Type: client.PublicChat,
 		}
 	} else if len(args) == 2 {
-		c, err = client.CreateContactPrivate(args[1], args[0], client.ContactAdded)
+		c, err = client.CreateOneToOneChat(args[1], args[0])
 	} else {
-		err = errors.New("/contact: incorect arguments to add subcommand")
+		err = errors.New("/chat: incorect arguments to add subcommand")
 	}
 
 	return
 }
 
-func ContactCmdFactory(c *ContactsViewController) CmdHandler {
+func ChatCmdFactory(c *ChatsViewController) CmdHandler {
 	return func(b []byte) error {
-		args := bytesToArgs(b)[1:] // remove first item, i.e. "/contact"
+		args := bytesToArgs(b)[1:] // remove first item, i.e. "/chat"
 
-		log.Printf("handle /contact command: %s", b)
+		log.Printf("handle /chat command: %s", b)
 
 		switch args[0] {
 		case "add":
-			contact, err := contactAddCmdHandler(args[1:])
+			chat, err := chatAddCmdHandler(args[1:])
 			if err != nil {
 				return err
 			}
-			log.Printf("adding contact with topic %s\n", contact.Topic)
-			if err := c.Add(contact); err != nil {
+			if err := c.Add(chat); err != nil {
 				return err
 			}
-			// TODO: fix removing contacts
+			// TODO: fix removing chats
 			// case "remove":
 			//	if len(args) == 2 {
 			//		if err := c.Remove(args[1]); err != nil {
@@ -109,7 +107,7 @@ func ContactCmdFactory(c *ContactsViewController) CmdHandler {
 			//		c.Refresh()
 			//		return nil
 			//	}
-			//	return errors.New("/contact: incorect arguments to remove subcommand")
+			//	return errors.New("/chat: incorect arguments to remove subcommand")
 		}
 
 		return nil

@@ -38,7 +38,7 @@ func TestPublicAPISend(t *testing.T) {
 	defer func() { go discardStop(aNode) }() // Stop() is slow so do it in a goroutine
 
 	data := []byte("some payload")
-	contact := Contact{
+	contact := Chat{
 		Name: "test-chat",
 	}
 	result := hexutil.Bytes("abc")
@@ -84,7 +84,7 @@ func TestPublicAPIRequest(t *testing.T) {
 
 	now := time.Now().Unix()
 	params := RequestParams{
-		Contact: Contact{
+		Chat: Chat{
 			Name: "test-chat",
 		},
 		Limit: 100,
@@ -126,6 +126,8 @@ func TestPublicAPIMessages(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { go discardStop(aNode) }() // Stop() is slow so do it in a goroutine
 
+	database.EXPECT().SaveChats(gomock.Any()).Return(nil)
+
 	proto.EXPECT().
 		LoadChats(
 			gomock.Any(),
@@ -135,17 +137,9 @@ func TestPublicAPIMessages(t *testing.T) {
 		).
 		Return(nil)
 
-	proto.EXPECT().
-		Request(gomock.Any(), gomock.Any()).
-		Return(nil)
-
-	database.EXPECT().
-		UpdateHistories(gomock.Any()).
-		Return(nil)
-
 	messages := make(chan protocol.Message)
 	// The first argument is a name of the method to use for subscription.
-	_, err = rpcClient.Subscribe(context.Background(), StatusSecureMessagingProtocolAPIName, messages, "messages", client.Contact{Type: 1, Name: "test-chat"})
+	_, err = rpcClient.Subscribe(context.Background(), StatusSecureMessagingProtocolAPIName, messages, "messages", client.Chat{Type: 1, Name: "test-chat"})
 	require.NoError(t, err)
 }
 

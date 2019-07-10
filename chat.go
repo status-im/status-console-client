@@ -21,7 +21,7 @@ import (
 type ChatViewController struct {
 	*ViewController
 
-	contact client.Contact
+	contact client.Chat
 
 	identity  *ecdsa.PrivateKey
 	messenger *client.Messenger
@@ -31,7 +31,7 @@ type ChatViewController struct {
 	cancel chan struct{} // cancel the current chat loop
 	done   chan struct{} // wait for the current chat loop to finish
 
-	changeContact chan client.Contact
+	changeChat chan client.Chat
 }
 
 // NewChatViewController returns a new chat view controller.
@@ -45,11 +45,11 @@ func NewChatViewController(vc *ViewController, id Identity, m *client.Messenger,
 		identity:       id,
 		messenger:      m,
 		onError:        onError,
-		changeContact:  make(chan client.Contact, 1),
+		changeChat:     make(chan client.Chat, 1),
 	}
 }
 
-func (c *ChatViewController) readEventsLoop(contact client.Contact) {
+func (c *ChatViewController) readEventsLoop(contact client.Chat) {
 	c.done = make(chan struct{})
 	defer close(c.done)
 
@@ -100,9 +100,9 @@ func (c *ChatViewController) readEventsLoop(contact client.Contact) {
 			switch ev := event.Interface.(type) {
 			case client.EventWithError:
 				c.onError(ev.GetError())
-			case client.EventWithContact:
-				if !ev.GetContact().Equal(contact) {
-					log.Printf("[ChatViewController::readEventsLoop] selected and received message contact are not equal: %s, %s", contact, ev.GetContact())
+			case client.EventWithChat:
+				if !ev.GetChat().Equal(contact) {
+					log.Printf("[ChatViewController::readEventsLoop] selected and received message contact are not equal: %s, %s", contact, ev.GetChat())
 					continue
 				}
 				msgev, ok := ev.(client.EventWithMessage)
@@ -126,7 +126,7 @@ func (c *ChatViewController) readEventsLoop(contact client.Contact) {
 
 				messages = append(messages, msg)
 			}
-		case contact = <-c.changeContact:
+		case contact = <-c.changeChat:
 			inorder = false
 			clock = 0
 			messages = []*protocol.Message{}
@@ -138,14 +138,14 @@ func (c *ChatViewController) readEventsLoop(contact client.Contact) {
 
 // Select informs the chat view controller about a selected contact.
 // The chat view controller setup subscribers and request recent messages.
-func (c *ChatViewController) Select(contact client.Contact) error {
+func (c *ChatViewController) Select(contact client.Chat) error {
 	log.Printf("[ChatViewController::Select] contact %s", contact.Name)
 
 	if c.cancel == nil {
 		c.cancel = make(chan struct{})
 		go c.readEventsLoop(contact)
 	}
-	c.changeContact <- contact
+	c.changeChat <- contact
 	c.contact = contact
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)

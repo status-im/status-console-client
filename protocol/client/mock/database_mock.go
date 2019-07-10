@@ -50,55 +50,55 @@ func (mr *MockDatabaseMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockDatabase)(nil).Close))
 }
 
-// ContactExist mocks base method
-func (m *MockDatabase) ContactExist(arg0 client.Contact) (bool, error) {
+// ChatExist mocks base method
+func (m *MockDatabase) ChatExist(arg0 client.Chat) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ContactExist", arg0)
+	ret := m.ctrl.Call(m, "ChatExist", arg0)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ContactExist indicates an expected call of ContactExist
-func (mr *MockDatabaseMockRecorder) ContactExist(arg0 interface{}) *gomock.Call {
+// ChatExist indicates an expected call of ChatExist
+func (mr *MockDatabaseMockRecorder) ChatExist(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ContactExist", reflect.TypeOf((*MockDatabase)(nil).ContactExist), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChatExist", reflect.TypeOf((*MockDatabase)(nil).ChatExist), arg0)
 }
 
-// Contacts mocks base method
-func (m *MockDatabase) Contacts() ([]client.Contact, error) {
+// Chats mocks base method
+func (m *MockDatabase) Chats() ([]client.Chat, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Contacts")
-	ret0, _ := ret[0].([]client.Contact)
+	ret := m.ctrl.Call(m, "Chats")
+	ret0, _ := ret[0].([]client.Chat)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// Contacts indicates an expected call of Contacts
-func (mr *MockDatabaseMockRecorder) Contacts() *gomock.Call {
+// Chats indicates an expected call of Chats
+func (mr *MockDatabaseMockRecorder) Chats() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Contacts", reflect.TypeOf((*MockDatabase)(nil).Contacts))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Chats", reflect.TypeOf((*MockDatabase)(nil).Chats))
 }
 
-// DeleteContact mocks base method
-func (m *MockDatabase) DeleteContact(arg0 client.Contact) error {
+// DeleteChat mocks base method
+func (m *MockDatabase) DeleteChat(arg0 client.Chat) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteContact", arg0)
+	ret := m.ctrl.Call(m, "DeleteChat", arg0)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteContact indicates an expected call of DeleteContact
-func (mr *MockDatabaseMockRecorder) DeleteContact(arg0 interface{}) *gomock.Call {
+// DeleteChat indicates an expected call of DeleteChat
+func (mr *MockDatabaseMockRecorder) DeleteChat(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteContact", reflect.TypeOf((*MockDatabase)(nil).DeleteContact), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChat", reflect.TypeOf((*MockDatabase)(nil).DeleteChat), arg0)
 }
 
 // GetOneToOneChat mocks base method
-func (m *MockDatabase) GetOneToOneChat(arg0 *ecdsa.PublicKey) (*client.Contact, error) {
+func (m *MockDatabase) GetOneToOneChat(arg0 *ecdsa.PublicKey) (*client.Chat, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetOneToOneChat", arg0)
-	ret0, _ := ret[0].(*client.Contact)
+	ret0, _ := ret[0].(*client.Chat)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -110,10 +110,10 @@ func (mr *MockDatabaseMockRecorder) GetOneToOneChat(arg0 interface{}) *gomock.Ca
 }
 
 // GetPublicChat mocks base method
-func (m *MockDatabase) GetPublicChat(arg0 string) (*client.Contact, error) {
+func (m *MockDatabase) GetPublicChat(arg0 string) (*client.Chat, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetPublicChat", arg0)
-	ret0, _ := ret[0].(*client.Contact)
+	ret0, _ := ret[0].(*client.Chat)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -124,23 +124,8 @@ func (mr *MockDatabaseMockRecorder) GetPublicChat(arg0 interface{}) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPublicChat", reflect.TypeOf((*MockDatabase)(nil).GetPublicChat), arg0)
 }
 
-// Histories mocks base method
-func (m *MockDatabase) Histories() ([]client.History, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Histories")
-	ret0, _ := ret[0].([]client.History)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Histories indicates an expected call of Histories
-func (mr *MockDatabaseMockRecorder) Histories() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Histories", reflect.TypeOf((*MockDatabase)(nil).Histories))
-}
-
 // LastMessageClock mocks base method
-func (m *MockDatabase) LastMessageClock(arg0 client.Contact) (int64, error) {
+func (m *MockDatabase) LastMessageClock(arg0 client.Chat) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LastMessageClock", arg0)
 	ret0, _ := ret[0].(int64)
@@ -155,7 +140,7 @@ func (mr *MockDatabaseMockRecorder) LastMessageClock(arg0 interface{}) *gomock.C
 }
 
 // Messages mocks base method
-func (m *MockDatabase) Messages(arg0 client.Contact, arg1, arg2 time.Time) ([]*v1.Message, error) {
+func (m *MockDatabase) Messages(arg0 client.Chat, arg1, arg2 time.Time) ([]*v1.Message, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Messages", arg0, arg1, arg2)
 	ret0, _ := ret[0].([]*v1.Message)
@@ -170,7 +155,7 @@ func (mr *MockDatabaseMockRecorder) Messages(arg0, arg1, arg2 interface{}) *gomo
 }
 
 // NewMessages mocks base method
-func (m *MockDatabase) NewMessages(arg0 client.Contact, arg1 int64) ([]*v1.Message, error) {
+func (m *MockDatabase) NewMessages(arg0 client.Chat, arg1 int64) ([]*v1.Message, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "NewMessages", arg0, arg1)
 	ret0, _ := ret[0].([]*v1.Message)
@@ -184,22 +169,22 @@ func (mr *MockDatabaseMockRecorder) NewMessages(arg0, arg1 interface{}) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMessages", reflect.TypeOf((*MockDatabase)(nil).NewMessages), arg0, arg1)
 }
 
-// SaveContacts mocks base method
-func (m *MockDatabase) SaveContacts(arg0 []client.Contact) error {
+// SaveChats mocks base method
+func (m *MockDatabase) SaveChats(arg0 []client.Chat) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SaveContacts", arg0)
+	ret := m.ctrl.Call(m, "SaveChats", arg0)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SaveContacts indicates an expected call of SaveContacts
-func (mr *MockDatabaseMockRecorder) SaveContacts(arg0 interface{}) *gomock.Call {
+// SaveChats indicates an expected call of SaveChats
+func (mr *MockDatabaseMockRecorder) SaveChats(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveContacts", reflect.TypeOf((*MockDatabase)(nil).SaveContacts), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveChats", reflect.TypeOf((*MockDatabase)(nil).SaveChats), arg0)
 }
 
 // SaveMessages mocks base method
-func (m *MockDatabase) SaveMessages(arg0 client.Contact, arg1 []*v1.Message) (int64, error) {
+func (m *MockDatabase) SaveMessages(arg0 client.Chat, arg1 []*v1.Message) (int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SaveMessages", arg0, arg1)
 	ret0, _ := ret[0].(int64)
@@ -214,7 +199,7 @@ func (mr *MockDatabaseMockRecorder) SaveMessages(arg0, arg1 interface{}) *gomock
 }
 
 // UnreadMessages mocks base method
-func (m *MockDatabase) UnreadMessages(arg0 client.Contact) ([]*v1.Message, error) {
+func (m *MockDatabase) UnreadMessages(arg0 client.Chat) ([]*v1.Message, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UnreadMessages", arg0)
 	ret0, _ := ret[0].([]*v1.Message)
@@ -226,18 +211,4 @@ func (m *MockDatabase) UnreadMessages(arg0 client.Contact) ([]*v1.Message, error
 func (mr *MockDatabaseMockRecorder) UnreadMessages(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnreadMessages", reflect.TypeOf((*MockDatabase)(nil).UnreadMessages), arg0)
-}
-
-// UpdateHistories mocks base method
-func (m *MockDatabase) UpdateHistories(arg0 []client.History) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateHistories", arg0)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateHistories indicates an expected call of UpdateHistories
-func (mr *MockDatabaseMockRecorder) UpdateHistories(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateHistories", reflect.TypeOf((*MockDatabase)(nil).UpdateHistories), arg0)
 }

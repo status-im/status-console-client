@@ -26,8 +26,8 @@ type Event struct {
 	Interface interface{}
 }
 
-type EventWithContact interface {
-	GetContact() Contact
+type EventWithChat interface {
+	GetChat() Chat
 }
 
 type EventWithType interface {
@@ -43,12 +43,12 @@ type EventWithMessage interface {
 }
 
 type baseEvent struct {
-	Contact Contact   `json:"contact"`
-	Type    EventType `json:"type"`
+	Chat Chat      `json:"chat"`
+	Type EventType `json:"type"`
 }
 
-func (e baseEvent) GetContact() Contact { return e.Contact }
-func (e baseEvent) GetType() EventType  { return e.Type }
+func (e baseEvent) GetChat() Chat      { return e.Chat }
+func (e baseEvent) GetType() EventType { return e.Type }
 
 type messageEvent struct {
 	baseEvent

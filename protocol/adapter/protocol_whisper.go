@@ -158,13 +158,6 @@ func (w *ProtocolWhisperAdapter) Send(ctx context.Context, data []byte, options 
 		if options.Recipient != nil {
 			newMessage, err = w.publisher.CreateDirectMessage(privateKey, options.Recipient, false, data)
 		} else {
-			_, filterErr := w.publisher.LoadFilter(&msgfilter.Chat{
-				ChatID: options.ChatName,
-			})
-			if filterErr != nil {
-				return nil, errors.Wrap(filterErr, "failed to load filter")
-			}
-
 			// Public messages are not wrapped (i.e have not bundle),
 			// when sending in public chats as it would be a breaking change.
 			// When we send a contact code, we send a public message but wrapped,

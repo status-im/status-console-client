@@ -39,18 +39,9 @@ func TestSendMessage(t *testing.T) {
 		Return(nil).
 		Times(1)
 
-	protoMock.EXPECT().
-		Request(
-			gomock.Any(),
-			gomock.Any(),
-		).
-		Return(nil).
-		Times(1)
-
-	err = vc.Select(client.Contact{
-		Name:  chatName,
-		Type:  client.ContactPublicRoom,
-		Topic: chatName,
+	err = vc.Select(client.Chat{
+		Name: chatName,
+		Type: client.PublicChat,
 	})
 	require.NoError(t, err)
 	// close reading loops
@@ -72,13 +63,4 @@ func TestSendMessage(t *testing.T) {
 	err = vc.Send(payload)
 	require.NoError(t, err)
 
-	// TODO: move to another layer
-	// statusMessage, err := protocol.DecodeMessage(message.data)
-	// require.NoError(t, err)
-	// require.EqualValues(t, payload, statusMessage.Text)
-	// require.Equal(t, protocol.ContentTypeTextPlain, statusMessage.ContentT)
-	// require.Equal(t, protocol.MessageTypePublicGroup, statusMessage.MessageT)
-	// require.Equal(t,
-	// 	protocol.Content{ChatID: chatName, Text: string(payload)},
-	// 	statusMessage.Content)
 }
