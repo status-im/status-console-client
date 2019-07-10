@@ -65,19 +65,17 @@ var (
 // Database is an interface for all db operations.
 type Database interface {
 	Close() error
-	Messages(c Contact, from, to time.Time) ([]*protocol.Message, error)
-	NewMessages(c Contact, rowid int64) ([]*protocol.Message, error)
-	UnreadMessages(c Contact) ([]*protocol.Message, error)
-	SaveMessages(c Contact, messages []*protocol.Message) (int64, error)
-	LastMessageClock(Contact) (int64, error)
-	Contacts() ([]Contact, error)
-	SaveContacts(contacts []Contact) error
-	DeleteContact(Contact) error
-	ContactExist(Contact) (bool, error)
-	Histories() ([]History, error)
-	UpdateHistories([]History) error
-	GetPublicChat(name string) (*Contact, error)
-	GetOneToOneChat(*ecdsa.PublicKey) (*Contact, error)
+	Messages(c Chat, from, to time.Time) ([]*protocol.Message, error)
+	NewMessages(c Chat, rowid int64) ([]*protocol.Message, error)
+	UnreadMessages(c Chat) ([]*protocol.Message, error)
+	SaveMessages(c Chat, messages []*protocol.Message) (int64, error)
+	LastMessageClock(Chat) (int64, error)
+	Chats() ([]Chat, error)
+	SaveChats(chats []Chat) error
+	DeleteChat(Chat) error
+	ChatExist(Chat) (bool, error)
+	GetPublicChat(name string) (*Chat, error)
+	GetOneToOneChat(*ecdsa.PublicKey) (*Chat, error)
 }
 
 // Migrate applies migrations.
@@ -173,9 +171,9 @@ func (db SQLLiteDatabase) Close() error {
 	return db.db.Close()
 }
 
-// SaveContacts inserts or replaces provided contacts.
-// TODO should it delete all previous contacts?
-func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
+// SaveChats inserts or replaces provided chats.
+// TODO should it delete all previous chats?
+func (db SQLLiteDatabase) SaveChats(chats []Chat) (err error) {
 	var (
 		tx   *sql.Tx
 		stmt *sql.Stmt
@@ -184,36 +182,57 @@ func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
 	if err != nil {
 		return err
 	}
-	stmt, err = tx.Prepare("INSERT INTO user_contacts(id, name, type, state, topic, public_key) VALUES (?, ?, ?, ?, ?, ?)")
-	if err != nil {
-		return err
-	}
-	history, err := tx.Prepare("INSERT INTO history_user_contact_topic(contact_id) VALUES (?)")
-	if err != nil {
-		return err
-	}
 	defer func() {
 		if err == nil {
 			err = tx.Commit()
+			return
 		} else {
+			// don't shadow original error
 			_ = tx.Rollback()
+			return
 		}
 	}()
-	for i := range contacts {
+	stmt, err = tx.Prepare(`INSERT INTO chats(
+	  id,
+	  name,
+	  color,
+	  type,
+	  active,
+	  updated_at,
+	  deleted_at_clock_value,
+	  public_key,
+	  unviewed_message_count,
+	  last_clock_value,
+	  last_message_content_type,
+	  last_message_content
+	)
+	  VALUES
+	  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	for i := range chats {
 		pkey := []byte{}
-		if contacts[i].PublicKey != nil {
-			pkey, err = marshalEcdsaPub(contacts[i].PublicKey)
+		if chats[i].PublicKey != nil {
+			pkey, err = marshalEcdsaPub(chats[i].PublicKey)
 			if err != nil {
 				return err
 			}
 		}
-		id := contactID(contacts[i])
-		_, err = stmt.Exec(id, contacts[i].Name, contacts[i].Type, contacts[i].State, contacts[i].Topic, pkey)
-		if err != nil {
-			return err
-		}
-		// to avoid unmarshalling null into sql.NullInt64
-		_, err = history.Exec(id)
+		id := chatID(chats[i])
+		_, err = stmt.Exec(id,
+			chats[i].Name,
+			chats[i].Color,
+			chats[i].Type,
+			chats[i].Active,
+			chats[i].UpdatedAt,
+			chats[i].DeletedAtClockValue,
+			pkey,
+			chats[i].UnviewedMessageCount,
+			chats[i].LastClockValue,
+			chats[i].LastMessageContentType,
+			chats[i].LastMessageContent,
+		)
 		if err != nil {
 			return err
 		}
@@ -221,105 +240,50 @@ func (db SQLLiteDatabase) SaveContacts(contacts []Contact) (err error) {
 	return err
 }
 
-// Contacts returns all available contacts.
-func (db SQLLiteDatabase) Contacts() ([]Contact, error) {
-	rows, err := db.db.Query("SELECT name, type, state, topic, public_key FROM user_contacts")
+// Chats returns all available chats.
+func (db SQLLiteDatabase) Chats() ([]Chat, error) {
+	rows, err := db.db.Query("SELECT name, type, public_key FROM chats")
 	if err != nil {
 		return nil, err
 	}
 
 	var (
-		rst = []Contact{}
+		rst = []Chat{}
 	)
 	for rows.Next() {
 		// do not reuse same gob instance. same instance marshalls two same objects differently
 		// if used repetitively.
-		contact := Contact{}
+		chat := Chat{}
 		pkey := []byte{}
-		err = rows.Scan(&contact.Name, &contact.Type, &contact.State, &contact.Topic, &pkey)
+		err = rows.Scan(&chat.Name, &chat.Type, &pkey)
 		if err != nil {
 			return nil, err
 		}
 		if len(pkey) != 0 {
-			contact.PublicKey, err = unmarshalEcdsaPub(pkey)
+			chat.PublicKey, err = unmarshalEcdsaPub(pkey)
 			if err != nil {
 				return nil, err
 			}
 		}
-		rst = append(rst, contact)
+		rst = append(rst, chat)
 	}
 	return rst, nil
 }
 
-func (db SQLLiteDatabase) Histories() ([]History, error) {
-	rows, err := db.db.Query("SELECT synced, u.name, u.type, u.state, u.topic, u.public_key FROM history_user_contact_topic JOIN user_contacts u ON contact_id = u.id")
+func (db SQLLiteDatabase) DeleteChat(c Chat) error {
+	_, err := db.db.Exec("DELETE FROM chats WHERE id = ?", fmt.Sprintf("%s:%d", c.Name, c.Type))
 	if err != nil {
-		return nil, err
-	}
-	rst := []History{}
-	for rows.Next() {
-		h := History{
-			Contact: Contact{},
-		}
-		pkey := []byte{}
-		err = rows.Scan(&h.Synced, &h.Contact.Name, &h.Contact.Type, &h.Contact.State, &h.Contact.Topic, &pkey)
-		if err != nil {
-			return nil, err
-		}
-		if len(pkey) != 0 {
-			h.Contact.PublicKey, err = unmarshalEcdsaPub(pkey)
-			if err != nil {
-				return nil, err
-			}
-		}
-		rst = append(rst, h)
-	}
-	return rst, nil
-}
-
-func (db SQLLiteDatabase) UpdateHistories(histories []History) (err error) {
-	var (
-		tx   *sql.Tx
-		stmt *sql.Stmt
-	)
-	tx, err = db.db.BeginTx(context.Background(), &sql.TxOptions{})
-	if err != nil {
-		return err
-	}
-	stmt, err = tx.Prepare("UPDATE history_user_contact_topic SET synced = ? WHERE contact_Id = ?")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err == nil {
-			err = tx.Commit()
-		} else {
-			_ = tx.Rollback()
-		}
-	}()
-	for i := range histories {
-		_, err = stmt.Exec(histories[i].Synced, contactID(histories[i].Contact))
-		if err != nil {
-			return err
-		}
+		return errors.Wrap(err, "error deleting chat from db")
 	}
 	return nil
 }
 
-func (db SQLLiteDatabase) DeleteContact(c Contact) error {
-	_, err := db.db.Exec("DELETE FROM user_contacts WHERE id = ?", fmt.Sprintf("%s:%d", c.Name, c.Type))
-	if err != nil {
-		return errors.Wrap(err, "error deleting contact from db")
-	}
-	return nil
-}
-
-func (db SQLLiteDatabase) ContactExist(c Contact) (exists bool, err error) {
-	err = db.db.QueryRow("SELECT EXISTS(SELECT id FROM user_contacts WHERE id = ?)", contactID(c)).Scan(&exists)
+func (db SQLLiteDatabase) ChatExist(c Chat) (exists bool, err error) {
+	err = db.db.QueryRow("SELECT EXISTS(SELECT id FROM chats WHERE id = ?)", chatID(c)).Scan(&exists)
 	return
 }
 
-func (db SQLLiteDatabase) GetOneToOneChat(publicKey *ecdsa.PublicKey) (*Contact, error) {
+func (db SQLLiteDatabase) GetOneToOneChat(publicKey *ecdsa.PublicKey) (*Chat, error) {
 	if publicKey == nil {
 		return nil, errors.New("No public key provided")
 	}
@@ -329,9 +293,9 @@ func (db SQLLiteDatabase) GetOneToOneChat(publicKey *ecdsa.PublicKey) (*Contact,
 		return nil, err
 	}
 
-	c := &Contact{}
-	err = db.db.QueryRow("SELECT name, state, topic FROM user_contacts WHERE public_key = ?", pkey).Scan(&c.Name, &c.State, &c.Topic)
-	c.Type = ContactPrivate
+	c := &Chat{}
+	err = db.db.QueryRow("SELECT name FROM chats WHERE public_key = ?", pkey).Scan(&c.Name)
+	c.Type = OneToOneChat
 	c.PublicKey = publicKey
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -342,10 +306,10 @@ func (db SQLLiteDatabase) GetOneToOneChat(publicKey *ecdsa.PublicKey) (*Contact,
 	return c, nil
 }
 
-func (db SQLLiteDatabase) GetPublicChat(name string) (*Contact, error) {
-	c := &Contact{}
-	err := db.db.QueryRow("SELECT name, state, topic FROM user_contacts WHERE id = ?", formatID(name, ContactPublicRoom)).Scan(&c.Name, &c.State, &c.Topic)
-	c.Type = ContactPublicRoom
+func (db SQLLiteDatabase) GetPublicChat(name string) (*Chat, error) {
+	c := &Chat{}
+	err := db.db.QueryRow("SELECT name FROM chats WHERE id = ?", formatID(name, PublicChat)).Scan(&c.Name)
+	c.Type = PublicChat
 	if err == sql.ErrNoRows {
 		return nil, nil
 	} else if err != nil {
@@ -355,16 +319,16 @@ func (db SQLLiteDatabase) GetPublicChat(name string) (*Contact, error) {
 	return c, nil
 }
 
-func (db SQLLiteDatabase) LastMessageClock(c Contact) (int64, error) {
+func (db SQLLiteDatabase) LastMessageClock(c Chat) (int64, error) {
 	var last sql.NullInt64
-	err := db.db.QueryRow("SELECT max(clock) FROM user_messages WHERE contact_id = ?", contactID(c)).Scan(&last)
+	err := db.db.QueryRow("SELECT max(clock) FROM user_messages WHERE chat_id = ?", chatID(c)).Scan(&last)
 	if err != nil {
 		return 0, err
 	}
 	return last.Int64, nil
 }
 
-func (db SQLLiteDatabase) SaveMessages(c Contact, messages []*protocol.Message) (last int64, err error) {
+func (db SQLLiteDatabase) SaveMessages(c Chat, messages []*protocol.Message) (last int64, err error) {
 	var (
 		tx   *sql.Tx
 		stmt *sql.Stmt
@@ -374,7 +338,7 @@ func (db SQLLiteDatabase) SaveMessages(c Contact, messages []*protocol.Message) 
 		return
 	}
 	stmt, err = tx.Prepare(`INSERT INTO user_messages(
-id, contact_id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags)
+id, chat_id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return
@@ -391,8 +355,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	}()
 
 	var (
-		contactID = fmt.Sprintf("%s:%d", c.Name, c.Type)
-		rst       sql.Result
+		chatID = fmt.Sprintf("%s:%d", c.Name, c.Type)
+		rst    sql.Result
 	)
 	for _, msg := range messages {
 		pkey := []byte{}
@@ -400,7 +364,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 			pkey, err = marshalEcdsaPub(msg.SigPubKey)
 		}
 		rst, err = stmt.Exec(
-			msg.ID, contactID, msg.ContentT, msg.MessageT, msg.Text,
+			msg.ID, chatID, msg.ContentT, msg.MessageT, msg.Text,
 			msg.Clock, msg.Timestamp, msg.Content.ChatID, msg.Content.Text,
 			pkey, msg.Flags)
 		if err != nil {
@@ -417,13 +381,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	return
 }
 
-// Messages returns messages for a given contact, in a given period. Ordered by a timestamp.
-func (db SQLLiteDatabase) Messages(c Contact, from, to time.Time) (result []*protocol.Message, err error) {
-	contactID := fmt.Sprintf("%s:%d", c.Name, c.Type)
+// Messages returns messages for a given chat, in a given period. Ordered by a timestamp.
+func (db SQLLiteDatabase) Messages(c Chat, from, to time.Time) (result []*protocol.Message, err error) {
+	chatID := fmt.Sprintf("%s:%d", c.Name, c.Type)
 	rows, err := db.db.Query(`SELECT
 id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags
-FROM user_messages WHERE contact_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp`,
-		contactID, protocol.TimestampInMsFromTime(from), protocol.TimestampInMsFromTime(to))
+FROM user_messages WHERE chat_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp`,
+		chatID, protocol.TimestampInMsFromTime(from), protocol.TimestampInMsFromTime(to))
 	if err != nil {
 		return nil, err
 	}
@@ -452,12 +416,12 @@ FROM user_messages WHERE contact_id = ? AND timestamp >= ? AND timestamp <= ? OR
 	return rst, nil
 }
 
-func (db SQLLiteDatabase) NewMessages(c Contact, rowid int64) ([]*protocol.Message, error) {
-	contactID := contactID(c)
+func (db SQLLiteDatabase) NewMessages(c Chat, rowid int64) ([]*protocol.Message, error) {
+	chatID := chatID(c)
 	rows, err := db.db.Query(`SELECT
 id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags
-FROM user_messages WHERE contact_id = ? AND rowid >= ? ORDER BY clock`,
-		contactID, rowid)
+FROM user_messages WHERE chat_id = ? AND rowid >= ? ORDER BY clock`,
+		chatID, rowid)
 	if err != nil {
 		return nil, err
 	}
@@ -488,8 +452,8 @@ FROM user_messages WHERE contact_id = ? AND rowid >= ? ORDER BY clock`,
 
 // TODO(adam): refactor all message getters in order not to
 // repeat the select fields over and over.
-func (db SQLLiteDatabase) UnreadMessages(c Contact) ([]*protocol.Message, error) {
-	contactID := contactID(c)
+func (db SQLLiteDatabase) UnreadMessages(c Chat) ([]*protocol.Message, error) {
+	chatID := chatID(c)
 	rows, err := db.db.Query(`
 		SELECT
 			id,
@@ -505,10 +469,10 @@ func (db SQLLiteDatabase) UnreadMessages(c Contact) ([]*protocol.Message, error)
 		FROM
 			user_messages
 		WHERE
-			contact_id = ? AND
+			chat_id = ? AND
 			flags & ? == 0
 		ORDER BY clock`,
-		contactID, protocol.MessageRead,
+		chatID, protocol.MessageRead,
 	)
 	if err != nil {
 		return nil, err
@@ -539,10 +503,10 @@ func (db SQLLiteDatabase) UnreadMessages(c Contact) ([]*protocol.Message, error)
 	return result, nil
 }
 
-func contactID(c Contact) string {
+func chatID(c Chat) string {
 	return formatID(c.Name, c.Type)
 }
 
-func formatID(name string, t ContactType) string {
+func formatID(name string, t ChatType) string {
 	return fmt.Sprintf("%s:%d", name, t)
 }

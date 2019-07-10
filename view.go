@@ -11,7 +11,7 @@ import (
 
 // Type of views.
 const (
-	ViewContacts     = "contacts"
+	ViewChats        = "chats"
 	ViewChat         = "chat"
 	ViewInput        = "input"
 	ViewNotification = "notification"

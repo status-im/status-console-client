@@ -55,7 +55,7 @@ var (
 
 	// flags acting like commands
 	createKeyPair = fs.Bool("create-key-pair", false, "creates and prints a key pair instead of running")
-	addContact    = fs.String("add-contact", "", "add contact using format: type,name[,public-key] where type can be 'private' or 'public' and 'public-key' is required for 'private' type")
+	addChat       = fs.String("add-chat", "", "add chat using format: type,name[,public-key] where type can be 'private' or 'public' and 'public-key' is required for 'private' type")
 
 	// flags for in-proc node
 	dataDir         = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
@@ -147,60 +147,59 @@ func main() {
 	}
 	defer db.Close()
 
-	// Log the current contact info in two places for easy retrieval.
-	fmt.Printf("Contact address: %#x\n", crypto.FromECDSAPub(&privateKey.PublicKey))
-	log.Printf("contact address: %#x", crypto.FromECDSAPub(&privateKey.PublicKey))
+	// Log the current chat info in two places for easy retrieval.
+	fmt.Printf("Chat address: %#x\n", crypto.FromECDSAPub(&privateKey.PublicKey))
+	log.Printf("chat address: %#x", crypto.FromECDSAPub(&privateKey.PublicKey))
 
-	// Manage initial contacts.
-	if contacts, err := db.Contacts(); len(contacts) == 0 || err != nil {
-		debugContacts := []client.Contact{
-			{Name: "status", Type: client.ContactPublicRoom, Topic: "status"},
-			{Name: "status-core", Type: client.ContactPublicRoom, Topic: "status-core"},
+	// Manage initial chats.
+	if chats, err := db.Chats(); len(chats) == 0 || err != nil {
+		debugChats := []client.Chat{
+			{Name: "status", Type: client.PublicChat},
+			{Name: "status-core", Type: client.PublicChat},
 		}
-		uniqueContacts := []client.Contact{}
-		for _, c := range debugContacts {
-			exist, err := db.ContactExist(c)
+		uniqueChats := []client.Chat{}
+		for _, c := range debugChats {
+			exist, err := db.ChatExist(c)
 			if err != nil {
 				exitErr(err)
 			}
 			if !exist {
-				uniqueContacts = append(uniqueContacts, c)
+				uniqueChats = append(uniqueChats, c)
 			}
 		}
-		if len(uniqueContacts) != 0 {
-			if err := db.SaveContacts(uniqueContacts); err != nil {
+		if len(uniqueChats) != 0 {
+			if err := db.SaveChats(uniqueChats); err != nil {
 				exitErr(err)
 			}
 		}
 	}
 
-	// Handle add contact.
-	if *addContact != "" {
-		options := strings.Split(*addContact, ",")
+	// Handle add chat.
+	if *addChat != "" {
+		options := strings.Split(*addChat, ",")
 
-		var c client.Contact
+		var c client.Chat
 
 		if len(options) == 2 && options[0] == "public" {
-			c = client.Contact{
-				Name:  options[1],
-				Type:  client.ContactPublicRoom,
-				Topic: options[1],
+			c = client.Chat{
+				Name: options[1],
+				Type: client.PublicChat,
 			}
 		} else if len(options) == 3 && options[0] == "private" {
-			c, err = client.CreateContactPrivate(options[1], options[2], client.ContactAdded)
+			c, err = client.CreateOneToOneChat(options[1], options[2])
 			if err != nil {
 				exitErr(err)
 			}
 		} else {
-			exitErr(errors.Errorf("invalid -add-contact value"))
+			exitErr(errors.Errorf("invalid -add-chat value"))
 		}
 
-		exists, err := db.ContactExist(c)
+		exists, err := db.ChatExist(c)
 		if err != nil {
 			exitErr(err)
 		}
 		if !exists {
-			if err := db.SaveContacts([]client.Contact{c}); err != nil {
+			if err := db.SaveChats([]client.Chat{c}); err != nil {
 				exitErr(err)
 			}
 		}
@@ -399,13 +398,13 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 	}
 
 	// Init and start Publisher
-	broadcastContactCode := true
+	broadcastChatCode := true
 	online := func() bool {
 		return statusNode.Server().PeerCount() > 0
 	}
 
 	publisherService.Init(persistence.DB, protocol, protocolAdapter.OnNewMessages)
-	if err := publisherService.Start(online, broadcastContactCode); err != nil {
+	if err := publisherService.Start(online, broadcastChatCode); err != nil {
 		return nil, errors.Wrap(err, "failed to start Publisher")
 	}
 
@@ -439,8 +438,8 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 		},
 	)
 
-	contacts := NewContactsViewController(&ViewController{vm, g, ViewContacts}, messenger)
-	if err := contacts.LoadAndRefresh(); err != nil {
+	chats := NewChatsViewController(&ViewController{vm, g, ViewChats}, messenger)
+	if err := chats.LoadAndRefresh(); err != nil {
 		return err
 	}
 
@@ -449,12 +448,12 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 		log.Printf("default multiplexer handler")
 		return chat.Send(b)
 	})
-	inputMultiplexer.AddHandler("/contact", ContactCmdFactory(contacts))
+	inputMultiplexer.AddHandler("/chat", ChatCmdFactory(chats))
 	inputMultiplexer.AddHandler("/request", RequestCmdFactory(chat))
 
 	views := []*View{
 		&View{
-			Name:       ViewContacts,
+			Name:       ViewChats,
 			Enabled:    true,
 			Cursor:     true,
 			Highlight:  true,
@@ -479,16 +478,16 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 					Key: gocui.KeyEnter,
 					Mod: gocui.ModNone,
 					Handler: GetLineHandler(func(idx int, _ string) error {
-						contact, ok := contacts.ContactByIdx(idx)
+						selectedChat, ok := chats.ChatByIdx(idx)
 						if !ok {
-							return errors.New("contact could not be found")
+							return errors.New("chat could not be found")
 						}
 
 						// We need to call Select asynchronously,
 						// otherwise the main thread is blocked
 						// and nothing is rendered.
 						go func() {
-							if err := chat.Select(contact); err != nil {
+							if err := chat.Select(selectedChat); err != nil {
 								log.Printf("[GetLineHandler] error selecting a chat: %v", err)
 							}
 						}()

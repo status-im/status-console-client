@@ -10,27 +10,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestContactUniqueConstraint(t *testing.T) {
+func TestChatUniqueConstraint(t *testing.T) {
 	db, err := InitializeTmpDB()
 	require.NoError(t, err)
 	defer db.Close()
 	pk, err := crypto.GenerateKey()
 	require.NoError(t, err)
-	contact := Contact{
+	chat := Chat{
 		Name:      "first",
-		Type:      ContactPublicRoom,
+		Type:      PublicChat,
 		PublicKey: &pk.PublicKey,
-		Topic:     "first",
 	}
-	require.NoError(t, db.SaveContacts([]Contact{contact}))
-	require.EqualError(t, db.SaveContacts([]Contact{contact}), "UNIQUE constraint failed: user_contacts.id")
-	rst, err := db.Contacts()
+	require.NoError(t, db.SaveChats([]Chat{chat}))
+	require.EqualError(t, db.SaveChats([]Chat{chat}), "UNIQUE constraint failed: chats.id")
+	rst, err := db.Chats()
 	require.NoError(t, err)
 	require.Len(t, rst, 1)
-	require.Equal(t, contact.Name, rst[0].Name)
-	require.Equal(t, contact.Type, rst[0].Type)
-	require.Equal(t, contact.PublicKey.X, rst[0].PublicKey.X)
-	require.Equal(t, contact.PublicKey.Y, rst[0].PublicKey.Y)
+	require.Equal(t, chat.Name, rst[0].Name)
+	require.Equal(t, chat.Type, rst[0].Type)
+	require.Equal(t, chat.PublicKey.X, rst[0].PublicKey.X)
+	require.Equal(t, chat.PublicKey.Y, rst[0].PublicKey.Y)
 }
 
 func TestMessagesFilteredAndOrderedByTimestamp(t *testing.T) {
@@ -39,16 +38,15 @@ func TestMessagesFilteredAndOrderedByTimestamp(t *testing.T) {
 	defer db.Close()
 	pk, err := crypto.GenerateKey()
 	require.NoError(t, err)
-	contact := Contact{
+	chat := Chat{
 		Name:      "test",
-		Type:      ContactPublicRoom,
+		Type:      PublicChat,
 		PublicKey: &pk.PublicKey,
-		Topic:     "first",
 	}
-	require.NoError(t, db.SaveContacts([]Contact{contact}))
-	contacts, err := db.Contacts()
+	require.NoError(t, db.SaveChats([]Chat{chat}))
+	chats, err := db.Chats()
 	require.NoError(t, err)
-	require.Len(t, contacts, 1)
+	require.Len(t, chats, 1)
 	msg1 := protocol.Message{
 		ID:        []byte("hello1"),
 		SigPubKey: &pk.PublicKey,
@@ -65,10 +63,10 @@ func TestMessagesFilteredAndOrderedByTimestamp(t *testing.T) {
 		Timestamp: 2000,
 	}
 
-	last, err := db.SaveMessages(contact, []*protocol.Message{&msg3, &msg1, &msg2})
+	last, err := db.SaveMessages(chat, []*protocol.Message{&msg3, &msg1, &msg2})
 	require.NoError(t, err)
 	require.Equal(t, int64(3), last)
-	msgs, err := db.Messages(contact, time.Unix(3, 0), time.Unix(11, 0))
+	msgs, err := db.Messages(chat, time.Unix(3, 0), time.Unix(11, 0))
 	require.NoError(t, err)
 	require.Len(t, msgs, 2)
 	require.Equal(t, msg2.Timestamp, msgs[0].Timestamp)
@@ -79,10 +77,9 @@ func TestUnreadMessages(t *testing.T) {
 	db, err := InitializeTmpDB()
 	require.NoError(t, err)
 	defer db.Close()
-	contact := Contact{
-		Name:  "test",
-		Type:  ContactPublicRoom,
-		Topic: "first",
+	chat := Chat{
+		Name: "test",
+		Type: PublicChat,
 	}
 	// insert some messages
 	var messages []*protocol.Message
@@ -100,11 +97,11 @@ func TestUnreadMessages(t *testing.T) {
 		}
 		messages = append(messages, &m)
 	}
-	_, err = db.SaveMessages(contact, messages)
+	_, err = db.SaveMessages(chat, messages)
 	require.NoError(t, err)
 
 	// verify that we get only unread messages
-	unread, err := db.UnreadMessages(contact)
+	unread, err := db.UnreadMessages(chat)
 	require.NoError(t, err)
 	require.Len(t, unread, 2)
 	for _, m := range unread {
@@ -113,10 +110,9 @@ func TestUnreadMessages(t *testing.T) {
 }
 
 func TestSaveMessagesUniqueConstraint(t *testing.T) {
-	contact := Contact{
-		Name:  "test",
-		Type:  ContactPublicRoom,
-		Topic: "first",
+	chat := Chat{
+		Name: "test",
+		Type: PublicChat,
 	}
 	sameid := []byte("1")
 	msg1 := protocol.Message{
@@ -129,7 +125,7 @@ func TestSaveMessagesUniqueConstraint(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	_, err = db.SaveMessages(contact, []*protocol.Message{&msg1, &msg2})
+	_, err = db.SaveMessages(chat, []*protocol.Message{&msg1, &msg2})
 	require.EqualError(t, err, ErrMsgAlreadyExist.Error())
 }
 
@@ -146,14 +142,13 @@ func TestGetLastMessageClock(t *testing.T) {
 			Clock: int64(count - i),
 		}
 	}
-	contact := Contact{
-		Name:  "test",
-		Type:  ContactPublicRoom,
-		Topic: "first",
+	chat := Chat{
+		Name: "test",
+		Type: PublicChat,
 	}
-	_, err = db.SaveMessages(contact, messages)
+	_, err = db.SaveMessages(chat, messages)
 	require.NoError(t, err)
-	last, err := db.LastMessageClock(contact)
+	last, err := db.LastMessageClock(chat)
 	require.NoError(t, err)
 	require.Equal(t, int64(count), last)
 }
@@ -164,54 +159,15 @@ func TestGetOneToOneChat(t *testing.T) {
 	defer db.Close()
 	pk, err := crypto.GenerateKey()
 	require.NoError(t, err)
-	expectedContact := Contact{
+	expectedChat := Chat{
 		Name:      "first",
-		Type:      ContactPrivate,
+		Type:      OneToOneChat,
 		PublicKey: &pk.PublicKey,
-		Topic:     "first",
 	}
-	require.NoError(t, db.SaveContacts([]Contact{expectedContact}))
-	contact, err := db.GetOneToOneChat(&pk.PublicKey)
+	require.NoError(t, db.SaveChats([]Chat{expectedChat}))
+	chat, err := db.GetOneToOneChat(&pk.PublicKey)
 	require.NoError(t, err)
-	require.Equal(t, &expectedContact, contact, "contact expected to exist in database")
-}
-
-func TestLoadHistories(t *testing.T) {
-	db, err := InitializeTmpDB()
-	require.NoError(t, err)
-	defer db.Close()
-	c1 := Contact{
-		Name: "first",
-		Type: ContactPublicRoom,
-	}
-	c2 := Contact{
-		Name: "second",
-		Type: ContactPublicRoom,
-	}
-	require.NoError(t, db.SaveContacts([]Contact{c1, c2}))
-	histories, err := db.Histories()
-	require.NoError(t, err)
-	require.Len(t, histories, 2)
-}
-
-func TestUpdateHistories(t *testing.T) {
-	db, err := InitializeTmpDB()
-	require.NoError(t, err)
-	defer db.Close()
-	c1 := Contact{
-		Name: "first",
-		Type: ContactPublicRoom,
-	}
-	require.NoError(t, db.SaveContacts([]Contact{c1}))
-	h := History{
-		Synced:  100,
-		Contact: c1,
-	}
-	require.NoError(t, db.UpdateHistories([]History{h}))
-	histories, err := db.Histories()
-	require.NoError(t, err)
-	require.Len(t, histories, 1)
-	require.Equal(t, h.Synced, histories[0].Synced)
+	require.Equal(t, &expectedChat, chat, "chat expected to exist in database")
 }
 
 func BenchmarkLoadMessages(b *testing.B) {
@@ -220,29 +176,26 @@ func BenchmarkLoadMessages(b *testing.B) {
 	defer db.Close()
 	pk, err := crypto.GenerateKey()
 	require.NoError(b, err)
-	contacts := []Contact{
+	chats := []Chat{
 		{
 			Name:      "first",
-			Type:      ContactPrivate,
+			Type:      OneToOneChat,
 			PublicKey: &pk.PublicKey,
-			Topic:     "test",
 		},
 		{
 			Name:      "second",
-			Type:      ContactPrivate,
+			Type:      OneToOneChat,
 			PublicKey: &pk.PublicKey,
-			Topic:     "test",
 		},
 		{
 			Name:      "third",
-			Type:      ContactPrivate,
+			Type:      OneToOneChat,
 			PublicKey: &pk.PublicKey,
-			Topic:     "test",
 		},
 	}
 	count := 10000
-	require.NoError(b, db.SaveContacts(contacts))
-	for j, c := range contacts {
+	require.NoError(b, db.SaveChats(chats))
+	for j, c := range chats {
 		messages := make([]*protocol.Message, count)
 		for i := range messages {
 			id := [8]byte{}
@@ -259,7 +212,7 @@ func BenchmarkLoadMessages(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rst, err := db.NewMessages(contacts[0], 0)
+		rst, err := db.NewMessages(chats[0], 0)
 		require.NoError(b, err)
 		require.Len(b, rst, count)
 	}

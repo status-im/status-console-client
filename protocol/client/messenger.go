@@ -37,7 +37,7 @@ func NewMessenger(identity *ecdsa.PrivateKey, proto protocol.Protocol, db Databa
 	}
 }
 
-func contactToChatOptions(c Contact) protocol.ChatOptions {
+func chatToChatOptions(c Chat) protocol.ChatOptions {
 	return protocol.ChatOptions{
 		ChatName:  c.Name,
 		Recipient: c.PublicKey,
@@ -51,13 +51,13 @@ func (m *Messenger) Start() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	contacts, err := m.db.Contacts()
+	chats, err := m.db.Chats()
 	if err != nil {
-		return errors.Wrap(err, "unable to read contacts from database")
+		return errors.Wrap(err, "unable to read chats from database")
 	}
 
-	for i := range contacts {
-		chatOptions = append(chatOptions, contactToChatOptions(contacts[i]))
+	for i := range chats {
+		chatOptions = append(chatOptions, chatToChatOptions(chats[i]))
 	}
 
 	if err := m.proto.LoadChats(context.Background(), chatOptions); err != nil {
@@ -78,26 +78,24 @@ func (m *Messenger) Stop() {
 }
 
 func (m *Messenger) handleDirectMessage(chatType protocol.ChatOptions, message protocol.Message) error {
-	contact, err := m.db.GetOneToOneChat(message.SigPubKey)
+	chat, err := m.db.GetOneToOneChat(message.SigPubKey)
 	if err != nil {
 		return errors.Wrap(err, "could not fetch chat from database")
 	}
-	if contact == nil {
-		contact = &Contact{
-			Type:      ContactPrivate,
-			State:     ContactNew,
+	if chat == nil {
+		chat = &Chat{
+			Type:      OneToOneChat,
 			Name:      pubkeyToHex(message.SigPubKey), // TODO(dshulyak) replace with 3-word funny name
 			PublicKey: message.SigPubKey,
-			Topic:     DefaultPrivateTopic(),
 		}
 
-		err := m.db.SaveContacts([]Contact{*contact})
+		err := m.db.SaveChats([]Chat{*chat})
 		if err != nil {
-			return errors.Wrap(err, "can't save a new contact")
+			return errors.Wrap(err, "can't save a new chat")
 		}
 	}
 
-	_, err = m.db.SaveMessages(*contact, []*protocol.Message{&message})
+	_, err = m.db.SaveMessages(*chat, []*protocol.Message{&message})
 	if err == ErrMsgAlreadyExist {
 		log.Printf("Message already exists")
 		return nil
@@ -109,13 +107,13 @@ func (m *Messenger) handleDirectMessage(chatType protocol.ChatOptions, message p
 }
 
 func (m *Messenger) handlePublicMessage(chatType protocol.ChatOptions, message protocol.Message) error {
-	contact, err := m.db.GetPublicChat(chatType.ChatName)
+	chat, err := m.db.GetPublicChat(chatType.ChatName)
 	if err != nil {
 		return errors.Wrap(err, "error getting public chat")
-	} else if contact == nil {
+	} else if chat == nil {
 		return errors.Wrap(err, "no chat for this message, is that a deleted chat?")
 	}
-	_, err = m.db.SaveMessages(*contact, []*protocol.Message{&message})
+	_, err = m.db.SaveMessages(*chat, []*protocol.Message{&message})
 	if err == ErrMsgAlreadyExist {
 		log.Printf("Message already exists")
 		return nil
@@ -186,30 +184,24 @@ func (m *Messenger) ProcessMessages() {
 	}
 }
 
-func (m *Messenger) Join(ctx context.Context, c Contact) error {
+func (m *Messenger) Join(ctx context.Context, c Chat) error {
 	log.Printf("[Messenger::Join] Joining a chat with contact %#v", c)
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if err := m.proto.LoadChats(context.Background(), []protocol.ChatOptions{contactToChatOptions(c)}); err != nil {
+	if err := m.AddChat(c); err != nil {
 		return err
 	}
 
-	opts := protocol.DefaultRequestOptions()
-	// NOTE(dshulyak) join ctx shouldn't have an impact on history timeout.
-	if err := m.Request(context.Background(), c, opts); err != nil {
-		return err
-	}
-	return m.db.UpdateHistories([]History{{Contact: c, Synced: opts.To}})
+	return m.proto.LoadChats(context.Background(), []protocol.ChatOptions{chatToChatOptions(c)})
 }
 
 // Messages reads all messages from database.
-func (m *Messenger) Messages(c Contact, offset int64) ([]*protocol.Message, error) {
+func (m *Messenger) Messages(c Chat, offset int64) ([]*protocol.Message, error) {
 	return m.db.NewMessages(c, offset)
 }
 
-func (m *Messenger) Request(ctx context.Context, c Contact, options protocol.RequestOptions) error {
+func (m *Messenger) Request(ctx context.Context, c Chat, options protocol.RequestOptions) error {
 	err := enhanceRequestOptions(c, &options)
 	if err != nil {
 		return err
@@ -217,75 +209,22 @@ func (m *Messenger) Request(ctx context.Context, c Contact, options protocol.Req
 	return m.proto.Request(ctx, options)
 }
 
-func (m *Messenger) requestHistories(ctx context.Context, histories []History, opts protocol.RequestOptions) error {
-	log.Printf("[Messenger::requestHistories] requesting messages for chats %+v: from %d to %d\n", opts.Chats, opts.From, opts.To)
-	start := time.Now()
-
-	err := m.proto.Request(ctx, opts)
-	if err != nil {
-		return err
-	}
-
-	log.Printf("[Messenger::requestHistories] requesting message for chats %+v finished in %s\n", opts.Chats, time.Since(start))
-
-	for i := range histories {
-		histories[i].Synced = opts.To
-	}
-	return m.db.UpdateHistories(histories)
-}
-
 func (m *Messenger) RequestAll(ctx context.Context, newest bool) error {
-	// FIXME(dshulyak) if newest is false request 24 hour of messages older then the
-	// earliest envelope for each contact.
-	histories, err := m.db.Histories()
-	if err != nil {
-		return errors.Wrap(err, "error fetching contacts")
-	}
-	var (
-		now               = time.Now()
-		synced, notsynced = splitIntoSyncedNotSynced(histories)
-		errors            = make(chan error, 2)
-		wg                sync.WaitGroup
-	)
-	if len(synced) != 0 {
-		wg.Add(1)
-		go func() {
-			errors <- m.requestHistories(ctx, synced, syncedToOpts(synced, now))
-			wg.Done()
-		}()
-	}
-	if len(notsynced) != 0 {
-		wg.Add(1)
-		go func() {
-			errors <- m.requestHistories(ctx, notsynced, notsyncedToOpts(notsynced, now))
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-
-	log.Printf("[Messenger::RequestAll] finished requesting histories")
-
-	close(errors)
-	for err := range errors {
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
-func (m *Messenger) Send(c Contact, data []byte) ([]byte, error) {
-	// FIXME(dshulyak) sending must be locked by contact to prevent sending second msg with same clock
+func (m *Messenger) Send(c Chat, data []byte) ([]byte, error) {
+	// FIXME(dshulyak) sending must be locked by chat to prevent sending second msg with same clock
 	clock, err := m.db.LastMessageClock(c)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read last message clock for contact")
+		return nil, errors.Wrap(err, "failed to read last message clock for chat")
 	}
 	var message protocol.Message
 
 	switch c.Type {
-	case ContactPublicRoom:
+	case PublicChat:
 		message = protocol.CreatePublicTextMessage(data, clock, c.Name)
-	case ContactPrivate:
+	case OneToOneChat:
 		message = protocol.CreatePrivateTextMessage(data, clock, c.Name)
 	default:
 		return nil, fmt.Errorf("failed to send message: unsupported contact type")
@@ -326,24 +265,24 @@ func (m *Messenger) Send(c Contact, data []byte) ([]byte, error) {
 	}
 }
 
-func (m *Messenger) RemoveContact(c Contact) error {
-	return m.db.DeleteContact(c)
+func (m *Messenger) RemoveChat(c Chat) error {
+	return m.db.DeleteChat(c)
 }
 
-func (m *Messenger) AddContact(c Contact) error {
-	return m.db.SaveContacts([]Contact{c})
+func (m *Messenger) AddChat(c Chat) error {
+	return m.db.SaveChats([]Chat{c})
 }
 
-func (m *Messenger) Contacts() ([]Contact, error) {
-	return m.db.Contacts()
+func (m *Messenger) Chats() ([]Chat, error) {
+	return m.db.Chats()
 }
 
-func (m *Messenger) Leave(c Contact) error {
+func (m *Messenger) Leave(c Chat) error {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if err := m.proto.RemoveChats(context.Background(), []protocol.ChatOptions{contactToChatOptions(c)}); err != nil {
+	if err := m.proto.RemoveChats(context.Background(), []protocol.ChatOptions{chatToChatOptions(c)}); err != nil {
 		return err
 	}
 

@@ -21,36 +21,36 @@ var (
 // MessagesParams is an object with JSON-serializable parameters
 // for Messages method.
 type MessagesParams struct {
-	Contact
+	Chat
 }
 
 // SendParams is an object with JSON-serializable parameters for Send method.
 type SendParams struct {
-	Contact
+	Chat
 }
 
 // RequestParams is an object with JSON-serializable parameters for Request method.
 type RequestParams struct {
-	Contact
+	Chat
 	Limit int   `json:"limit"`
 	From  int64 `json:"from"`
 	To    int64 `json:"to"`
 }
 
-// Contact
-type Contact struct {
+// Chat
+type Chat struct {
 	Name      string        `json:"name"`
 	PublicKey hexutil.Bytes `json:"key"`
 }
 
-func parseContact(c Contact) (client.Contact, error) {
+func parseChat(c Chat) (client.Chat, error) {
 	if len(c.PublicKey) != 0 {
-		c, err := client.CreateContactPrivate(c.Name, c.PublicKey.String(), client.ContactAdded)
+		c, err := client.CreateOneToOneChat(c.Name, c.PublicKey.String())
 		if err != nil {
 			return c, err
 		}
 	}
-	return client.CreateContactPublicRoom(c.Name, client.ContactAdded), nil
+	return client.CreatePublicChat(c.Name), nil
 }
 
 // PublicAPI provides an JSON-RPC API to interact with
@@ -66,15 +66,15 @@ func NewPublicAPI(s *Service) *PublicAPI {
 	}
 }
 
-// Send sends payload to specified contact.
-// Contact should be added before sending message,
+// Send sends payload to specified chat.
+// Chat should be added before sending message,
 // otherwise error will be received.
-func (api *PublicAPI) Send(ctx context.Context, contact Contact, payload string) (hexutil.Bytes, error) {
+func (api *PublicAPI) Send(ctx context.Context, chat Chat, payload string) (hexutil.Bytes, error) {
 	if api.service.messenger == nil {
 		return nil, ErrMessengerNotSet
 	}
 
-	c, err := parseContact(contact)
+	c, err := parseChat(chat)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +86,7 @@ func (api *PublicAPI) Request(ctx context.Context, params RequestParams) (err er
 	if api.service.messenger == nil {
 		return ErrMessengerNotSet
 	}
-
-	c, err := parseContact(params.Contact)
+	c, err := parseChat(params.Chat)
 	if err != nil {
 		return err
 	}
@@ -100,9 +99,9 @@ func (api *PublicAPI) Request(ctx context.Context, params RequestParams) (err er
 }
 
 // Messages is a high-level subscription-based RPC method.
-// It joins a chat for selected contact and streams
+// It joins a chat for selected chat and streams
 // events for that chat.
-func (api *PublicAPI) Messages(ctx context.Context, contact client.Contact) (*rpc.Subscription, error) {
+func (api *PublicAPI) Messages(ctx context.Context, chat client.Chat) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
 	if !supported {
 		return nil, rpc.ErrNotificationsUnsupported
@@ -120,9 +119,9 @@ func (api *PublicAPI) Messages(ctx context.Context, contact client.Contact) (*rp
 
 	// Subscription needs to be created
 	// before any events are delivered.
-	sub := api.broadcaster.Subscribe(contact)
+	sub := api.broadcaster.Subscribe(chat)
 
-	err := api.service.messenger.Join(ctx, contact)
+	err := api.service.messenger.Join(ctx, chat)
 	if err != nil {
 		api.broadcaster.Unsubscribe(sub)
 		return nil, err
@@ -132,9 +131,9 @@ func (api *PublicAPI) Messages(ctx context.Context, contact client.Contact) (*rp
 
 	go func() {
 		defer func() {
-			err := api.service.messenger.Leave(contact)
+			err := api.service.messenger.Leave(chat)
 			if err != nil {
-				log.Printf("failed to leave chat for '%s' contact", contact)
+				log.Printf("failed to leave chat for '%s' chat", chat)
 			}
 		}()
 		defer api.broadcaster.Unsubscribe(sub)
@@ -170,16 +169,16 @@ func (api *PublicAPI) RequestAll(ctx context.Context, newest bool) error {
 	return api.service.messenger.RequestAll(ctx, newest)
 }
 
-// AddContact will ensure that contact is added to messenger database and new stream spawned for a contact if needed.
-func (api *PublicAPI) AddContact(ctx context.Context, contact Contact) (err error) {
+// AddChat will ensure that chat is added to messenger database and new stream spawned for a chat if needed.
+func (api *PublicAPI) AddChat(ctx context.Context, chat Chat) (err error) {
 	if api.service.messenger == nil {
 		return ErrMessengerNotSet
 	}
-	c, err := parseContact(contact)
+	c, err := parseChat(chat)
 	if err != nil {
 		return err
 	}
-	err = api.service.messenger.AddContact(c)
+	err = api.service.messenger.AddChat(c)
 	if err != nil {
 		return err
 	}
@@ -188,11 +187,11 @@ func (api *PublicAPI) AddContact(ctx context.Context, contact Contact) (err erro
 
 // ReadContactMessages read contact messages starting from offset.
 // To read all offset should be zero. To read only new set offset to total number of previously read messages.
-func (api *PublicAPI) ReadContactMessages(ctx context.Context, contact Contact, offset int64) (rst []*protocol.Message, err error) {
+func (api *PublicAPI) ReadChatMessages(ctx context.Context, chat Chat, offset int64) (rst []*protocol.Message, err error) {
 	if api.service.messenger == nil {
 		return nil, ErrMessengerNotSet
 	}
-	c, err := parseContact(contact)
+	c, err := parseChat(chat)
 	if err != nil {
 		return nil, err
 	}

@@ -11,14 +11,14 @@ type publisher interface {
 
 type broadcaster struct {
 	source publisher
-	subs   map[client.Contact][]chan interface{}
+	subs   map[client.Chat][]chan interface{}
 	cancel chan struct{}
 }
 
 func newBroadcaster(source publisher) *broadcaster {
 	b := broadcaster{
 		source: source,
-		subs:   make(map[client.Contact][]chan interface{}),
+		subs:   make(map[client.Chat][]chan interface{}),
 		cancel: make(chan struct{}),
 	}
 
@@ -36,8 +36,8 @@ func (b *broadcaster) start(cancel chan struct{}) {
 			var subs []chan interface{}
 
 			switch v := item.Interface.(type) {
-			case client.EventWithContact:
-				subs = b.subs[v.GetContact()]
+			case client.EventWithChat:
+				subs = b.subs[v.GetChat()]
 			}
 
 			// TODO: figure out if we need anything here
@@ -54,7 +54,7 @@ func (b *broadcaster) start(cancel chan struct{}) {
 	}
 }
 
-func (b *broadcaster) Subscribe(c client.Contact) <-chan interface{} {
+func (b *broadcaster) Subscribe(c client.Chat) <-chan interface{} {
 	// TODO: think about whether this can be a buffered channel.
 	sub := make(chan interface{})
 	b.subs[c] = append(b.subs[c], sub)
