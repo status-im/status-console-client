@@ -64,7 +64,7 @@ require (
 	github.com/russolsen/transit v0.0.0-20180705123435-0794b4c4505a
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/status-im/migrate/v4 v4.3.1-status
-	github.com/status-im/mvds v0.0.16
+	github.com/status-im/mvds v0.0.17
 	github.com/status-im/status-go v0.30.0-beta.0.0.20190708063125-f86469075a09
 	github.com/status-im/whisper v1.4.14
 	github.com/stretchr/objx v0.2.0 // indirect
