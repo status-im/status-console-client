@@ -66,6 +66,7 @@ type StatusMessage struct {
 	Message   interface{}
 	ID        []byte           `json:"-"`
 	SigPubKey *ecdsa.PublicKey `json:"-"`
+	Signature []byte           `json:"-"`
 	Flags     Flags            `json:"-"`
 }
 
