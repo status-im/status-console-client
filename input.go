@@ -4,14 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"log"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/jroimartin/gocui"
-
-	"github.com/status-im/status-console-client/protocol/client"
-	"github.com/status-im/status-console-client/protocol/v1"
 )
 
 const DefaultMultiplexerPrefix = "default"
@@ -67,15 +62,15 @@ func bytesToArgs(b []byte) []string {
 	return argsStr
 }
 
-func chatAddCmdHandler(args []string) (c client.Chat, err error) {
+func chatAddCmdHandler(args []string) (c Chat, err error) {
 	if len(args) == 1 {
 		name := args[0]
-		c = client.Chat{
+		c = Chat{
 			Name: name,
-			Type: client.PublicChat,
+			Type: PublicChat,
 		}
 	} else if len(args) == 2 {
-		c, err = client.CreateOneToOneChat(args[1], args[0])
+		c, err = CreateOneToOneChat(args[1], args[0])
 	} else {
 		err = errors.New("/chat: incorect arguments to add subcommand")
 	}
@@ -111,43 +106,5 @@ func ChatCmdFactory(c *ChatsViewController) CmdHandler {
 		}
 
 		return nil
-	}
-}
-
-func RequestCmdFactory(chat *ChatViewController) CmdHandler {
-	return func(b []byte) error {
-		args := bytesToArgs(b)[1:] // remove first item, i.e. "/request"
-
-		log.Printf("handle /request command: %s", b)
-
-		params := protocol.DefaultRequestOptions()
-
-		switch len(args) {
-		case 3:
-			limit, err := strconv.Atoi(args[2])
-			if err != nil {
-				log.Printf("failed to parse Limit param: %v", err)
-			} else {
-				params.Limit = limit
-			}
-			fallthrough
-		case 2:
-			from, err := time.ParseDuration(args[1])
-			if err != nil {
-				log.Printf("failed to parse From param: %v", err)
-			} else {
-				params.From = time.Now().Add(-from).Unix()
-			}
-			fallthrough
-		case 1:
-			to, err := time.ParseDuration(args[0])
-			if err != nil {
-				log.Printf("failed to parse To param: %v", err)
-			} else {
-				params.To = time.Now().Add(-to).Unix()
-			}
-		}
-
-		return chat.RequestMessages(params)
 	}
 }

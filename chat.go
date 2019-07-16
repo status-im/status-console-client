@@ -1,233 +1,174 @@
 package main
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
-	"log"
-	"strings"
-	"time"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/fatih/color"
-	"github.com/jroimartin/gocui"
-
-	"github.com/status-im/status-console-client/protocol/client"
-	"github.com/status-im/status-console-client/protocol/v1"
 )
 
-// ChatViewController manages chat view.
-type ChatViewController struct {
-	*ViewController
+//go:generate stringer -type=ChatType
 
-	contact client.Chat
+// ChatType defines a type of a chat.
+type ChatType int
 
-	identity  *ecdsa.PrivateKey
-	messenger *client.Messenger
-
-	onError func(error)
-
-	cancel chan struct{} // cancel the current chat loop
-	done   chan struct{} // wait for the current chat loop to finish
-
-	changeChat chan client.Chat
+func (c ChatType) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"%s"`, c)), nil
 }
 
-// NewChatViewController returns a new chat view controller.
-func NewChatViewController(vc *ViewController, id Identity, m *client.Messenger, onError func(error)) *ChatViewController {
-	if onError == nil {
-		onError = func(error) {}
-	}
-
-	return &ChatViewController{
-		ViewController: vc,
-		identity:       id,
-		messenger:      m,
-		onError:        onError,
-		changeChat:     make(chan client.Chat, 1),
-	}
-}
-
-func (c *ChatViewController) readEventsLoop(contact client.Chat) {
-	c.done = make(chan struct{})
-	defer close(c.done)
-
-	var (
-		messages = []*protocol.Message{}
-		clock    int64
-		inorder  bool
-		events   = make(chan client.Event)
-		sub      = c.messenger.Subscribe(events)
-		// We use a ticker in order to buffer storm of received events.
-		t = time.NewTicker(time.Second)
-	)
-	defer sub.Unsubscribe()
-	defer t.Stop()
-
-	for {
-		select {
-		case <-t.C:
-			if !inorder {
-				// messages are sorted by clock value
-				// TODO draw messages only after offset (if possible)
-				all, err := c.messenger.Messages(c.contact, 0)
-				if err != nil {
-					c.onError(err)
-					continue
-				}
-				if len(all) != 0 {
-					clock = all[len(all)-1].Clock
-				}
-				log.Printf("[ChatViewController::readEventsLoop] retrieved %d messages", len(messages))
-				c.printMessages(true, all...)
-				inorder = true
-			} else {
-				if len(messages) != 0 {
-					c.printMessages(false, messages...)
-				}
-			}
-			messages = []*protocol.Message{}
-		case err := <-sub.Err():
-			if err == nil {
-				return
-			}
-			c.onError(err)
-			return
-		case event := <-events:
-			log.Printf("[ChatViewController::readEventsLoop] received an event: %+v", event)
-
-			switch ev := event.Interface.(type) {
-			case client.EventWithError:
-				c.onError(ev.GetError())
-			case client.EventWithChat:
-				if !ev.GetChat().Equal(contact) {
-					log.Printf("[ChatViewController::readEventsLoop] selected and received message contact are not equal: %s, %s", contact, ev.GetChat())
-					continue
-				}
-				msgev, ok := ev.(client.EventWithMessage)
-				if !ok {
-					log.Printf("[ChatViewController::readEventsLoop] can not convert to EventWithMessage")
-					continue
-				}
-				if !inorder {
-					log.Printf("[ChatViewController::readEventsLoop] not in order; skipping")
-					continue
-				}
-
-				msg := msgev.GetMessage()
-				log.Printf("[ChatViewController::readEventsLoop] received message %v", msg)
-
-				if msg.Clock < clock {
-					inorder = false
-					log.Printf("[ChatViewController::readEventsLoop] received message is out of order")
-					continue
-				}
-
-				messages = append(messages, msg)
-			}
-		case contact = <-c.changeChat:
-			inorder = false
-			clock = 0
-			messages = []*protocol.Message{}
-		case <-c.cancel:
-			return
-		}
-	}
-}
-
-// Select informs the chat view controller about a selected contact.
-// The chat view controller setup subscribers and request recent messages.
-func (c *ChatViewController) Select(contact client.Chat) error {
-	log.Printf("[ChatViewController::Select] contact %s", contact.Name)
-
-	if c.cancel == nil {
-		c.cancel = make(chan struct{})
-		go c.readEventsLoop(contact)
-	}
-	c.changeChat <- contact
-	c.contact = contact
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-	return c.messenger.Join(ctx, contact)
-}
-
-// RequestOptions returns the RequestOptions for the next request call.
-// Newest param when true means that we are interested in the most recent messages.
-func (c *ChatViewController) RequestOptions(newest bool) (protocol.RequestOptions, error) {
-	return protocol.DefaultRequestOptions(), nil
-}
-
-// RequestMessages sends a request fro historical messages.
-func (c *ChatViewController) RequestMessages(params protocol.RequestOptions) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
-	return c.messenger.Request(ctx, c.contact, params)
-}
-
-// Send sends a payload as a message.
-func (c *ChatViewController) Send(data []byte) error {
-	log.Printf("[ChatViewController::Send]")
-	_, err := c.messenger.Send(c.contact, data)
-	return err
-}
-
-func (c *ChatViewController) printMessages(clear bool, messages ...*protocol.Message) {
-	log.Printf("[ChatViewController::printMessages] printing %d messages", len(messages))
-
-	c.g.Update(func(*gocui.Gui) error {
-		if clear {
-			if err := c.Clear(); err != nil {
-				return err
-			}
-		}
-
-		for _, message := range messages {
-			if err := c.writeMessage(message); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-func (c *ChatViewController) writeMessage(message *protocol.Message) error {
-	myPubKey := c.identity.PublicKey
-	pubKey := message.SigPubKey
-
-	line := formatMessageLine(
-		pubKey,
-		message.ID,
-		int64(message.Clock),
-		message.Timestamp.Time(),
-		message.Text,
-	)
-
-	println := fmt.Fprintln
-	// TODO: extract
-	if pubKey.X.Cmp(myPubKey.X) == 0 && pubKey.Y.Cmp(myPubKey.Y) == 0 {
-		println = color.New(color.FgGreen).Fprintln
-	}
-
-	if _, err := println(c.ViewController, line); err != nil {
-		return err
+func (c *ChatType) UnmarshalJSON(data []byte) error {
+	switch string(data) {
+	case fmt.Sprintf(`"%s"`, PublicChat):
+		*c = PublicChat
+	case fmt.Sprintf(`"%s"`, OneToOneChat):
+		*c = OneToOneChat
+	default:
+		return fmt.Errorf("invalid ChatType: %s", data)
 	}
 
 	return nil
 }
 
-func formatMessageLine(id *ecdsa.PublicKey, hash []byte, clock int64, t time.Time, text string) string {
-	author := "<unknown>"
-	if id != nil {
-		author = "0x" + hex.EncodeToString(crypto.CompressPubkey(id))[:7]
+// Types of chats.
+const (
+	PublicChat ChatType = iota + 1
+	OneToOneChat
+	PrivateGroupChat
+)
+
+// ChatMember is a member of a group chat
+type ChatMember struct {
+	Admin     bool
+	Joined    bool
+	PublicKey *ecdsa.PublicKey `json:"-"`
+}
+
+// Chat is a single chat
+type Chat struct {
+	id        string
+	publicKey *ecdsa.PublicKey
+
+	Name string   `json:"name"`
+	Type ChatType `json:"type"`
+	// Creation time, is that been used?
+	Timestamp int64 `json:"timestamp"`
+	UpdatedAt int64 `json:"updatedAt"`
+	// Soft delete flag
+	Active bool `json:"active"`
+	// The color of the chat, makes no sense outside a UI context
+	Color string `json:"color"`
+	// Clock value of the last message before chat has been deleted
+	DeletedAtClockValue int64 `json:"deletedAtClockValue"`
+	// Denormalized fields
+
+	UnviewedMessageCount   int    `json:"unviewedMessageCount"`
+	LastClockValue         int64  `json:"lastClockValue"`
+	LastMessageContentType string `json:"lastMessageContentType"`
+	LastMessageContent     string `json:"lastMessageContent"`
+}
+
+// CreateOneToOneChat creates a new private chat.
+func CreateOneToOneChat(name, pubKeyHex string) (c Chat, err error) {
+	pubKeyBytes, err := hexutil.Decode(pubKeyHex)
+	if err != nil {
+		return
 	}
-	return fmt.Sprintf(
-		"%s | %#+x | %d | %s | %s",
-		author,
-		hash[:3],
-		clock,
-		t.Format(time.RFC822),
-		strings.TrimSpace(text),
-	)
+
+	c.id = hex.EncodeToString(pubKeyBytes)
+	c.Name = name
+	c.Type = OneToOneChat
+	c.publicKey, err = crypto.UnmarshalPubkey(pubKeyBytes)
+
+	return
+}
+
+// CreatePublicChat creates a public room chat.
+func CreatePublicChat(name string) Chat {
+	return Chat{
+		id:   name,
+		Name: name,
+		Type: PublicChat,
+	}
+}
+
+// String returns a string representation of Chat.
+func (c Chat) String() string {
+	return c.Name
+}
+
+// Equal returns true if chats have same name and same type.
+func (c Chat) Equal(other Chat) bool {
+	return c.Name == other.Name && c.Type == other.Type
+}
+
+func (c Chat) ID() string                  { return c.id }
+func (c Chat) PublicName() string          { return c.Name }
+func (c Chat) PublicKey() *ecdsa.PublicKey { return c.publicKey }
+
+func (c Chat) MarshalJSON() ([]byte, error) {
+	type ChatAlias Chat
+
+	item := struct {
+		ChatAlias
+		ID        string `json:"id"`
+		PublicKey string `json:"public_key,omitempty"`
+	}{
+		ChatAlias: ChatAlias(c),
+		ID:        c.ID(),
+	}
+
+	if c.PublicKey() != nil {
+		item.PublicKey = encodePublicKeyAsString(c.PublicKey())
+	}
+
+	return json.Marshal(&item)
+}
+
+func (c *Chat) UnmarshalJSON(data []byte) error {
+	type ChatAlias Chat
+
+	var item struct {
+		*ChatAlias
+		ID        string `json:"id"`
+		PublicKey string `json:"public_key,omitempty"`
+	}
+
+	if err := json.Unmarshal(data, &item); err != nil {
+		return err
+	}
+
+	item.ChatAlias.id = item.ID
+
+	if len(item.PublicKey) > 2 {
+		pubKey, err := hexutil.Decode(item.PublicKey)
+		if err != nil {
+			return err
+		}
+
+		item.ChatAlias.publicKey, err = crypto.UnmarshalPubkey(pubKey)
+		if err != nil {
+			return err
+		}
+	}
+
+	*c = *(*Chat)(item.ChatAlias)
+
+	return nil
+}
+
+// encodePublicKeyAsString encodes a public key as a string.
+// It starts with 0x to indicate it's hex encoding.
+func encodePublicKeyAsString(pubKey *ecdsa.PublicKey) string {
+	return hexutil.Encode(crypto.FromECDSAPub(pubKey))
+}
+
+func isPrivateChat(c Chat) bool {
+	return c.PublicKey() != nil
+}
+
+func isPublicChat(c Chat) bool {
+	return c.PublicKey() == nil
 }

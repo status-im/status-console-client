@@ -1,14 +1,13 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/jroimartin/gocui"
-	"github.com/status-im/status-console-client/protocol/client"
+	status "github.com/status-im/status-protocol-go"
 )
 
 const (
@@ -16,11 +15,11 @@ const (
 )
 
 // chatToString returns a string representation.
-func chatToString(c client.Chat) string {
+func chatToString(c Chat) string {
 	switch c.Type {
-	case client.PublicChat:
+	case PublicChat:
 		return fmt.Sprintf("#%s", c.Name)
-	case client.OneToOneChat:
+	case OneToOneChat:
 		return fmt.Sprintf("@%s", c.Name)
 	default:
 		return c.Name
@@ -30,16 +29,22 @@ func chatToString(c client.Chat) string {
 // ChatsViewController manages chats view.
 type ChatsViewController struct {
 	*ViewController
-	messenger *client.Messenger
-	chats     []client.Chat
+	db        *sqlitePersistence
+	messenger *status.Messenger
+	chats     []Chat
 
 	quit chan struct{}
 	once sync.Once
 }
 
 // NewChatsViewController returns a new chat view controller.
-func NewChatsViewController(vm *ViewController, m *client.Messenger) *ChatsViewController {
-	return &ChatsViewController{ViewController: vm, messenger: m, quit: make(chan struct{})}
+func NewChatsViewController(vm *ViewController, db *sqlitePersistence, m *status.Messenger) *ChatsViewController {
+	return &ChatsViewController{
+		ViewController: vm,
+		db: db,
+		messenger: m,
+		quit: make(chan struct{}),
+	}
 }
 
 // refresh repaints the current list of chats.
@@ -60,13 +65,12 @@ func (c *ChatsViewController) refresh() {
 
 // load loads chats from the storage.
 func (c *ChatsViewController) load() error {
-	chats, err := c.messenger.Chats()
+	chats, err := c.db.Chats()
 	if err != nil {
 		return err
 	}
 
 	c.chats = chats
-
 	return nil
 }
 
@@ -94,19 +98,19 @@ func (c *ChatsViewController) LoadAndRefresh() error {
 }
 
 func (c *ChatsViewController) refreshOnChanges() error {
-	chats, err := c.messenger.Chats()
+	chats, err := c.db.Chats()
 	if err != nil {
 		return err
 	}
 	if c.containsChanges(chats) {
-		log.Printf("[chatS] new chats %v", chats)
+		log.Printf("[chats] new chats %v", chats)
 		c.chats = chats
 		c.refresh()
 	}
 	return nil
 }
 
-func (c *ChatsViewController) containsChanges(chats []client.Chat) bool {
+func (c *ChatsViewController) containsChanges(chats []Chat) bool {
 	if len(chats) != len(c.chats) {
 		return true
 	}
@@ -120,24 +124,24 @@ func (c *ChatsViewController) containsChanges(chats []client.Chat) bool {
 }
 
 // ChatByIdx allows to retrieve a chat for a given index.
-func (c *ChatsViewController) ChatByIdx(idx int) (client.Chat, bool) {
+func (c *ChatsViewController) ChatByIdx(idx int) (Chat, bool) {
 	if idx > -1 && idx < len(c.chats) {
 		return c.chats[idx], true
 	}
-	return client.Chat{}, false
+	return Chat{}, false
 }
 
 // Add adds a new chat to the list.
-func (c *ChatsViewController) Add(chat client.Chat) error {
-	if err := c.messenger.Join(context.TODO(), chat); err != nil {
+func (c *ChatsViewController) Add(chat Chat) error {
+	if err := c.db.AddChats(chat); err != nil {
 		return err
 	}
 	return c.LoadAndRefresh()
 }
 
 // Remove removes a chat from the list.
-func (c *ChatsViewController) Remove(chat client.Chat) error {
-	if err := c.messenger.RemoveChat(chat); err != nil {
+func (c *ChatsViewController) Remove(chat Chat) error {
+	if err := c.db.DeleteChat(chat); err != nil {
 		return err
 	}
 	return c.LoadAndRefresh()

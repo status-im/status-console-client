@@ -55,23 +55,7 @@ install-dev:
 .PHONY: install-dev
 
 mock:
-	mockgen \
-		-destination ./protocol/v1/mock/protocol_mock.go \
-		-package protocol_mock \
-		github.com/status-im/status-console-client/protocol/v1 Protocol
-	mockgen \
-		-destination ./protocol/transport/mock/whisper_mock.go \
-		-package transport_mock \
-		github.com/status-im/status-console-client/protocol/transport WhisperTransport
-	# TODO(adam): fix me
-	# mockgen \
-	# 	-destination ./protocol/transport/server_mock.go \
-	# 	-package transport \
-	# 	github.com/status-im/status-console-client/protocol/transport server
-	mockgen \
-		-destination ./protocol/client/mock/database_mock.go \
-		-package client \
-		github.com/status-im/status-console-client/protocol/client Database
+	echo "no mocks"
 .PHONY: mock
 
 gen-migrations:
