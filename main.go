@@ -30,9 +30,10 @@ import (
 	"github.com/pkg/errors"
 
 	status "github.com/status-im/status-protocol-go"
+	"github.com/status-im/status-protocol-go/sqlite"
 
 	"github.com/status-im/status-console-client/internal/gethservice"
-	"github.com/status-im/status-console-client/internal/sqlite"
+	migrations "github.com/status-im/status-console-client/internal/sqlite"
 )
 
 var g *gocui.Gui
@@ -132,7 +133,12 @@ func main() {
 	// It should be configurable.
 	dbPath := filepath.Join(*dataDir, "db.sql")
 	dbKey := crypto.PubkeyToAddress(privateKey.PublicKey).String()
-	db, err := sqlite.Open(dbPath, dbKey)
+	db, err := sqlite.Open(dbPath, dbKey, sqlite.MigrationConfig{
+		AssetNames: migrations.AssetNames(),
+		AssetGetter: func(name string) ([]byte, error) {
+			return migrations.Asset(name)
+		},
+	})
 	if err != nil {
 		exitErr(fmt.Errorf("failed to open db: %v", err))
 	}
