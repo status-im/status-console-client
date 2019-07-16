@@ -40,7 +40,7 @@ const (
 )
 
 // ChatMember is a member of a group chat
-type ChatMember struct {
+type ChatMember struct { // nolint: deadcode,unused
 	Admin     bool
 	Joined    bool
 	PublicKey *ecdsa.PublicKey `json:"-"`
@@ -163,12 +163,4 @@ func (c *Chat) UnmarshalJSON(data []byte) error {
 // It starts with 0x to indicate it's hex encoding.
 func encodePublicKeyAsString(pubKey *ecdsa.PublicKey) string {
 	return hexutil.Encode(crypto.FromECDSAPub(pubKey))
-}
-
-func isPrivateChat(c Chat) bool {
-	return c.PublicKey() != nil
-}
-
-func isPublicChat(c Chat) bool {
-	return c.PublicKey() == nil
 }

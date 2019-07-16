@@ -38,9 +38,9 @@ type RequestParams struct {
 
 // Chat
 type Chat struct {
-	chatID     string           `json:"chat_id"`
-	publicName string           `json:"public_name,omitempty"`
-	publicKey  *ecdsa.PublicKey `json:"public_key"`
+	chatID     string
+	publicName string
+	publicKey  *ecdsa.PublicKey
 }
 
 func (c Chat) ID() string                  { return c.chatID }
@@ -53,7 +53,7 @@ func (c Chat) MarshalJSON() ([]byte, error) {
 	item := struct {
 		ChatAlias
 		ID         string `json:"id"`
-		PublicName string `json:"public_name,omitempty`
+		PublicName string `json:"public_name,omitempty"`
 		PublicKey  string `json:"public_key,omitempty"`
 	}{
 		ChatAlias:  ChatAlias(c),
@@ -74,7 +74,7 @@ func (c *Chat) UnmarshalJSON(data []byte) error {
 	var item struct {
 		*ChatAlias
 		ID         string `json:"id"`
-		PublicName string `json:"public_name,omitempty`
+		PublicName string `json:"public_name,omitempty"`
 		PublicKey  string `json:"public_key,omitempty"`
 	}
 

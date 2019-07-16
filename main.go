@@ -50,14 +50,12 @@ var (
 	addChat       = fs.String("add-chat", "", "add chat using format: type,name[,public-key] where type can be 'private' or 'public' and 'public-key' is required for 'private' type")
 
 	// flags for in-proc node
-	dataDir         = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
-	installationID  = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
-	noNamespace     = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
-	fleet           = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
-	configFile      = fs.String("node-config", "", "a JSON file with node config")
-	pfsEnabled      = fs.Bool("pfs", true, "enable PFS")
-	dataSyncEnabled = fs.Bool("ds", false, "enable data sync")
-	listenAddr      = fs.String("listen-addr", ":30303", "The address the geth node should be listening to")
+	dataDir        = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
+	installationID = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
+	noNamespace    = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
+	fleet          = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
+	configFile     = fs.String("node-config", "", "a JSON file with node config")
+	listenAddr     = fs.String("listen-addr", ":30303", "The address the geth node should be listening to")
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -441,31 +439,13 @@ func setupGUI(privateKey *ecdsa.PrivateKey, persistence *sqlitePersistence, mess
 					Mod:     gocui.ModNone,
 					Handler: CursorUpHandler,
 				},
-				// Binding{
-				// 	Key: gocui.KeyHome,
-				// 	Mod: gocui.ModNone,
-				// 	Handler: func(g *gocui.Gui, v *gocui.View) error {
-				// 		params, err := chat.RequestOptions(false)
-				// 		if err != nil {
-				// 			return err
-				// 		}
-
-				// 		if err := notifications.Debug("Messages request", fmt.Sprintf("%v", params)); err != nil {
-				// 			return err
-				// 		}
-
-				// 		// RequestMessages needs to be called asynchronously,
-				// 		// otherwise the main thread is blocked
-				// 		// and nothing is rendered.
-				// 		go func() {
-				// 			if err := chat.RequestMessages(params); err != nil {
-				// 				_ = notifications.Error("Request failed", fmt.Sprintf("%v", err))
-				// 			}
-				// 		}()
-
-				// 		return HomeHandler(g, v)
-				// 	},
-				// },
+				Binding{
+					Key: gocui.KeyHome,
+					Mod: gocui.ModNone,
+					Handler: func(g *gocui.Gui, v *gocui.View) error {
+						return HomeHandler(g, v)
+					},
+				},
 				Binding{
 					Key:     gocui.KeyEnd,
 					Mod:     gocui.ModNone,
