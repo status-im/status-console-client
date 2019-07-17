@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/ecdsa"
+
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/pkg/errors"
 	"github.com/status-im/status-go/node"
@@ -8,6 +10,10 @@ import (
 
 type server struct {
 	node *node.StatusNode
+}
+
+func (s *server) NodeID() *ecdsa.PrivateKey {
+	return s.node.Server().PrivateKey
 }
 
 func (s *server) AddPeer(peer string) error {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"flag"
@@ -12,16 +13,13 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	gethnode "github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/status-im/status-go/logutils"
-	"github.com/status-im/status-go/messaging/chat"
-	"github.com/status-im/status-go/messaging/multidevice"
-	"github.com/status-im/status-go/messaging/publisher"
-	"github.com/status-im/status-go/messaging/sharedsecret"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/signal"
@@ -31,17 +29,11 @@ import (
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
 
-	datasyncnode "github.com/status-im/mvds/node"
-	"github.com/status-im/mvds/state"
-	"github.com/status-im/mvds/store"
+	status "github.com/status-im/status-protocol-go"
+	"github.com/status-im/status-protocol-go/sqlite"
 
-	"github.com/status-im/status-console-client/protocol/adapter"
-	"github.com/status-im/status-console-client/protocol/client"
-	"github.com/status-im/status-console-client/protocol/datasync"
-	dspeer "github.com/status-im/status-console-client/protocol/datasync/peer"
-	"github.com/status-im/status-console-client/protocol/gethservice"
-	"github.com/status-im/status-console-client/protocol/transport"
-	"github.com/status-im/status-console-client/protocol/v1"
+	"github.com/status-im/status-console-client/internal/gethservice"
+	migrations "github.com/status-im/status-console-client/internal/sqlite"
 )
 
 var g *gocui.Gui
@@ -58,14 +50,12 @@ var (
 	addChat       = fs.String("add-chat", "", "add chat using format: type,name[,public-key] where type can be 'private' or 'public' and 'public-key' is required for 'private' type")
 
 	// flags for in-proc node
-	dataDir         = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
-	installationID  = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
-	noNamespace     = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
-	fleet           = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
-	configFile      = fs.String("node-config", "", "a JSON file with node config")
-	pfsEnabled      = fs.Bool("pfs", true, "enable PFS")
-	dataSyncEnabled = fs.Bool("ds", false, "enable data sync")
-	listenAddr      = fs.String("listen-addr", ":30303", "The address the geth node should be listening to")
+	dataDir        = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
+	installationID = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
+	noNamespace    = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
+	fleet          = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
+	configFile     = fs.String("node-config", "", "a JSON file with node config")
+	listenAddr     = fs.String("listen-addr", ":30303", "The address the geth node should be listening to")
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -139,54 +129,33 @@ func main() {
 	// Create a database.
 	// TODO(adam): currently, we use an address as a db encryption key.
 	// It should be configurable.
-	dbKey := crypto.PubkeyToAddress(privateKey.PublicKey).String()
 	dbPath := filepath.Join(*dataDir, "db.sql")
-	db, err := client.InitializeDB(dbPath, dbKey)
+	dbKey := crypto.PubkeyToAddress(privateKey.PublicKey).String()
+	db, err := sqlite.Open(dbPath, dbKey, sqlite.MigrationConfig{
+		AssetNames: migrations.AssetNames(),
+		AssetGetter: func(name string) ([]byte, error) {
+			return migrations.Asset(name)
+		},
+	})
 	if err != nil {
-		exitErr(err)
+		exitErr(fmt.Errorf("failed to open db: %v", err))
 	}
-	defer db.Close()
+	persistence := newSQLitePersistence(db)
 
 	// Log the current chat info in two places for easy retrieval.
 	fmt.Printf("Chat address: %#x\n", crypto.FromECDSAPub(&privateKey.PublicKey))
 	log.Printf("chat address: %#x", crypto.FromECDSAPub(&privateKey.PublicKey))
 
-	// Manage initial chats.
-	if chats, err := db.Chats(); len(chats) == 0 || err != nil {
-		debugChats := []client.Chat{
-			{Name: "status", Type: client.PublicChat},
-			{Name: "status-core", Type: client.PublicChat},
-		}
-		uniqueChats := []client.Chat{}
-		for _, c := range debugChats {
-			exist, err := db.ChatExist(c)
-			if err != nil {
-				exitErr(err)
-			}
-			if !exist {
-				uniqueChats = append(uniqueChats, c)
-			}
-		}
-		if len(uniqueChats) != 0 {
-			if err := db.SaveChats(uniqueChats); err != nil {
-				exitErr(err)
-			}
-		}
-	}
-
 	// Handle add chat.
 	if *addChat != "" {
 		options := strings.Split(*addChat, ",")
 
-		var c client.Chat
+		var c Chat
 
 		if len(options) == 2 && options[0] == "public" {
-			c = client.Chat{
-				Name: options[1],
-				Type: client.PublicChat,
-			}
+			c = CreatePublicChat(options[1])
 		} else if len(options) == 3 && options[0] == "private" {
-			c, err = client.CreateOneToOneChat(options[1], options[2])
+			c, err = CreateOneToOneChat(options[1], options[2])
 			if err != nil {
 				exitErr(err)
 			}
@@ -194,40 +163,36 @@ func main() {
 			exitErr(errors.Errorf("invalid -add-chat value"))
 		}
 
-		exists, err := db.ChatExist(c)
+		exists, err := persistence.ChatExist(c)
 		if err != nil {
 			exitErr(err)
 		}
 		if !exists {
-			if err := db.SaveChats([]client.Chat{c}); err != nil {
+			if err := persistence.AddChats(c); err != nil {
 				exitErr(err)
 			}
 		}
 	}
 
+	chats, err := persistence.Chats()
+	if err != nil {
+		exitErr(err)
+	}
+
 	// initialize protocol
-	var (
-		messenger *client.Messenger
-	)
+	var messenger *status.Messenger
 
 	if *providerURI != "" {
-		messenger, err = createMessengerWithURI(*providerURI, privateKey, db)
+		messenger, err = createMessengerWithURI(*providerURI)
 		if err != nil {
 			exitErr(err)
 		}
 	} else {
-		messenger, err = createMessengerInProc(privateKey, db)
+		messenger, err = createMessengerInProc(privateKey, chats)
 		if err != nil {
 			exitErr(err)
 		}
 	}
-
-	// run in a goroutine to show the UI faster
-	go func() {
-		if err := messenger.Start(); err != nil {
-			exitErr(err)
-		}
-	}()
 
 	done := make(chan bool, 1)
 	sigs := make(chan os.Signal, 1)
@@ -247,7 +212,7 @@ func main() {
 			exitErr(errors.New("exit with signal"))
 		}()
 
-		if err := setupGUI(privateKey, messenger); err != nil {
+		if err := setupGUI(privateKey, persistence, messenger); err != nil {
 			exitErr(err)
 		}
 
@@ -278,7 +243,7 @@ func (k keysGetter) PrivateKey() (*ecdsa.PrivateKey, error) {
 	return k.privateKey, nil
 }
 
-func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
+func createMessengerWithURI(uri string) (*status.Messenger, error) {
 	_, err := rpc.Dial(*providerURI)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to dial")
@@ -295,7 +260,7 @@ func createMessengerWithURI(uri string, pk *ecdsa.PrivateKey, db client.Database
 	return nil, errors.New("not implemented")
 }
 
-func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Messenger, error) {
+func createMessengerInProc(pk *ecdsa.PrivateKey, chats []Chat) (*status.Messenger, error) {
 	// collect mail server request signals
 	signalsForwarder := newSignalForwarder()
 	go signalsForwarder.Start()
@@ -332,90 +297,38 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, db client.Database) (*client.Me
 		return nil, errors.Wrap(err, "failed to get Whisper service")
 	}
 
-	shhExtService, err := statusNode.ShhExtService()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get shhext service")
-	}
-
-	transp, err := transport.NewWhisperServiceTransport(
-		&server{node: statusNode},
-		nodeConfig.ClusterConfig.TrustedMailServers,
-		shhService,
-		shhExtService,
-		pk,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create WhisperService transport")
-	}
-
 	var (
-		protocolAdapter protocol.Protocol
+		publicChats []string
+		publicKeys  []*ecdsa.PublicKey
 	)
 
-	publisherService := publisher.New(
-		shhService,
-		publisher.Config{PFSEnabled: *pfsEnabled},
-	)
-	databasesDir := filepath.Join(*dataDir, "databases")
-	if err := os.MkdirAll(databasesDir, 0755); err != nil {
-		exitErr(errors.Wrap(err, "failed to create databases dir"))
-	}
-
-	persistence, err := initPersistence(databasesDir, *installationID)
-	if err != nil {
-		exitErr(errors.Wrap(err, "failed to init persistence layer"))
-	}
-	var protocol *chat.ProtocolService
-
-	if *pfsEnabled {
-		protocol, err = initProtocol(*installationID, persistence, publisherService)
-		if err != nil {
-			exitErr(errors.Wrap(err, "initialize protocol"))
+	for _, chat := range chats {
+		if chat.Type == PublicChat {
+			publicChats = append(publicChats, chat.PublicName())
+		} else if chat.Type == OneToOneChat {
+			publicKeys = append(publicKeys, chat.PublicKey())
 		}
-
-		log.Printf("Protocol has been initialized")
 	}
 
-	if *dataSyncEnabled {
-		dataSyncTransport := datasync.NewDataSyncNodeTransport(transp)
-		dataSyncStore := store.NewDummyStore()
-		dataSyncNode := datasyncnode.NewNode(
-			&dataSyncStore,
-			dataSyncTransport,
-			state.NewSyncState(), // @todo sqlite syncstate
-			datasync.CalculateSendTime,
-			0,
-			dspeer.PublicKeyToPeerID(pk.PublicKey),
-			datasyncnode.BATCH,
-		)
-
-		dataSyncNode.Start()
-
-		protocolAdapter = adapter.NewDataSyncWhisperAdapter(dataSyncNode, transp, dataSyncTransport, publisherService)
-	} else {
-		protocolAdapter = adapter.NewProtocolWhisperAdapter(transp, publisherService, adapter.Config{PFSEnabled: *pfsEnabled})
-
+	messenger, err := status.NewMessenger(
+		pk,
+		&server{node: statusNode},
+		shhService,
+		*dataDir,
+		"db-key",
+		*installationID,
+		status.WithChats(publicChats, publicKeys, nil),
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create Messenger")
 	}
 
-	// Init and start Publisher
-	broadcastChatCode := true
-	online := func() bool {
-		return statusNode.Server().PeerCount() > 0
-	}
-
-	publisherService.Init(persistence.DB, protocol, protocolAdapter.OnNewMessages)
-	if err := publisherService.Start(online, broadcastChatCode); err != nil {
-		return nil, errors.Wrap(err, "failed to start Publisher")
-	}
-
-	messenger := client.NewMessenger(pk, protocolAdapter, db)
-
-	protocolGethService.SetMessenger(messenger)
+	// protocolGethService.SetMessenger(messenger)
 
 	return messenger, nil
 }
 
-func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
+func setupGUI(privateKey *ecdsa.PrivateKey, persistence *sqlitePersistence, messenger *status.Messenger) error {
 	var err error
 
 	// global
@@ -438,7 +351,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 		},
 	)
 
-	chats := NewChatsViewController(&ViewController{vm, g, ViewChats}, messenger)
+	chats := NewChatsViewController(&ViewController{vm, g, ViewChats}, persistence, messenger)
 	if err := chats.LoadAndRefresh(); err != nil {
 		return err
 	}
@@ -446,10 +359,13 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 	inputMultiplexer := NewInputMultiplexer()
 	inputMultiplexer.AddHandler(DefaultMultiplexerPrefix, func(b []byte) error {
 		log.Printf("default multiplexer handler")
-		return chat.Send(b)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_, err := chat.Send(ctx, b)
+		return err
 	})
 	inputMultiplexer.AddHandler("/chat", ChatCmdFactory(chats))
-	inputMultiplexer.AddHandler("/request", RequestCmdFactory(chat))
+	// inputMultiplexer.AddHandler("/request", RequestCmdFactory(chat))
 
 	views := []*View{
 		&View{
@@ -487,9 +403,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 						// otherwise the main thread is blocked
 						// and nothing is rendered.
 						go func() {
-							if err := chat.Select(selectedChat); err != nil {
-								log.Printf("[GetLineHandler] error selecting a chat: %v", err)
-							}
+							chat.Select(selectedChat)
 						}()
 
 						return nil
@@ -527,24 +441,6 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 					Key: gocui.KeyHome,
 					Mod: gocui.ModNone,
 					Handler: func(g *gocui.Gui, v *gocui.View) error {
-						params, err := chat.RequestOptions(false)
-						if err != nil {
-							return err
-						}
-
-						if err := notifications.Debug("Messages request", fmt.Sprintf("%v", params)); err != nil {
-							return err
-						}
-
-						// RequestMessages needs to be called asynchronously,
-						// otherwise the main thread is blocked
-						// and nothing is rendered.
-						go func() {
-							if err := chat.RequestMessages(params); err != nil {
-								_ = notifications.Error("Request failed", fmt.Sprintf("%v", err))
-							}
-						}()
-
 						return HomeHandler(g, v)
 					},
 				},
@@ -641,48 +537,4 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *client.Messenger) error {
 	}
 
 	return nil
-}
-
-func initPersistence(baseDir string, installationID string) (*chat.SQLLitePersistence, error) {
-	const (
-		// TODO: manage these values properly
-		sqlSecretKey = ""
-	)
-
-	dbFileName := fmt.Sprintf("%s.v1.db", installationID)
-	dbPath := filepath.Join(baseDir, dbFileName)
-	return chat.NewSQLLitePersistence(dbPath, sqlSecretKey)
-}
-
-func initProtocol(installationID string, p *chat.SQLLitePersistence, publisher *publisher.Publisher) (*chat.ProtocolService, error) {
-	const (
-		maxInstallations = 3
-	)
-
-	addedBundlesHandler := func(addedBundles []*multidevice.Installation) {
-		log.Printf("added bundles: %v", addedBundles)
-	}
-
-	sharedSecretService := sharedsecret.NewService(p.GetSharedSecretStorage())
-
-	multideviceConfig := &multidevice.Config{
-		InstallationID:   installationID,
-		ProtocolVersion:  chat.ProtocolVersion,
-		MaxInstallations: maxInstallations,
-	}
-	multideviceService := multidevice.New(
-		multideviceConfig,
-		p.GetMultideviceStorage(),
-	)
-
-	return chat.NewProtocolService(
-		chat.NewEncryptionService(
-			p,
-			chat.DefaultEncryptionServiceConfig(installationID),
-		),
-		sharedSecretService,
-		multideviceService,
-		addedBundlesHandler,
-		publisher.ProcessNegotiatedSecret,
-	), nil
 }
