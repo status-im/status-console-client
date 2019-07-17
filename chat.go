@@ -84,14 +84,6 @@ func CreateOneToOneChat(name, pubKeyHex string) (c Chat, err error) {
 	return
 }
 
-func CreateOneToOneChatWithPublicKey(name string, key *ecdsa.PublicKey) (c Chat) {
-	c.id = hexutil.Encode(crypto.FromECDSAPub(key))
-	c.Name = name
-	c.Type = OneToOneChat
-	c.publicKey = key
-	return
-}
-
 // CreatePublicChat creates a public room chat.
 func CreatePublicChat(name string) Chat {
 	return Chat{

@@ -24,7 +24,6 @@ type ChatViewController struct {
 	*ViewController
 
 	identity  *ecdsa.PrivateKey
-	db        *sqlitePersistence
 	messenger *status.Messenger
 
 	chat       Chat
@@ -132,7 +131,7 @@ func filterMessages(messages []*protocol.Message, myPublicKey *ecdsa.PublicKey, 
 	for _, m := range messages {
 		if c.PublicKey() != nil {
 			sigBytes := crypto.FromECDSAPub(m.SigPubKey)
-			if bytes.Compare(myPublicKeyBytes, sigBytes) == 0 || bytes.Compare(publicKeyBytes, sigBytes) == 0 {
+			if bytes.Equal(myPublicKeyBytes, sigBytes) || bytes.Equal(publicKeyBytes, sigBytes) {
 				result = append(result, m)
 			} else {
 				log.Printf("[filterMessages] expected public key %x got %x", publicKeyBytes, sigBytes)

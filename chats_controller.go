@@ -2,14 +2,9 @@ package main
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/jroimartin/gocui"
 	status "github.com/status-im/status-protocol-go"
-)
-
-const (
-	refreshInterval = time.Second
 )
 
 // chatToString returns a string representation.
