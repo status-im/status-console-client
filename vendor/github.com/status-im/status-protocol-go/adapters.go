@@ -30,16 +30,18 @@ const (
 // whisperAdapter is a bridge between encryption and transport
 // layers.
 type whisperAdapter struct {
-	privateKey *ecdsa.PrivateKey
-	transport  transport.WhisperTransport
-	protocol   *encryption.Protocol
+	privateKey   *ecdsa.PrivateKey
+	transport    transport.WhisperTransport
+	protocol     *encryption.Protocol
+	featureFlags featureFlags
 }
 
-func newWhisperAdapter(pk *ecdsa.PrivateKey, t transport.WhisperTransport, p *encryption.Protocol) *whisperAdapter {
+func newWhisperAdapter(pk *ecdsa.PrivateKey, t transport.WhisperTransport, p *encryption.Protocol, featureFlags featureFlags) *whisperAdapter {
 	return &whisperAdapter{
-		privateKey: pk,
-		transport:  t,
-		protocol:   p,
+		privateKey:   pk,
+		transport:    t,
+		protocol:     p,
+		featureFlags: featureFlags,
 	}
 }
 
@@ -143,17 +145,22 @@ func (a *whisperAdapter) RetrievePrivateMessages(publicKey *ecdsa.PublicKey) ([]
 }
 
 func (a *whisperAdapter) decodeMessage(message *whisper.Message) (*protocol.StatusMessage, error) {
-	publicKey, err := crypto.UnmarshalPubkey(message.Sig)
-	if err != nil {
-		return nil, err
-	}
 
 	decoded, err := protocol.DecodeMessage(message.Payload)
 	if err != nil {
 		return nil, err
 	}
-	decoded.ID = message.Hash
-	decoded.SigPubKey = publicKey
+
+	// Getting a signature from the Whisper message should happen only if
+	// the signature was not defined in the payload itself.
+	if decoded.SigPubKey == nil {
+		publicKey, err := crypto.UnmarshalPubkey(message.Sig)
+		if err != nil {
+			return nil, err
+		}
+
+		decoded.SigPubKey = publicKey
+	}
 
 	return &decoded, nil
 }
@@ -224,7 +231,7 @@ func (a *whisperAdapter) SendPublic(ctx context.Context, chatName, chatID string
 
 	message := protocol.CreatePublicTextMessage(data, clock, chatName)
 
-	encodedMessage, err := protocol.EncodeMessage(message)
+	encodedMessage, err := a.encodeMessage(message)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to encode message")
 	}
@@ -236,7 +243,12 @@ func (a *whisperAdapter) SendPublic(ctx context.Context, chatName, chatID string
 		PowTime:   whisperPoWTime,
 	}
 
-	return a.transport.SendPublic(ctx, newMessage, chatName)
+	_, err = a.transport.SendPublic(ctx, newMessage, chatName)
+	if err != nil {
+		return nil, err
+	}
+
+	return protocol.MessageID(encodedMessage), nil
 }
 
 func (a *whisperAdapter) SendContactCode(ctx context.Context, messageSpec *encryption.ProtocolMessageSpec) ([]byte, error) {
@@ -246,6 +258,23 @@ func (a *whisperAdapter) SendContactCode(ctx context.Context, messageSpec *encry
 	}
 
 	return a.transport.SendPublic(ctx, *newMessage, filter.ContactCodeTopic(&a.privateKey.PublicKey))
+}
+
+func (a *whisperAdapter) encodeMessage(message protocol.Message) ([]byte, error) {
+	encodedMessage, err := protocol.EncodeMessage(message)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to encode message")
+	}
+
+	if a.featureFlags.sendV1Messages {
+		encodedMessage, err = protocol.WrapMessageV1(encodedMessage, a.privateKey)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to wrap message")
+		}
+
+	}
+
+	return encodedMessage, nil
 }
 
 // SendPrivate sends a one-to-one message. It needs to return it
@@ -261,7 +290,7 @@ func (a *whisperAdapter) SendPrivate(
 
 	message := protocol.CreatePrivateTextMessage(data, clock, chatID)
 
-	encodedMessage, err := protocol.EncodeMessage(message)
+	encodedMessage, err := a.encodeMessage(message)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to encode message")
 	}
@@ -271,11 +300,11 @@ func (a *whisperAdapter) SendPrivate(
 		return nil, nil, errors.Wrap(err, "failed to encrypt message")
 	}
 
-	hash, err := a.sendMessageSpec(ctx, publicKey, messageSpec)
+	_, err = a.sendMessageSpec(ctx, publicKey, messageSpec)
 	if err != nil {
 		return nil, nil, err
 	}
-	return hash, &message, nil
+	return protocol.MessageID(encodedMessage), &message, nil
 }
 
 func (a *whisperAdapter) sendMessageSpec(ctx context.Context, publicKey *ecdsa.PublicKey, messageSpec *encryption.ProtocolMessageSpec) ([]byte, error) {

@@ -81,7 +81,7 @@ func (s *sqlitePersistence) Chats() ([]Chat, error) {
 }
 
 func (s *sqlitePersistence) ChatExist(c Chat) (exists bool, err error) {
-	err = s.db.QueryRow("SELECT EXISTS(SELECT id FROM chats WHERE id = ?)", chatID(c)).Scan(&exists)
+	err = s.db.QueryRow("SELECT EXISTS(SELECT id FROM chats WHERE id = ?)", c.ID()).Scan(&exists)
 	return
 }
 
@@ -131,9 +131,8 @@ func (s *sqlitePersistence) AddChats(chats ...Chat) (err error) {
 				return err
 			}
 		}
-		id := chatID(chats[i])
 		_, err = stmt.Exec(
-			id,
+			chats[i].ID(),
 			chats[i].Name,
 			chats[i].Color,
 			chats[i].Type,
@@ -159,14 +158,6 @@ func (s *sqlitePersistence) DeleteChat(c Chat) error {
 		return errors.Wrap(err, "error deleting chat from db")
 	}
 	return nil
-}
-
-func chatID(c Chat) string {
-	return formatID(c.Name, c.Type)
-}
-
-func formatID(name string, t ChatType) string {
-	return fmt.Sprintf("%s:%d", name, t)
 }
 
 func marshalECDSAPub(pub *ecdsa.PublicKey) (rst []byte, err error) {

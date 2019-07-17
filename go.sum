@@ -511,8 +511,8 @@ github.com/status-im/rendezvous v1.3.0/go.mod h1:+hzjuP+j/XzLPeF6E50b88pWOTLdTcw
 github.com/status-im/status-go v0.29.0-beta.3/go.mod h1:8OHekmRoYTn9oZgMsBdhMEgeyfaQ4eI4ycOFHJCoX7M=
 github.com/status-im/status-go v0.30.0-beta.0.0.20190708063125-f86469075a09 h1:pBYBLm4NhXhGNyb0m/aPEKwIvH/N2lyu2cRoxuQMhII=
 github.com/status-im/status-go v0.30.0-beta.0.0.20190708063125-f86469075a09/go.mod h1:8OHekmRoYTn9oZgMsBdhMEgeyfaQ4eI4ycOFHJCoX7M=
-github.com/status-im/status-protocol-go v0.0.0-20190716104307-5c6039f77f8f h1:/J+nH1M7CRIoqTRC/D+scFExq+gqPigw0mXbB0HxXk0=
-github.com/status-im/status-protocol-go v0.0.0-20190716104307-5c6039f77f8f/go.mod h1:KLYS+kMJcpMzYB023EfQq3tnSpKq1QSMMDyUekiLjuc=
+github.com/status-im/status-protocol-go v0.0.0-issue-7.0 h1:rFKpk9/+GsDokCEb0Vzu94nGZhxy+rL8vNE0FvLcilM=
+github.com/status-im/status-protocol-go v0.0.0-issue-7.0/go.mod h1:KLYS+kMJcpMzYB023EfQq3tnSpKq1QSMMDyUekiLjuc=
 github.com/status-im/whisper v1.4.14 h1:9VHqx4+PUYfhDnYYtDxHkg/3cfVvkHjPNciY4LO83yc=
 github.com/status-im/whisper v1.4.14/go.mod h1:WS6z39YJQ8WJa9s+DmTuEM/s2nVF6Iz3B1SZYw5cYf0=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

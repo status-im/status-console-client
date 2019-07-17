@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
@@ -22,17 +23,16 @@ import (
 type ChatViewController struct {
 	*ViewController
 
-	chat Chat
-
 	identity  *ecdsa.PrivateKey
+	db        *sqlitePersistence
 	messenger *status.Messenger
 
-	onError func(error)
+	chat       Chat
+	onError    func(error)
+	changeChat chan Chat
 
 	cancel chan struct{} // cancel the current chat loop
 	done   chan struct{} // wait for the current chat loop to finish
-
-	changeChat chan Chat
 }
 
 // NewChatViewController returns a new chat view controller.
@@ -50,29 +50,35 @@ func NewChatViewController(vc *ViewController, id Identity, m *status.Messenger,
 	}
 }
 
-func (c *ChatViewController) readEventsLoop(chat Chat) {
+func (c *ChatViewController) readMessagesLoop() {
+	var chat Chat
+
 	c.done = make(chan struct{})
 	defer close(c.done)
 
 	// A list of all messages displayed on the screen.
-	// It should be a round buffer instead.
+	// TODO: It should be a round buffer instead.
 	var messages []*protocol.Message
 
 	t := time.NewTicker(time.Second)
 	defer t.Stop()
-	retrieveConfig := status.RetrieveLastDay
 
 	for {
 		select {
 		case <-t.C:
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			latest, err := c.messenger.Retrieve(ctx, chat, retrieveConfig)
-			cancel()
-			if err != nil {
-				log.Printf("[ChatViewController::readEventsLoop] failed to retrieve messages: %v", err)
+			if chat == (Chat{}) {
+				continue
 			}
 
-			log.Printf("[ChatViewController::readEventsLoop] retrieved %d messages", len(latest))
+			latest, err := c.retrieveMessagesForChat(chat, status.RetrieveLatest)
+			if err != nil {
+				log.Printf("[ChatViewController::readMessagesLoop] failed to retrieve messages: %v", err)
+				continue
+			}
+			log.Printf("[ChatViewController::readMessagesLoop] retrieved %d messages", len(latest))
+
+			latest = filterMessages(latest, &c.identity.PublicKey, chat)
+			log.Printf("[ChatViewController::readMessagesLoop] after filtering %d left", len(latest))
 
 			if len(latest) == 0 {
 				break
@@ -93,41 +99,72 @@ func (c *ChatViewController) readEventsLoop(chat Chat) {
 
 			messages = append(messages, latest...)
 
-			retrieveConfig = status.RetrieveLatest
-
 			if !repaint {
-				sort.SliceStable(latest, func(i, j int) bool {
-					return latest[i].Clock < latest[j].Clock
-				})
+				sortMessages(latest)
 				c.printMessages(false, latest...)
 				break
 			}
 
-			sort.SliceStable(messages, func(i, j int) bool {
-				return messages[i].Clock < messages[j].Clock
-			})
+			sortMessages(messages)
 			c.printMessages(true, messages...)
 		case chat = <-c.changeChat:
-			messages = nil
+			latest, err := c.retrieveMessagesForChat(chat, status.RetrieveLastDay)
+			if err != nil {
+				exitErr(err)
+			}
+			messages = filterMessages(latest, &c.identity.PublicKey, chat)
+			c.printMessages(true, messages...)
 		case <-c.cancel:
 			return
 		}
 	}
 }
 
+func sortMessages(messages []*protocol.Message) {
+	sort.SliceStable(messages, func(i, j int) bool {
+		return messages[i].Clock < messages[j].Clock
+	})
+}
+
+func filterMessages(messages []*protocol.Message, myPublicKey *ecdsa.PublicKey, c Chat) (result []*protocol.Message) {
+	publicKeyBytes := crypto.FromECDSAPub(c.PublicKey())
+	myPublicKeyBytes := crypto.FromECDSAPub(myPublicKey)
+	for _, m := range messages {
+		if c.PublicKey() != nil {
+			sigBytes := crypto.FromECDSAPub(m.SigPubKey)
+			if bytes.Compare(myPublicKeyBytes, sigBytes) == 0 || bytes.Compare(publicKeyBytes, sigBytes) == 0 {
+				result = append(result, m)
+			} else {
+				log.Printf("[filterMessages] expected public key %x got %x", publicKeyBytes, sigBytes)
+			}
+		} else {
+			if c.ID() == m.Content.ChatID {
+				result = append(result, m)
+			} else {
+				log.Printf("[filterMessages] expected chatID %s got %s", c.ID(), m.Content.ChatID)
+			}
+		}
+	}
+	return
+}
+
+func (c *ChatViewController) retrieveMessagesForChat(chat Chat, rConfig status.RetrieveConfig) ([]*protocol.Message, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	return c.messenger.Retrieve(ctx, chat, rConfig)
+}
+
 // Select informs the chat view controller about a selected contact.
 // The chat view controller setup subscribers and request recent messages.
-func (c *ChatViewController) Select(chat Chat) error {
+func (c *ChatViewController) Select(chat Chat) {
 	log.Printf("[ChatViewController::Select] chat %s", chat.ID())
 
 	if c.cancel == nil {
 		c.cancel = make(chan struct{})
-		go c.readEventsLoop(chat)
+		go c.readMessagesLoop()
 	}
 	c.changeChat <- chat
 	c.chat = chat
-
-	return c.messenger.Join(chat)
 }
 
 // Send sends a payload as a message.

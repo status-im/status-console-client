@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/ecdsa"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
@@ -77,11 +76,19 @@ func CreateOneToOneChat(name, pubKeyHex string) (c Chat, err error) {
 		return
 	}
 
-	c.id = hex.EncodeToString(pubKeyBytes)
+	c.id = pubKeyHex
 	c.Name = name
 	c.Type = OneToOneChat
 	c.publicKey, err = crypto.UnmarshalPubkey(pubKeyBytes)
 
+	return
+}
+
+func CreateOneToOneChatWithPublicKey(name string, key *ecdsa.PublicKey) (c Chat) {
+	c.id = hexutil.Encode(crypto.FromECDSAPub(key))
+	c.Name = name
+	c.Type = OneToOneChat
+	c.publicKey = key
 	return
 }
 

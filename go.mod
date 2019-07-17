@@ -35,9 +35,8 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/rjeczalik/notify v0.9.2 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
-	github.com/status-im/migrate/v4 v4.3.1-status
 	github.com/status-im/status-go v0.30.0-beta.0.0.20190708063125-f86469075a09
-	github.com/status-im/status-protocol-go v0.0.0-20190716104307-5c6039f77f8f
+	github.com/status-im/status-protocol-go v0.0.0-issue-7.0
 	github.com/stretchr/objx v0.2.0 // indirect
 	go.opencensus.io v0.22.0 // indirect
 	golang.org/x/sys v0.0.0-20190626221950-04f50cda93cb // indirect

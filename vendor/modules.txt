@@ -357,14 +357,14 @@ github.com/status-im/status-go/messaging/chat/protobuf
 github.com/status-im/status-go/messaging/crypto
 github.com/status-im/status-go/messaging/db/migrations
 github.com/status-im/status-go/services/shhext/whisperutils
-# github.com/status-im/status-protocol-go v0.0.0-20190716104307-5c6039f77f8f
+# github.com/status-im/status-protocol-go v0.0.0-issue-7.0
 github.com/status-im/status-protocol-go
+github.com/status-im/status-protocol-go/sqlite
 github.com/status-im/status-protocol-go/v1
 github.com/status-im/status-protocol-go/encryption
 github.com/status-im/status-protocol-go/encryption/multidevice
 github.com/status-im/status-protocol-go/encryption/sharedsecret
 github.com/status-im/status-protocol-go/internal/sqlite
-github.com/status-im/status-protocol-go/sqlite
 github.com/status-im/status-protocol-go/transport/whisper
 github.com/status-im/status-protocol-go/transport/whisper/filter
 github.com/status-im/status-protocol-go/crypto

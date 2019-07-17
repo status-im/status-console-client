@@ -403,9 +403,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, persistence *sqlitePersistence, mess
 						// otherwise the main thread is blocked
 						// and nothing is rendered.
 						go func() {
-							if err := chat.Select(selectedChat); err != nil {
-								log.Printf("[GetLineHandler] error selecting a chat: %v", err)
-							}
+							chat.Select(selectedChat)
 						}()
 
 						return nil
