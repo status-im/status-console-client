@@ -106,7 +106,7 @@ github.com/golang-migrate/migrate/v4/source
 github.com/golang-migrate/migrate/v4
 # github.com/golang/mock v1.3.1
 github.com/golang/mock/gomock
-# github.com/golang/protobuf v1.3.1
+# github.com/golang/protobuf v1.3.2
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/protoc-gen-go/descriptor
 # github.com/golang/snappy v0.0.1
@@ -357,10 +357,12 @@ github.com/status-im/status-go/messaging/chat/protobuf
 github.com/status-im/status-go/messaging/crypto
 github.com/status-im/status-go/messaging/db/migrations
 github.com/status-im/status-go/services/shhext/whisperutils
-# github.com/status-im/status-protocol-go v0.0.0-issue-7.0
+# github.com/status-im/status-protocol-go v0.0.0-20190716104307-09d277dc30f36eb50bb83899119199afe866ecd5
 github.com/status-im/status-protocol-go
 github.com/status-im/status-protocol-go/sqlite
 github.com/status-im/status-protocol-go/v1
+github.com/status-im/status-protocol-go/datasync
+github.com/status-im/status-protocol-go/datasync/peer
 github.com/status-im/status-protocol-go/encryption
 github.com/status-im/status-protocol-go/encryption/multidevice
 github.com/status-im/status-protocol-go/encryption/sharedsecret
@@ -386,6 +388,13 @@ github.com/syndtr/goleveldb/leveldb/comparer
 github.com/syndtr/goleveldb/leveldb/journal
 github.com/syndtr/goleveldb/leveldb/memdb
 github.com/syndtr/goleveldb/leveldb/table
+# github.com/vacp2p/mvds v0.0.19
+github.com/vacp2p/mvds/node
+github.com/vacp2p/mvds/peers
+github.com/vacp2p/mvds/protobuf
+github.com/vacp2p/mvds/state
+github.com/vacp2p/mvds/store
+github.com/vacp2p/mvds/transport
 # github.com/whyrusleeping/go-logging v0.0.0-20170515211332-0457bb6b88fc
 github.com/whyrusleeping/go-logging
 # github.com/whyrusleeping/go-notifier v0.0.0-20170827234753-097c5d47330f
@@ -403,6 +412,17 @@ go.opencensus.io/stats
 go.opencensus.io/stats/internal
 go.opencensus.io/tag
 go.opencensus.io/resource
+# go.uber.org/atomic v1.4.0
+go.uber.org/atomic
+# go.uber.org/multierr v1.1.0
+go.uber.org/multierr
+# go.uber.org/zap v1.10.0
+go.uber.org/zap
+go.uber.org/zap/zapcore
+go.uber.org/zap/internal/bufferpool
+go.uber.org/zap/buffer
+go.uber.org/zap/internal/color
+go.uber.org/zap/internal/exit
 # golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4
 golang.org/x/crypto/sha3
 golang.org/x/crypto/pbkdf2

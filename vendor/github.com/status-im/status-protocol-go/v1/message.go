@@ -8,6 +8,7 @@ import (
 	"errors"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang/protobuf/proto"
+	datasyncprotobuf "github.com/vacp2p/mvds/protobuf"
 	"log"
 	"strings"
 	"time"
@@ -99,6 +100,8 @@ type Message struct {
 	Flags     Flags            `json:"-"`
 	ID        []byte           `json:"-"`
 	SigPubKey *ecdsa.PublicKey `json:"-"`
+	ChatID    string           `json:"-"`
+	Public    bool             `json:"-"`
 }
 
 func (m *Message) MarshalJSON() ([]byte, error) {
@@ -163,13 +166,22 @@ func decodeTransitMessage(data []byte) (interface{}, error) {
 	return value, nil
 }
 
+func UnwrapDatasync(payload []byte) (datasyncPayload datasyncprotobuf.Payload, err error) {
+	err = proto.Unmarshal(payload, &datasyncPayload)
+	return
+}
+
 // DecodeMessage decodes a raw payload to StatusMessage struct.
-func DecodeMessage(data []byte) (message StatusMessage, err error) {
+func DecodeMessage(transportPublicKey *ecdsa.PublicKey, data []byte) (message StatusMessage, err error) {
 	transitMessage := data
 
+	// Getting a signature from transport message should happen only if
+	// the signature was not defined in the payload itself.
+	message.SigPubKey = transportPublicKey
+
 	statusProtocolMessage, err := unwrapMessage(data)
-	// Wrapped message, extract transit and signature
 	if err == nil {
+		// Wrapped message, extract transit and signature
 		transitMessage = statusProtocolMessage.Payload
 		if statusProtocolMessage.Signature != nil {
 			recoveredKey, err := crypto.SigToPub(
@@ -184,7 +196,7 @@ func DecodeMessage(data []byte) (message StatusMessage, err error) {
 		}
 	}
 
-	message.ID = MessageID(transitMessage)
+	message.ID = MessageID(message.SigPubKey, transitMessage)
 	value, err := decodeTransitMessage(transitMessage)
 	if err != nil {
 		log.Printf("[message::DecodeMessage] could not decode message: %#x", message.ID)
@@ -205,8 +217,10 @@ func EncodeMessage(value Message) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func MessageID(data []byte) []byte {
-	return crypto.Keccak256(data)
+// MessageID calculates the messageID, by appending the sha3-256 to the compress pubkey
+func MessageID(author *ecdsa.PublicKey, data []byte) []byte {
+	keyBytes := crypto.CompressPubkey(author)
+	return crypto.Keccak256(append(keyBytes, data...))
 }
 
 // WrapMessageV1 wraps a payload into a protobuf message and signs it if an identity is provided

@@ -66,6 +66,7 @@ func chatAddCmdHandler(args []string) (c Chat, err error) {
 	if len(args) == 1 {
 		name := args[0]
 		c = Chat{
+			id:   name,
 			Name: name,
 			Type: PublicChat,
 		}

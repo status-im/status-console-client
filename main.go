@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"go.uber.org/zap"
 	"log"
 	"math"
 	"os"
@@ -50,12 +51,15 @@ var (
 	addChat       = fs.String("add-chat", "", "add chat using format: type,name[,public-key] where type can be 'private' or 'public' and 'public-key' is required for 'private' type")
 
 	// flags for in-proc node
-	dataDir        = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
-	installationID = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
-	noNamespace    = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
-	fleet          = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
-	configFile     = fs.String("node-config", "", "a JSON file with node config")
-	listenAddr     = fs.String("listen-addr", ":30303", "The address the geth node should be listening to")
+	dataDir               = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
+	installationID        = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
+	noNamespace           = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
+	fleet                 = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
+	configFile            = fs.String("node-config", "", "a JSON file with node config")
+	listenAddr            = fs.String("listen-addr", ":30303", "The address the geth node should be listening to")
+	datasync              = fs.Bool("datasync", false, "enable datasync")
+	sendV1Messages        = fs.Bool("send-v1-messages", false, "enable sending v1 compatible only messages")
+	genericDiscoveryTopic = fs.Bool("generic-discovery-topic", true, "enable generic discovery topic, for compatibility with pre-v1")
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -127,10 +131,10 @@ func main() {
 	}
 
 	// Create a database.
-	// TODO(adam): currently, we use an address as a db encryption key.
-	// It should be configurable.
+	// TODO: currently, we use an unencrypted database, the key
+	// should be configurable.
 	dbPath := filepath.Join(*dataDir, "db.sql")
-	dbKey := crypto.PubkeyToAddress(privateKey.PublicKey).String()
+	dbKey := ""
 	db, err := sqlite.Open(dbPath, dbKey, sqlite.MigrationConfig{
 		AssetNames: migrations.AssetNames(),
 		AssetGetter: func(name string) ([]byte, error) {
@@ -297,17 +301,30 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, chats []Chat) (*status.Messenge
 		return nil, errors.Wrap(err, "failed to get Whisper service")
 	}
 
-	var (
-		publicChats []string
-		publicKeys  []*ecdsa.PublicKey
-	)
+	cfg := zap.NewProductionConfig()
+	cfg.OutputPaths = []string{
+		fmt.Sprintf("/tmp/%s.log", *installationID),
+	}
+	logger, err := cfg.Build()
+	if err != nil {
+		return nil, err
+	}
 
-	for _, chat := range chats {
-		if chat.Type == PublicChat {
-			publicChats = append(publicChats, chat.PublicName())
-		} else if chat.Type == OneToOneChat {
-			publicKeys = append(publicKeys, chat.PublicKey())
-		}
+	options := []status.Option{
+		status.WithCustomLogger(logger),
+		status.WithMessagesPersistenceEnabled(),
+	}
+
+	if *genericDiscoveryTopic {
+		options = append(options, status.WithGenericDiscoveryTopicSupport())
+	}
+
+	if *datasync {
+		options = append(options, status.WithDatasync())
+	}
+
+	if *sendV1Messages {
+		options = append(options, status.WithSendV1Messages())
 	}
 
 	messenger, err := status.NewMessenger(
@@ -315,9 +332,9 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, chats []Chat) (*status.Messenge
 		&server{node: statusNode},
 		shhService,
 		*dataDir,
-		"db-key",
+		"",
 		*installationID,
-		status.WithChats(publicChats, publicKeys, nil),
+		options...,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create Messenger")

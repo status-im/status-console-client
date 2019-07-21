@@ -44,7 +44,9 @@ func buildSignatureMaterial(bundle *Bundle) []byte {
 
 }
 
+// SignBundle signs the bundle and refreshes the timestamps
 func SignBundle(identity *ecdsa.PrivateKey, bundleContainer *BundleContainer) error {
+	bundleContainer.Bundle.Timestamp = time.Now().UnixNano()
 	signatureMaterial := buildSignatureMaterial(bundleContainer.GetBundle())
 
 	signature, err := crypto.Sign(crypto.Keccak256(signatureMaterial), identity)
