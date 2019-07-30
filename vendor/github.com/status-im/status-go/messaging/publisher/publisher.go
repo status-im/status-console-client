@@ -16,7 +16,6 @@ import (
 	"github.com/status-im/status-go/messaging/chat/protobuf"
 	"github.com/status-im/status-go/messaging/filter"
 	"github.com/status-im/status-go/messaging/multidevice"
-	"github.com/status-im/status-go/messaging/sharedsecret"
 
 	"github.com/status-im/status-go/services/shhext/whisperutils"
 
@@ -28,10 +27,6 @@ const (
 	tickerInterval = 120
 	// How often we should publish a contact code in seconds
 	publishInterval = 21600
-	// How often we should check for new messages
-	pollIntervalMs = 300
-	// Cooldown period on acking messages when not targeting our device
-	deviceNotFoundAckInterval = 7200
 )
 
 var (
@@ -71,13 +66,10 @@ func New(w *whisper.Whisper, c Config) *Publisher {
 	}
 }
 
-func (p *Publisher) Init(db *sql.DB, protocol *chat.ProtocolService, onNewMessagesHandler func([]*filter.Messages)) {
-
-	filterService := filter.New(p.whisper, filter.NewSQLLitePersistence(db), protocol.GetSharedSecretService(), onNewMessagesHandler)
-
+func (p *Publisher) Init(db *sql.DB, protocol *chat.ProtocolService, filter *filter.Service) {
 	p.persistence = NewSQLLitePersistence(db)
 	p.protocol = protocol
-	p.filter = filterService
+	p.filter = filter
 }
 
 func (p *Publisher) ProcessPublicBundle(myIdentityKey *ecdsa.PrivateKey, bundle *protobuf.Bundle) ([]*multidevice.Installation, error) {
@@ -181,15 +173,10 @@ func (p *Publisher) GetPublicBundle(identityKey *ecdsa.PublicKey) (*protobuf.Bun
 }
 
 func (p *Publisher) Start(online func() bool, startTicker bool) error {
-	if p.protocol == nil {
-		return errProtocolNotInitialized
-	}
-
 	p.online = online
 	if startTicker {
 		p.startTicker()
 	}
-	go p.filter.Start(pollIntervalMs * time.Millisecond)
 	return nil
 }
 
@@ -217,14 +204,6 @@ func (p *Publisher) LoadFilter(chat *filter.Chat) ([]*filter.Chat, error) {
 
 func (p *Publisher) RemoveFilters(chats []*filter.Chat) error {
 	return p.filter.Remove(chats)
-}
-func (p *Publisher) ProcessNegotiatedSecret(secrets []*sharedsecret.Secret) {
-	for _, secret := range secrets {
-		_, err := p.filter.ProcessNegotiatedSecret(secret)
-		if err != nil {
-			log.Error("could not process negotiated filter", "err", err)
-		}
-	}
 }
 
 func (p *Publisher) ProcessMessage(msg *whisper.Message, msgID []byte) error {
@@ -258,15 +237,7 @@ func (p *Publisher) ProcessMessage(msg *whisper.Message, msgID []byte) error {
 	response, err := p.protocol.HandleMessage(privateKey, publicKey, protocolMessage, msgID)
 	if err == nil {
 		msg.Payload = response
-	} else if err == chat.ErrDeviceNotFound {
-		if err := p.handleDeviceNotFound(privateKey, publicKey); err != nil {
-			p.log.Error("Failed to handle DeviceNotFound", "err", err)
-		}
-
-		// Return the original error
-		return err
 	}
-
 	return err
 }
 
@@ -432,12 +403,7 @@ func (p *Publisher) sendContactCode() (*whisper.NewMessage, error) {
 		return nil, nil
 	}
 
-	if p.persistence == nil {
-		p.log.Info("not initialized, skipping")
-		return nil, nil
-	}
-
-	lastPublished, err := p.persistence.GetLastPublished()
+	lastPublished, err := p.persistence.Get()
 	if err != nil {
 		p.log.Error("could not fetch config from db", "err", err)
 		return nil, err
@@ -446,6 +412,7 @@ func (p *Publisher) sendContactCode() (*whisper.NewMessage, error) {
 	now := time.Now().Unix()
 
 	if now-lastPublished < publishInterval {
+		fmt.Println("NOTHING")
 		p.log.Debug("nothing to do")
 		return nil, nil
 	}
@@ -479,40 +446,11 @@ func (p *Publisher) sendContactCode() (*whisper.NewMessage, error) {
 		return nil, err
 	}
 
-	err = p.persistence.SetLastPublished(now)
+	err = p.persistence.Set(now)
 	if err != nil {
 		p.log.Error("could not set last published", "err", err)
 		return nil, err
 	}
 
 	return message, nil
-}
-
-// handleDeviceNotFound sends an empty message to publicKey containing our bundle information
-// so it's notified of our devices
-func (p *Publisher) handleDeviceNotFound(privateKey *ecdsa.PrivateKey, publicKey *ecdsa.PublicKey) error {
-	now := time.Now().Unix()
-	identity := crypto.CompressPubkey(publicKey)
-
-	lastAcked, err := p.persistence.GetLastAcked(identity)
-	if err != nil {
-		return err
-	}
-
-	if now-lastAcked < deviceNotFoundAckInterval {
-		p.log.Debug("already acked identity", "identity", identity, "lastAcked", lastAcked)
-		return nil
-	}
-
-	message, err := p.CreateDirectMessage(privateKey, publicKey, true, nil)
-	if err != nil {
-		return err
-	}
-
-	_, err = p.whisperAPI.Post(context.TODO(), *message)
-	if err != nil {
-		return err
-	}
-
-	return p.persistence.SetLastAcked(identity, now)
 }

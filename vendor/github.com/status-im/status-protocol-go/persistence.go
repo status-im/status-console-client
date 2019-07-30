@@ -21,24 +21,9 @@ var (
 	ErrMsgAlreadyExist = errors.New("message with given ID already exist")
 )
 
-// persistence is an interface for all db operations.
-type persistence interface {
-	Close() error
-	Messages(chatID string, from, to time.Time) ([]*protocol.Message, error)
-	NewMessages(chatID string, rowid int64) ([]*protocol.Message, error)
-	UnreadMessages(chatID string) ([]*protocol.Message, error)
-	SaveMessages(chatID string, messages []*protocol.Message) (int64, error)
-	LastMessageClock(chatID string) (int64, error)
-}
-
 // sqlitePersistence wrapper around sql db with operations common for a client.
 type sqlitePersistence struct {
 	db *sql.DB
-}
-
-// Close closes internal sqlite database.
-func (db sqlitePersistence) Close() error {
-	return db.db.Close()
 }
 
 func (db sqlitePersistence) LastMessageClock(chatID string) (int64, error) {
@@ -47,7 +32,7 @@ func (db sqlitePersistence) LastMessageClock(chatID string) (int64, error) {
 	}
 
 	var last sql.NullInt64
-	err := db.db.QueryRow("SELECT max(clock) FROM user_messages WHERE contact_id = ?", chatID).Scan(&last)
+	err := db.db.QueryRow("SELECT max(clock) FROM user_messages WHERE chat_id = ?", chatID).Scan(&last)
 	if err != nil {
 		return 0, err
 	}
@@ -64,7 +49,7 @@ func (db sqlitePersistence) SaveMessages(chatID string, messages []*protocol.Mes
 		return
 	}
 	stmt, err = tx.Prepare(`INSERT INTO user_messages(
-id, contact_id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags)
+id, chat_id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return
@@ -111,7 +96,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 func (db sqlitePersistence) Messages(chatID string, from, to time.Time) (result []*protocol.Message, err error) {
 	rows, err := db.db.Query(`SELECT
 id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags
-FROM user_messages WHERE contact_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp`,
+FROM user_messages WHERE chat_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp`,
 		chatID, protocol.TimestampInMsFromTime(from), protocol.TimestampInMsFromTime(to))
 	if err != nil {
 		return nil, err
@@ -144,7 +129,7 @@ FROM user_messages WHERE contact_id = ? AND timestamp >= ? AND timestamp <= ? OR
 func (db sqlitePersistence) NewMessages(chatID string, rowid int64) ([]*protocol.Message, error) {
 	rows, err := db.db.Query(`SELECT
 id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags
-FROM user_messages WHERE contact_id = ? AND rowid >= ? ORDER BY clock`,
+FROM user_messages WHERE chat_id = ? AND rowid >= ? ORDER BY clock`,
 		chatID, rowid)
 	if err != nil {
 		return nil, err
@@ -192,7 +177,7 @@ func (db sqlitePersistence) UnreadMessages(chatID string) ([]*protocol.Message, 
 		FROM
 			user_messages
 		WHERE
-			contact_id = ? AND
+			chat_id = ? AND
 			flags & ? == 0
 		ORDER BY clock`,
 		chatID, protocol.MessageRead,

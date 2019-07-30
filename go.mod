@@ -13,6 +13,7 @@ require (
 	github.com/ethereum/go-ethereum v1.8.27
 	github.com/fatih/color v1.7.0
 	github.com/fjl/memsize v0.0.0-20180929194037-2a09253e352a // indirect
+	github.com/golang-migrate/migrate/v4 v4.5.0 // indirect
 	github.com/golang/mock v1.3.1 // indirect
 	github.com/google/uuid v1.1.1
 	github.com/gorilla/mux v1.7.3 // indirect
@@ -35,10 +36,11 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/rjeczalik/notify v0.9.2 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
-	github.com/status-im/status-go v0.30.0-beta.0.0.20190708063125-f86469075a09
-	github.com/status-im/status-protocol-go v0.0.0-issue-7.0
+	github.com/status-im/status-go v0.29.0-beta.3
+	github.com/status-im/status-protocol-go v0.0.0-20190624072549-28b2244fed6fef94d43f9c87be8f0b6cf54d7d20
 	github.com/stretchr/objx v0.2.0 // indirect
 	go.opencensus.io v0.22.0 // indirect
+	go.uber.org/zap v1.10.0
 	golang.org/x/sys v0.0.0-20190626221950-04f50cda93cb // indirect
 	google.golang.org/genproto v0.0.0-20190701230453-710ae3a149df // indirect
 	google.golang.org/grpc v1.22.0 // indirect

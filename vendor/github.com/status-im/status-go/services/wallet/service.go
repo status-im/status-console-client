@@ -26,7 +26,6 @@ type Service struct {
 	db      *Database
 	reactor *Reactor
 	signals *SignalsTransmitter
-	client  *ethclient.Client
 }
 
 // Start signals transmitter.
@@ -47,7 +46,6 @@ func (s *Service) StartReactor(dbpath, password string, client *ethclient.Client
 	}
 	s.db = db
 	s.reactor = reactor
-	s.client = client
 	return nil
 }
 
