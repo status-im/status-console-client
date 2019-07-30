@@ -7,6 +7,7 @@ require (
 	github.com/deckarep/golang-set v1.7.1 // indirect
 	github.com/ethereum/go-ethereum v1.8.27
 	github.com/golang/protobuf v1.3.2
+	github.com/jinzhu/copier v0.0.0-20190625015134-976e0346caa8
 	github.com/leodido/go-urn v1.1.0 // indirect
 	github.com/mutecomm/go-sqlcipher v0.0.0-20170920224653-f799951b4ab2
 	github.com/pkg/errors v0.8.1

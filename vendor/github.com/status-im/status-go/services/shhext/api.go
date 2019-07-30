@@ -18,6 +18,7 @@ import (
 
 	"github.com/status-im/status-go/db"
 	"github.com/status-im/status-go/mailserver"
+	"github.com/status-im/status-go/messaging/chat"
 	"github.com/status-im/status-go/messaging/filter"
 	"github.com/status-im/status-go/messaging/multidevice"
 	"github.com/status-im/status-go/services/shhext/dedup"
@@ -416,7 +417,31 @@ func (api *PublicAPI) GetNewFilterMessages(filterID string) ([]dedup.Deduplicate
 		return nil, err
 	}
 
-	return api.service.processReceivedMessages(msgs)
+	dedupMessages := api.service.deduplicator.Deduplicate(msgs)
+
+	// Attempt to decrypt message, otherwise leave unchanged
+	for _, dedupMessage := range dedupMessages {
+		err := api.service.ProcessMessage(dedupMessage.Message, dedupMessage.DedupID)
+		switch err {
+		case chat.ErrNotPairedDevice:
+			api.log.Info("Received a message from non-paired device", "err", err)
+		case chat.ErrDeviceNotFound:
+			api.log.Warn("Device not found, sending signal", "err", err)
+
+			publicKey, err := crypto.UnmarshalPubkey(dedupMessage.Message.Sig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to handler chat.ErrDeviceNotFound: %v", err)
+			}
+
+			keyString := fmt.Sprintf("%#x", crypto.FromECDSAPub(publicKey))
+			handler := PublisherSignalHandler{}
+			handler.DecryptMessageFailed(keyString)
+		default:
+			api.log.Error("Failed handling message with error", "err", err)
+		}
+	}
+
+	return dedupMessages, nil
 }
 
 // ConfirmMessagesProcessed is a method to confirm that messages was consumed by

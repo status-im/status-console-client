@@ -192,7 +192,9 @@ func main() {
 			exitErr(err)
 		}
 	} else {
-		messenger, err = createMessengerInProc(privateKey, chats)
+		messengerDBPath := filepath.Join(*dataDir, "messenger.sql")
+
+		messenger, err = createMessengerInProc(privateKey, chats, messengerDBPath)
 		if err != nil {
 			exitErr(err)
 		}
@@ -264,7 +266,7 @@ func createMessengerWithURI(uri string) (*status.Messenger, error) {
 	return nil, errors.New("not implemented")
 }
 
-func createMessengerInProc(pk *ecdsa.PrivateKey, chats []Chat) (*status.Messenger, error) {
+func createMessengerInProc(pk *ecdsa.PrivateKey, chats []Chat, dbPath string) (*status.Messenger, error) {
 	// collect mail server request signals
 	signalsForwarder := newSignalForwarder()
 	go signalsForwarder.Start()
@@ -312,6 +314,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, chats []Chat) (*status.Messenge
 
 	options := []status.Option{
 		status.WithCustomLogger(logger),
+		status.WithDatabaseConfig(dbPath, ""),
 		status.WithMessagesPersistenceEnabled(),
 	}
 
@@ -331,8 +334,6 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, chats []Chat) (*status.Messenge
 		pk,
 		&server{node: statusNode},
 		shhService,
-		*dataDir,
-		"",
 		*installationID,
 		options...,
 	)

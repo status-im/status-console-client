@@ -173,11 +173,19 @@ func (s *Service) initProtocol(address, encKey, password string) error {
 		return err
 	}
 
+	// Initialize sharedsecret
+	sharedSecretService := sharedsecret.NewService(persistence.GetSharedSecretStorage())
+
+	// Initialize filter
+	filterService := filter.New(s.w, filter.NewSQLLitePersistence(persistence.DB), sharedSecretService)
+
+	// Initialize multidevice
 	multideviceConfig := &multidevice.Config{
 		InstallationID:   s.config.InstallationID,
 		ProtocolVersion:  chat.ProtocolVersion,
 		MaxInstallations: maxInstallations,
 	}
+	multideviceService := multidevice.New(multideviceConfig, persistence.GetMultideviceStorage())
 
 	addedBundlesHandler := func(addedBundles []*multidevice.Installation) {
 		handler := PublisherSignalHandler{}
@@ -190,53 +198,42 @@ func (s *Service) initProtocol(address, encKey, password string) error {
 		chat.NewEncryptionService(
 			persistence,
 			chat.DefaultEncryptionServiceConfig(s.config.InstallationID)),
-		sharedsecret.NewService(persistence.GetSharedSecretStorage()),
-		multidevice.New(multideviceConfig, persistence.GetMultideviceStorage()),
+		sharedSecretService,
+		multideviceService,
 		addedBundlesHandler,
-		s.ProcessNegotiatedSecret)
+		s.newSharedSecretHandler(filterService))
 
-	onNewMessagesHandler := func(messages []*filter.Messages) {
-		var signalMessages []*signal.Messages
-		for _, chatMessages := range messages {
-			signalMessage := &signal.Messages{
-				Error: chatMessages.Error,
-				Chat:  chatMessages.Chat,
-			}
-			signalMessages = append(signalMessages, signalMessage)
-			dedupMessages, err := s.processReceivedMessages(chatMessages.Messages)
-			if err != nil {
-				log.Error("could not process messages", "err", err)
-				continue
-			}
-
-			signalMessage.Messages = dedupMessages
-		}
-		PublisherSignalHandler{}.NewMessages(signalMessages)
-	}
-	s.Publisher.Init(persistence.DB, protocolService, onNewMessagesHandler)
+	s.Publisher.Init(persistence.DB, protocolService, filterService)
 
 	return nil
 }
 
-func (s *Service) processReceivedMessages(messages []*whisper.Message) ([]dedup.DeduplicateMessage, error) {
-	dedupMessages := s.deduplicator.Deduplicate(messages)
-
-	// Attempt to decrypt message, otherwise leave unchanged
-	for _, dedupMessage := range dedupMessages {
-		err := s.ProcessMessage(dedupMessage.Message, dedupMessage.DedupID)
-		switch err {
-		case chat.ErrNotPairedDevice:
-			log.Info("Received a message from non-paired device", "err", err)
-		case chat.ErrDeviceNotFound:
-			log.Warn("Received a message not targeted to us", "err", err)
-		default:
+func (s *Service) newSharedSecretHandler(filterService *filter.Service) func([]*sharedsecret.Secret) {
+	return func(sharedSecrets []*sharedsecret.Secret) {
+		var filters []*signal.Filter
+		for _, sharedSecret := range sharedSecrets {
+			chat, err := filterService.ProcessNegotiatedSecret(sharedSecret)
 			if err != nil {
-				log.Error("Failed handling message with error", "err", err)
+				log.Error("Failed to process negotiated secret", "err", err)
+				return
 			}
+
+			filter := &signal.Filter{
+				ChatID:   chat.ChatID,
+				SymKeyID: chat.SymKeyID,
+				Listen:   chat.Listen,
+				FilterID: chat.FilterID,
+				Identity: chat.Identity,
+				Topic:    chat.Topic,
+			}
+
+			filters = append(filters, filter)
+		}
+		if len(filters) != 0 {
+			handler := PublisherSignalHandler{}
+			handler.WhisperFilterAdded(filters)
 		}
 	}
-
-	return dedupMessages, nil
 }
 
 // UpdateMailservers updates information about selected mail servers.
@@ -295,10 +292,7 @@ func (s *Service) Start(server *p2p.Server) error {
 	s.mailMonitor.Start()
 	s.nodeID = server.PrivateKey
 	s.server = server
-	if s.config.PFSEnabled {
-		return s.Publisher.Start(s.online, true)
-	}
-	return nil
+	return s.Publisher.Start(s.online, true)
 }
 
 func (s *Service) online() bool {
