@@ -63,11 +63,17 @@ var (
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
+
+	useNimbus = fs.Bool("nimbus", false, "use Nimbus node")
 )
 
 func main() {
 	if err := ff.Parse(fs, os.Args[1:]); err != nil {
 		exitErr(errors.Wrap(err, "failed to parse flags"))
+	}
+
+	if *useNimbus {
+		startNimbus()
 	}
 
 	if *createKeyPair {

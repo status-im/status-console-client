@@ -13,6 +13,13 @@ build:
 	GOFLAGS=$(GOFLAGS) go build $(BUILD_FLAGS) -o ./bin/status-term-client .
 .PHONY: build
 
+# XXX: Multiple ldflags a bit brittle, keeping it simple by having separate build target for now.
+# See https://github.com/golang/go/issues/29053
+build-nimbus: GOFLAGS ?= "-mod=vendor"
+build-nimbus:
+	GOFLAGS=$(GOFLAGS) go build -ldflags="-r /usr/local/lib" -tags nimbus -o ./bin/status-term-client .
+.PHONY: build-nimbus
+
 run: ARGS ?=
 run: build
 	./bin/status-term-client $(ARGS) 2>/tmp/status-term-client.log
