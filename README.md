@@ -41,6 +41,52 @@ Currently the following commands are supported.
 
 `/contact add <public-key> <name>`
 
+# Packages
+
+The main package contains the console user interface.
+
+* `github.com/status-im/status-console-client/protocol/v1` contains the current messaging protocol payload encoders and decoders as well as some utilities like creating a Whisper topic for a public chat.
+
+# (Very) Experimental Nimbus support
+
+`status-console-client` supports very experimental Nimbus support for Whisper.
+
+## How it works
+
+1. Nimbus exposes a basic and very rough C API for Whisper polling, posting,
+  subscribing, and adding peers: https://github.com/status-im/nimbus/pull/331
+
+2. This C API is consumed as a standard shared library, `libnimbus_api.so`.
+
+3. [status-nim](https://github.com/status-im/status-nim) wraps this library to
+expose a Go API. Currently, this "API" is more like a hacky spike. The goal is
+for this to library to hide the integration details with Nim and provide a clean
+Go interface for consumers.
+ 
+## Building and running
+
+The changes are isolated and won't impact `status-console-client` unless the
+appropriate build instruction, flag and patch is provided.
+
+### libnimbus_api.so
+
+If you have issues with `libnimbus_api.so` (likely) you might want to copy it
+into `/usr/local/lib` manually.
+
+```
+make build-nimbus
+./bin/status-term-client -keyhex=0x9af3cdb76d76da2b36d2dcc082cb54ea672639331ef03b91a62ad6ef804b4896 -nimbus
+```
+
+Expected output:
+
+```
+[nim-status] posting ["~#c4",["Message:1000","text/plain","~:public-group-user-message",156393648280100,1563936482801,["^ ","~:chat-id","status-test-c","~:text","Message:1000"]]]
+```
+
+And a message being posted in `#status-test-c`.
+
+
 # License
 
 [Mozilla Public License 2.0](https://github.com/status-im/status-go/blob/develop/LICENSE.md)
