@@ -37,8 +37,8 @@ require (
 	github.com/rjeczalik/notify v0.9.2 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/status-im/status-go v0.29.0-beta.3
-	github.com/status-im/status-protocol-go v0.0.0-20190624072549-28b2244fed6fef94d43f9c87be8f0b6cf54d7d20
 	github.com/status-im/status-nim v0.0.0-20190724023117-a5693e6e4820
+	github.com/status-im/status-protocol-go v0.0.0-20190624072549-57675d19152c73af930b1e8f93d298322cbfe95c
 	github.com/stretchr/objx v0.2.0 // indirect
 	go.opencensus.io v0.22.0 // indirect
 	go.uber.org/zap v1.10.0

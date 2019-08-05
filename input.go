@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/jroimartin/gocui"
+	status "github.com/status-im/status-protocol-go"
 )
 
 const DefaultMultiplexerPrefix = "default"
@@ -62,14 +63,10 @@ func bytesToArgs(b []byte) []string {
 	return argsStr
 }
 
-func chatAddCmdHandler(args []string) (c Chat, err error) {
+func chatAddCmdHandler(args []string) (c *status.Chat, err error) {
 	if len(args) == 1 {
 		name := args[0]
-		c = Chat{
-			id:   name,
-			Name: name,
-			Type: PublicChat,
-		}
+		c = CreatePublicChat(name)
 	} else if len(args) == 2 {
 		c, err = CreateOneToOneChat(args[1], args[0])
 	} else {

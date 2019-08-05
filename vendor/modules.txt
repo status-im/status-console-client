@@ -26,12 +26,12 @@ github.com/edsrzf/mmap-go
 github.com/ethereum/go-ethereum/common
 github.com/ethereum/go-ethereum/common/hexutil
 github.com/ethereum/go-ethereum/crypto
-github.com/ethereum/go-ethereum/crypto/secp256k1
 github.com/ethereum/go-ethereum/node
 github.com/ethereum/go-ethereum/p2p/enode
 github.com/ethereum/go-ethereum/rpc
 github.com/ethereum/go-ethereum/p2p
 github.com/ethereum/go-ethereum/common/math
+github.com/ethereum/go-ethereum/crypto/secp256k1
 github.com/ethereum/go-ethereum/rlp
 github.com/ethereum/go-ethereum/accounts
 github.com/ethereum/go-ethereum/accounts/keystore
@@ -314,9 +314,9 @@ github.com/status-im/doubleratchet
 github.com/status-im/go-multiaddr-ethv4
 # github.com/status-im/migrate/v4 v4.3.1-status
 github.com/status-im/migrate/v4
-github.com/status-im/migrate/v4/database/sqlcipher
-github.com/status-im/migrate/v4/source/go_bindata
 github.com/status-im/migrate/v4/database/postgres
+github.com/status-im/migrate/v4/source/go_bindata
+github.com/status-im/migrate/v4/database/sqlcipher
 # github.com/status-im/rendezvous v1.3.0
 github.com/status-im/rendezvous
 github.com/status-im/rendezvous/protocol
@@ -358,9 +358,10 @@ github.com/status-im/status-go/messaging/chat/protobuf
 github.com/status-im/status-go/messaging/crypto
 github.com/status-im/status-go/messaging/db/migrations
 github.com/status-im/status-go/services/shhext/whisperutils
-# github.com/status-im/status-protocol-go v0.0.0-20190624072549-28b2244fed6fef94d43f9c87be8f0b6cf54d7d20
+# github.com/status-im/status-nim v0.0.0-20190724023117-a5693e6e4820
+github.com/status-im/status-nim
+# github.com/status-im/status-protocol-go v0.0.0-20190624072549-57675d19152c73af930b1e8f93d298322cbfe95c
 github.com/status-im/status-protocol-go
-github.com/status-im/status-protocol-go/sqlite
 github.com/status-im/status-protocol-go/v1
 github.com/status-im/status-protocol-go/datasync
 github.com/status-im/status-protocol-go/datasync/peer
@@ -369,12 +370,15 @@ github.com/status-im/status-protocol-go/encryption/migrations
 github.com/status-im/status-protocol-go/encryption/multidevice
 github.com/status-im/status-protocol-go/encryption/sharedsecret
 github.com/status-im/status-protocol-go/migrations
+github.com/status-im/status-protocol-go/sqlite
 github.com/status-im/status-protocol-go/transport/whisper
 github.com/status-im/status-protocol-go/transport/whisper/filter
 github.com/status-im/status-protocol-go/transport/whisper/migrations
 github.com/status-im/status-protocol-go/applicationmetadata
 github.com/status-im/status-protocol-go/crypto
 github.com/status-im/status-protocol-go/encryption/publisher
+github.com/status-im/status-protocol-go/transport/whisper/mailservers
+github.com/status-im/status-protocol-go/transport/whisper/db
 # github.com/status-im/whisper v1.4.14
 github.com/status-im/whisper/whisperv6
 # github.com/syndtr/goleveldb v1.0.0
@@ -420,8 +424,8 @@ go.uber.org/atomic
 go.uber.org/multierr
 # go.uber.org/zap v1.10.0
 go.uber.org/zap
-go.uber.org/zap/zapcore
 go.uber.org/zap/internal/bufferpool
+go.uber.org/zap/zapcore
 go.uber.org/zap/buffer
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
@@ -438,9 +442,9 @@ golang.org/x/crypto/blowfish
 golang.org/x/crypto/ed25519/internal/edwards25519
 # golang.org/x/net v0.0.0-20190628185345-da137c7871d7
 golang.org/x/net/websocket
-golang.org/x/net/context
 golang.org/x/net/html/charset
 golang.org/x/net/ipv4
+golang.org/x/net/context
 golang.org/x/net/html
 golang.org/x/net/bpf
 golang.org/x/net/internal/iana

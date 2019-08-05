@@ -31,10 +31,8 @@ import (
 	"github.com/pkg/errors"
 
 	status "github.com/status-im/status-protocol-go"
-	"github.com/status-im/status-protocol-go/sqlite"
 
 	"github.com/status-im/status-console-client/internal/gethservice"
-	migrations "github.com/status-im/status-console-client/internal/sqlite"
 )
 
 var g *gocui.Gui
@@ -48,7 +46,6 @@ var (
 
 	// flags acting like commands
 	createKeyPair = fs.Bool("create-key-pair", false, "creates and prints a key pair instead of running")
-	addChat       = fs.String("add-chat", "", "add chat using format: type,name[,public-key] where type can be 'private' or 'public' and 'public-key' is required for 'private' type")
 
 	// flags for in-proc node
 	dataDir               = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
@@ -136,58 +133,9 @@ func main() {
 		exitErr(fmt.Errorf("failed to override root log: %v", err))
 	}
 
-	// Create a database.
-	// TODO: currently, we use an unencrypted database, the key
-	// should be configurable.
-	dbPath := filepath.Join(*dataDir, "db.sql")
-	dbKey := ""
-	db, err := sqlite.Open(dbPath, dbKey, sqlite.MigrationConfig{
-		AssetNames: migrations.AssetNames(),
-		AssetGetter: func(name string) ([]byte, error) {
-			return migrations.Asset(name)
-		},
-	})
-	if err != nil {
-		exitErr(fmt.Errorf("failed to open db: %v", err))
-	}
-	persistence := newSQLitePersistence(db)
-
 	// Log the current chat info in two places for easy retrieval.
 	fmt.Printf("Chat address: %#x\n", crypto.FromECDSAPub(&privateKey.PublicKey))
 	log.Printf("chat address: %#x", crypto.FromECDSAPub(&privateKey.PublicKey))
-
-	// Handle add chat.
-	if *addChat != "" {
-		options := strings.Split(*addChat, ",")
-
-		var c Chat
-
-		if len(options) == 2 && options[0] == "public" {
-			c = CreatePublicChat(options[1])
-		} else if len(options) == 3 && options[0] == "private" {
-			c, err = CreateOneToOneChat(options[1], options[2])
-			if err != nil {
-				exitErr(err)
-			}
-		} else {
-			exitErr(errors.Errorf("invalid -add-chat value"))
-		}
-
-		exists, err := persistence.ChatExist(c)
-		if err != nil {
-			exitErr(err)
-		}
-		if !exists {
-			if err := persistence.AddChats(c); err != nil {
-				exitErr(err)
-			}
-		}
-	}
-
-	chats, err := persistence.Chats()
-	if err != nil {
-		exitErr(err)
-	}
 
 	// initialize protocol
 	var messenger *status.Messenger
@@ -200,7 +148,7 @@ func main() {
 	} else {
 		messengerDBPath := filepath.Join(*dataDir, "messenger.sql")
 
-		messenger, err = createMessengerInProc(privateKey, chats, messengerDBPath)
+		messenger, err = createMessengerInProc(privateKey, messengerDBPath)
 		if err != nil {
 			exitErr(err)
 		}
@@ -224,7 +172,7 @@ func main() {
 			exitErr(errors.New("exit with signal"))
 		}()
 
-		if err := setupGUI(privateKey, persistence, messenger); err != nil {
+		if err := setupGUI(privateKey, messenger); err != nil {
 			exitErr(err)
 		}
 
@@ -272,7 +220,7 @@ func createMessengerWithURI(uri string) (*status.Messenger, error) {
 	return nil, errors.New("not implemented")
 }
 
-func createMessengerInProc(pk *ecdsa.PrivateKey, chats []Chat, dbPath string) (*status.Messenger, error) {
+func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string) (*status.Messenger, error) {
 	// collect mail server request signals
 	signalsForwarder := newSignalForwarder()
 	go signalsForwarder.Start()
@@ -352,7 +300,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, chats []Chat, dbPath string) (*
 	return messenger, nil
 }
 
-func setupGUI(privateKey *ecdsa.PrivateKey, persistence *sqlitePersistence, messenger *status.Messenger) error {
+func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger) error {
 	var err error
 
 	// global
@@ -375,7 +323,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, persistence *sqlitePersistence, mess
 		},
 	)
 
-	chats := NewChatsViewController(&ViewController{vm, g, ViewChats}, persistence, messenger)
+	chats := NewChatsViewController(&ViewController{vm, g, ViewChats}, messenger)
 	if err := chats.LoadAndRefresh(); err != nil {
 		return err
 	}
