@@ -4,19 +4,14 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/pkg/errors"
-	"github.com/status-im/status-go/mailserver"
 	whisper "github.com/status-im/whisper/whisperv6"
 	"go.uber.org/zap"
 
@@ -326,63 +321,6 @@ func (a *WhisperServiceTransport) addSig(newMessage *whisper.NewMessage) error {
 	return nil
 }
 
-// Request requests messages from mail servers.
-func (a *WhisperServiceTransport) Request(ctx context.Context, options RequestOptions) error {
-	// TODO: remove from here. MailServerEnode must be provided in the params.
-	enode, err := a.selectAndAddMailServer()
-	if err != nil {
-		return err
-	}
-
-	keyID, err := a.keysManager.AddOrGetSymKeyFromPassword(options.Password)
-	if err != nil {
-		return err
-	}
-
-	req, err := createRequestMessagesParam(enode, keyID, options)
-	if err != nil {
-		return err
-	}
-
-	_, err = a.requestMessages(ctx, req, true)
-	return err
-}
-
-func (a *WhisperServiceTransport) requestMessages(ctx context.Context, req MessagesRequest, followCursor bool) (resp MessagesResponse, err error) {
-	logger := a.logger.With(zap.String("site", "requestMessages"))
-
-	logger.Debug("request for a chunk", zap.Uint32("message-limit", req.Limit))
-
-	start := time.Now()
-	resp, err = a.requestMessagesWithRetry(RetryConfig{
-		BaseTimeout: time.Second * 10,
-		StepTimeout: time.Second,
-		MaxRetries:  3,
-	}, req)
-	if err != nil {
-		logger.Error("failed requesting messages", zap.Error(err))
-		return
-	}
-
-	logger.Debug("message delivery summary",
-		zap.Uint32("message-limit", req.Limit),
-		zap.Duration("duration", time.Since(start)),
-		zap.Any("response", resp),
-	)
-
-	if resp.Error != nil {
-		err = resp.Error
-		return
-	}
-	if !followCursor || resp.Cursor == "" {
-		return
-	}
-
-	req.Cursor = resp.Cursor
-	logger.Debug("requesting messages with cursor", zap.String("cursor", req.Cursor))
-	return a.requestMessages(ctx, req, true)
-}
-
 // MessagesRequest is a RequestMessages() request payload.
 type MessagesRequest struct {
 	// MailServerPeer is MailServer's enode address.
@@ -461,133 +399,6 @@ type RetryConfig struct {
 	MaxRetries  int
 }
 
-func (a *WhisperServiceTransport) requestMessagesWithRetry(conf RetryConfig, r MessagesRequest) (MessagesResponse, error) {
-	var (
-		resp      MessagesResponse
-		requestID hexutil.Bytes
-		err       error
-		retries   int
-	)
-
-	logger := a.logger.With(zap.String("site", "requestMessagesWithRetry"))
-
-	events := make(chan whisper.EnvelopeEvent, 10)
-
-	for retries <= conf.MaxRetries {
-		sub := a.shh.SubscribeEnvelopeEvents(events)
-		r.Timeout = conf.BaseTimeout + conf.StepTimeout*time.Duration(retries)
-		timeout := r.Timeout
-		// FIXME this weird conversion is required because MessagesRequest expects seconds but defines time.Duration
-		r.Timeout = time.Duration(int(r.Timeout.Seconds()))
-		requestID, err = a.requestMessagesSync(context.Background(), r)
-		if err != nil {
-			sub.Unsubscribe()
-			return resp, err
-		}
-
-		mailServerResp, err := waitForExpiredOrCompleted(common.BytesToHash(requestID), events, timeout)
-		sub.Unsubscribe()
-		if err == nil {
-			resp.Cursor = hex.EncodeToString(mailServerResp.Cursor)
-			resp.Error = mailServerResp.Error
-			return resp, nil
-		}
-		retries++
-		logger.Warn("requestMessagesSync failed, retrying", zap.Int("retries", retries), zap.Error(err))
-	}
-	return resp, fmt.Errorf("failed to request messages after %d retries", retries)
-}
-
-// RequestMessages sends a request for historic messages to a MailServer.
-func (a *WhisperServiceTransport) requestMessagesSync(_ context.Context, r MessagesRequest) (hexutil.Bytes, error) {
-	now := a.shh.GetCurrentTime()
-	r.setDefaults(now)
-
-	if r.From > r.To {
-		return nil, fmt.Errorf("Query range is invalid: from > to (%d > %d)", r.From, r.To)
-	}
-
-	// TODO: bring mailserverspackage here
-	mailServerNode, err := enode.ParseV4(r.MailServerPeer)
-	if err != nil {
-		return nil, fmt.Errorf("invalid MailServerPeer: %v", err)
-	}
-
-	var (
-		symKey    []byte
-		publicKey *ecdsa.PublicKey
-	)
-
-	if r.SymKeyID != "" {
-		symKey, err = a.shh.GetSymKey(r.SymKeyID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid SymKeyID: %v", err)
-		}
-	} else {
-		publicKey = mailServerNode.Pubkey()
-	}
-
-	payload, err := makeMessagesRequestPayload(r)
-	if err != nil {
-		return nil, err
-	}
-
-	envelope, err := makeEnvelop(
-		payload,
-		symKey,
-		publicKey,
-		a.node.NodeID(),
-		a.shh.MinPow(),
-		now,
-	)
-	if err != nil {
-		return nil, err
-	}
-	hash := envelope.Hash()
-
-	if err := a.shh.RequestHistoricMessagesWithTimeout(mailServerNode.ID().Bytes(), envelope, r.Timeout*time.Second); err != nil {
-		return nil, err
-	}
-
-	return hash[:], nil
-}
-
-func (a *WhisperServiceTransport) selectAndAddMailServer() (string, error) {
-	logger := a.logger.With(zap.String("site", "selectAndAddMailServer"))
-
-	var enodeAddr string
-	if a.selectedMailServerEnode != "" {
-		enodeAddr = a.selectedMailServerEnode
-	} else {
-		if len(a.mailservers) == 0 {
-			return "", ErrNoMailservers
-		}
-		enodeAddr = randomItem(a.mailservers)
-	}
-	logger.Debug("dialing mail server", zap.String("enode", enodeAddr))
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	err := dial(ctx, a.node, enodeAddr, dialOpts{PollInterval: 200 * time.Millisecond})
-	cancel()
-	if err == nil {
-		a.selectedMailServerEnode = enodeAddr
-		return enodeAddr, nil
-	}
-	return "", fmt.Errorf("peer %s failed to connect: %v", enodeAddr, err)
-}
-
-func createRequestMessagesParam(enode, symKeyID string, options RequestOptions) (MessagesRequest, error) {
-	req := MessagesRequest{
-		MailServerPeer: enode,
-		From:           uint32(options.From),  // TODO: change to int in status-go
-		To:             uint32(options.To),    // TODO: change to int in status-go
-		Limit:          uint32(options.Limit), // TODO: change to int in status-go
-		SymKeyID:       symKeyID,
-		Topics:         options.Topics,
-	}
-
-	return req, nil
-}
-
 func waitForExpiredOrCompleted(requestID common.Hash, events chan whisper.EnvelopeEvent, timeout time.Duration) (*whisper.MailServerResponse, error) {
 	expired := fmt.Errorf("request %x expired", requestID)
 	after := time.NewTimer(timeout)
@@ -613,32 +424,6 @@ func waitForExpiredOrCompleted(requestID common.Hash, events chan whisper.Envelo
 			return nil, expired
 		}
 	}
-}
-
-// makeMessagesRequestPayload makes a specific payload for MailServer
-// to request historic messages.
-func makeMessagesRequestPayload(r MessagesRequest) ([]byte, error) {
-	cursor, err := hex.DecodeString(r.Cursor)
-	if err != nil {
-		return nil, fmt.Errorf("invalid cursor: %v", err)
-	}
-
-	if len(cursor) > 0 && len(cursor) != mailserver.CursorLength {
-		return nil, fmt.Errorf("invalid cursor size: expected %d but got %d", mailserver.CursorLength, len(cursor))
-	}
-
-	payload := mailserver.MessagesRequestPayload{
-		Lower:  r.From,
-		Upper:  r.To,
-		Bloom:  createBloomFilter(r),
-		Limit:  r.Limit,
-		Cursor: cursor,
-		// Client must tell the MailServer if it supports batch responses.
-		// This can be removed in the future.
-		Batch: true,
-	}
-
-	return rlp.EncodeToBytes(payload)
 }
 
 // makeEnvelop makes an envelop for a historic messages request.

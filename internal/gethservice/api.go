@@ -2,12 +2,10 @@ package gethservice
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"encoding/json"
 	"errors"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/crypto"
+	status "github.com/status-im/status-protocol-go"
 )
 
 var (
@@ -20,86 +18,12 @@ var (
 // MessagesParams is an object with JSON-serializable parameters
 // for Messages method.
 type MessagesParams struct {
-	Chat
+	status.Chat
 }
 
 // SendParams is an object with JSON-serializable parameters for Send method.
 type SendParams struct {
-	Chat
-}
-
-// RequestParams is an object with JSON-serializable parameters for Request method.
-type RequestParams struct {
-	Chat
-	Limit int   `json:"limit"`
-	From  int64 `json:"from"`
-	To    int64 `json:"to"`
-}
-
-// Chat
-type Chat struct {
-	chatID     string
-	publicName string
-	publicKey  *ecdsa.PublicKey
-}
-
-func (c Chat) ID() string                  { return c.chatID }
-func (c Chat) PublicName() string          { return c.publicName }
-func (c Chat) PublicKey() *ecdsa.PublicKey { return c.publicKey }
-
-func (c Chat) MarshalJSON() ([]byte, error) {
-	type ChatAlias Chat
-
-	item := struct {
-		ChatAlias
-		ID         string `json:"id"`
-		PublicName string `json:"public_name,omitempty"`
-		PublicKey  string `json:"public_key,omitempty"`
-	}{
-		ChatAlias:  ChatAlias(c),
-		ID:         c.ID(),
-		PublicName: c.PublicName(),
-	}
-
-	if c.PublicKey() != nil {
-		item.PublicKey = encodePublicKeyAsString(c.PublicKey())
-	}
-
-	return json.Marshal(&item)
-}
-
-func (c *Chat) UnmarshalJSON(data []byte) error {
-	type ChatAlias Chat
-
-	var item struct {
-		*ChatAlias
-		ID         string `json:"id"`
-		PublicName string `json:"public_name,omitempty"`
-		PublicKey  string `json:"public_key,omitempty"`
-	}
-
-	if err := json.Unmarshal(data, &item); err != nil {
-		return err
-	}
-
-	item.ChatAlias.chatID = item.ID
-	item.ChatAlias.publicName = item.PublicName
-
-	if len(item.PublicKey) > 2 {
-		pubKey, err := hexutil.Decode(item.PublicKey)
-		if err != nil {
-			return err
-		}
-
-		item.ChatAlias.publicKey, err = crypto.UnmarshalPubkey(pubKey)
-		if err != nil {
-			return err
-		}
-	}
-
-	*c = *(*Chat)(item.ChatAlias)
-
-	return nil
+	status.Chat
 }
 
 // PublicAPI provides an JSON-RPC API to interact with
@@ -117,7 +41,7 @@ func NewPublicAPI(s *Service) *PublicAPI {
 // Send sends payload to specified chat.
 // Chat should be added before sending message,
 // otherwise error will be received.
-func (api *PublicAPI) Send(ctx context.Context, chat Chat, payload string) (hexutil.Bytes, error) {
+func (api *PublicAPI) Send(ctx context.Context, chat status.Chat, payload string) (hexutil.Bytes, error) {
 	if api.service.messenger == nil {
 		return nil, ErrMessengerNotSet
 	}
@@ -231,9 +155,3 @@ func (api *PublicAPI) Send(ctx context.Context, chat Chat, payload string) (hexu
 // 	}
 // 	return api.service.messenger.Messages(c, offset)
 // }
-
-// encodePublicKeyAsString encodes a public key as a string.
-// It starts with 0x to indicate it's hex encoding.
-func encodePublicKeyAsString(pubKey *ecdsa.PublicKey) string {
-	return hexutil.Encode(crypto.FromECDSAPub(pubKey))
-}

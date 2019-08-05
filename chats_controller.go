@@ -8,11 +8,11 @@ import (
 )
 
 // chatToString returns a string representation.
-func chatToString(c Chat) string {
-	switch c.Type {
-	case PublicChat:
+func chatToString(c *status.Chat) string {
+	switch c.ChatType {
+	case status.ChatTypePublic:
 		return fmt.Sprintf("#%s", c.Name)
-	case OneToOneChat:
+	case status.ChatTypeOneToOne:
 		return fmt.Sprintf("@%s", c.Name)
 	default:
 		return c.Name
@@ -22,16 +22,14 @@ func chatToString(c Chat) string {
 // ChatsViewController manages chats view.
 type ChatsViewController struct {
 	*ViewController
-	db        *sqlitePersistence
 	messenger *status.Messenger
-	chats     []Chat
+	chats     []*status.Chat
 }
 
 // NewChatsViewController returns a new chat view controller.
-func NewChatsViewController(vm *ViewController, db *sqlitePersistence, m *status.Messenger) *ChatsViewController {
+func NewChatsViewController(vm *ViewController, m *status.Messenger) *ChatsViewController {
 	return &ChatsViewController{
 		ViewController: vm,
-		db:             db,
 		messenger:      m,
 	}
 }
@@ -46,24 +44,24 @@ func (c *ChatsViewController) LoadAndRefresh() error {
 }
 
 // ChatByIdx allows to retrieve a chat for a given index.
-func (c *ChatsViewController) ChatByIdx(idx int) (Chat, bool) {
+func (c *ChatsViewController) ChatByIdx(idx int) (*status.Chat, bool) {
 	if idx > -1 && idx < len(c.chats) {
 		return c.chats[idx], true
 	}
-	return Chat{}, false
+	return nil, false
 }
 
 // Add adds a new chat to the list.
-func (c *ChatsViewController) Add(chat Chat) error {
-	if err := c.db.AddChats(chat); err != nil {
+func (c *ChatsViewController) Add(chat *status.Chat) error {
+	if err := c.messenger.SaveChat(*chat); err != nil {
 		return err
 	}
 	return c.LoadAndRefresh()
 }
 
 // Remove removes a chat from the list.
-func (c *ChatsViewController) Remove(chat Chat) error {
-	if err := c.db.DeleteChat(chat); err != nil {
+func (c *ChatsViewController) Remove(chat *status.Chat) error {
+	if err := c.messenger.DeleteChat(chat.ID, chat.ChatType); err != nil {
 		return err
 	}
 	return c.LoadAndRefresh()
@@ -71,7 +69,7 @@ func (c *ChatsViewController) Remove(chat Chat) error {
 
 // load loads chats from the storage.
 func (c *ChatsViewController) load() error {
-	chats, err := c.db.Chats()
+	chats, err := c.messenger.Chats(0, -1)
 	if err != nil {
 		return err
 	}
