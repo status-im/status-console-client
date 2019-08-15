@@ -76,7 +76,7 @@ func chatAddCmdHandler(args []string) (c *status.Chat, err error) {
 	return
 }
 
-func ChatCmdFactory(c *ChatsViewController) CmdHandler {
+func ChatCmdFactory(chatsvc *ChatsViewController, chatvc *ChatViewController) CmdHandler {
 	return func(b []byte) error {
 		args := bytesToArgs(b)[1:] // remove first item, i.e. "/chat"
 
@@ -88,8 +88,13 @@ func ChatCmdFactory(c *ChatsViewController) CmdHandler {
 			if err != nil {
 				return err
 			}
-			if err := c.Add(chat); err != nil {
+			if err := chatsvc.Add(chat); err != nil {
 				return err
+			}
+
+			// Ensure we have an active chat. This is a quick hack and we should instead do things in an event driven manner.
+			if chatvc.ActiveChat() == nil {
+				chatvc.Select(chat)
 			}
 			// TODO: fix removing chats
 			// case "remove":

@@ -153,6 +153,11 @@ func (c *ChatViewController) retrieveMessagesForChat(chat *status.Chat, rConfig 
 	return c.messenger.Retrieve(ctx, *chat, rConfig)
 }
 
+// ActiveChat returns the active chat, if any
+func (c *ChatViewController) ActiveChat() *status.Chat {
+	return c.chat
+}
+
 // Select informs the chat view controller about a selected contact.
 // The chat view controller setup subscribers and request recent messages.
 func (c *ChatViewController) Select(chat *status.Chat) {

@@ -35,11 +35,11 @@ Currently the following commands are supported.
 
 ## Adding a public chat
 
-`/contact add <topic>`
+`/chat add <topic>`
 
 ## Adding a contact
 
-`/contact add <public-key> <name>`
+`/chat add <public-key> <name>`
 
 # Packages
 
