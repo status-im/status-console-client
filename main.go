@@ -314,7 +314,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger) error {
 
 	notifications := NewNotificationViewController(&ViewController{vm, g, ViewNotification})
 
-	chat := NewChatViewController(
+	chatVC := NewChatViewController(
 		&ViewController{vm, g, ViewChat},
 		privateKey,
 		messenger,
@@ -323,8 +323,8 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger) error {
 		},
 	)
 
-	chats := NewChatsViewController(&ViewController{vm, g, ViewChats}, messenger)
-	if err := chats.LoadAndRefresh(); err != nil {
+	chatsVC := NewChatsViewController(&ViewController{vm, g, ViewChats}, messenger)
+	if err := chatsVC.LoadAndRefresh(); err != nil {
 		return err
 	}
 
@@ -333,11 +333,11 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger) error {
 		log.Printf("default multiplexer handler")
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		_, err := chat.Send(ctx, b)
+		_, err := chatVC.Send(ctx, b)
 		return err
 	})
-	inputMultiplexer.AddHandler("/chat", ChatCmdFactory(chats))
-	// inputMultiplexer.AddHandler("/request", RequestCmdFactory(chat))
+	inputMultiplexer.AddHandler("/chat", ChatCmdFactory(chatsVC, chatVC))
+	// inputMultiplexer.AddHandler("/request", RequestCmdFactory(chatVC))
 
 	views := []*View{
 		&View{
@@ -366,7 +366,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger) error {
 					Key: gocui.KeyEnter,
 					Mod: gocui.ModNone,
 					Handler: GetLineHandler(func(idx int, _ string) error {
-						selectedChat, ok := chats.ChatByIdx(idx)
+						selectedChat, ok := chatsVC.ChatByIdx(idx)
 						if !ok {
 							return errors.New("chat could not be found")
 						}
@@ -375,7 +375,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger) error {
 						// otherwise the main thread is blocked
 						// and nothing is rendered.
 						go func() {
-							chat.Select(selectedChat)
+							chatVC.Select(selectedChat)
 						}()
 
 						return nil

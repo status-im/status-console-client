@@ -147,7 +147,7 @@ func MoveToNewLineHandler(g *gocui.Gui, v *gocui.View) error {
 	return nil
 }
 
-// GetLineHandler passes the concent of the current line
+// GetLineHandler passes the content of the current line
 // to the provided callback.
 func GetLineHandler(cb func(int, string) error) GocuiHandler {
 	return func(g *gocui.Gui, v *gocui.View) error {
