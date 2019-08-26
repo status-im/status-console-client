@@ -2,12 +2,12 @@ package statusproto
 
 import (
 	"crypto/ecdsa"
-	"github.com/pkg/errors"
-	"log"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang/protobuf/proto"
 	"github.com/jinzhu/copier"
+	"github.com/pkg/errors"
 	"github.com/status-im/status-protocol-go/applicationmetadata"
 	"github.com/status-im/status-protocol-go/datasync"
 	"github.com/status-im/status-protocol-go/encryption"
@@ -16,7 +16,7 @@ import (
 
 // StatusMessage is any Status Protocol message.
 type StatusMessage struct {
-	// TransportMessage is the parsed message received from the trasport layer, i.e the input
+	// TransportMessage is the parsed message received from the transport layer, i.e the input
 	TransportMessage *whisper.Message
 	// ParsedMessage is the parsed message by the application layer, i.e the output
 	ParsedMessage interface{}
@@ -27,7 +27,7 @@ type StatusMessage struct {
 	DecryptedPayload []byte
 
 	// ID is the canonical ID of the message
-	ID []byte
+	ID hexutil.Bytes
 	// Hash is the transport layer hash
 	Hash []byte
 
@@ -124,8 +124,9 @@ func (m *StatusMessage) HandleApplicationMetadata() error {
 		return err
 	}
 	m.ApplicationMetadataLayerSigPubKey = recoveredKey
+	// Calculate ID using the wrapped record
+	m.ID = MessageID(recoveredKey, m.DecryptedPayload)
 	m.DecryptedPayload = message.Payload
-	m.ID = MessageID(m.SigPubKey(), m.DecryptedPayload)
 	return nil
 
 }
@@ -133,7 +134,6 @@ func (m *StatusMessage) HandleApplicationMetadata() error {
 func (m *StatusMessage) HandleApplication() error {
 	value, err := decodeTransitMessage(m.DecryptedPayload)
 	if err != nil {
-		log.Printf("[message::DecodeMessage] could not decode message: %#x", m.Hash)
 		return err
 	}
 	m.ParsedMessage = value

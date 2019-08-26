@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"encoding/gob"
 	"encoding/hex"
-	"fmt"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -44,67 +43,8 @@ func (db sqlitePersistence) LastMessageClock(chatID string) (int64, error) {
 	return last.Int64, nil
 }
 
-func (db sqlitePersistence) SaveMessages(chatID string, messages []*protocol.Message) (last int64, err error) {
-	var (
-		tx   *sql.Tx
-		stmt *sql.Stmt
-	)
-	tx, err = db.db.BeginTx(context.Background(), &sql.TxOptions{})
-	if err != nil {
-		return
-	}
-	stmt, err = tx.Prepare(`INSERT INTO user_messages(
-id, chat_id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return
-	}
-	defer func() {
-		if err == nil {
-			err = tx.Commit()
-			return
-
-		}
-		// don't shadow original error
-		_ = tx.Rollback()
-	}()
-
-	var rst sql.Result
-
-	for _, msg := range messages {
-		pkey := []byte{}
-		if msg.SigPubKey != nil {
-			pkey, err = marshalECDSAPub(msg.SigPubKey)
-		}
-		rst, err = stmt.Exec(
-			msg.ID, chatID, msg.ContentT, msg.MessageT, msg.Text,
-			msg.Clock, msg.Timestamp, msg.Content.ChatID, msg.Content.Text,
-			pkey, msg.Flags)
-		if err != nil {
-			if err.Error() == uniqueIDContstraint {
-				// skip duplicated messages
-				err = nil
-				continue
-			}
-			return
-		}
-
-		last, err = rst.LastInsertId()
-		if err != nil {
-			return
-		}
-	}
-	return
-}
-
-func formatChatID(chatID string, chatType ChatType) string {
-	return fmt.Sprintf("%s-%d", chatID, chatType)
-}
-
 func (db sqlitePersistence) SaveChat(chat Chat) error {
 	var err error
-	// We build the db chatID using the type, so that we have no clashes
-	chatID := formatChatID(chat.ID, chat.ChatType)
 
 	pkey := []byte{}
 	// For one to one chatID is an encoded public key
@@ -146,7 +86,7 @@ func (db sqlitePersistence) SaveChat(chat Chat) error {
 	defer stmt.Close()
 
 	_, err = stmt.Exec(
-		chatID,
+		chat.ID,
 		chat.Name,
 		chat.Color,
 		chat.Active,
@@ -168,31 +108,51 @@ func (db sqlitePersistence) SaveChat(chat Chat) error {
 	return err
 }
 
-func (db sqlitePersistence) DeleteChat(chatID string, chatType ChatType) error {
-	dbChatID := formatChatID(chatID, chatType)
-	_, err := db.db.Exec("DELETE FROM chats WHERE id = ?", dbChatID)
+func (db sqlitePersistence) DeleteChat(chatID string) error {
+	_, err := db.db.Exec("DELETE FROM chats WHERE id = ?", chatID)
 	return err
 }
 
-func (db sqlitePersistence) Chats(from, to int) ([]*Chat, error) {
+func (db sqlitePersistence) Chats() ([]*Chat, error) {
+	return db.chats(nil)
+}
 
-	rows, err := db.db.Query(`SELECT
-	id,
-	name,
-	color,
-	active,
-	type,
-	timestamp,
-	deleted_at_clock_value,
-	public_key,
-	unviewed_message_count,
-	last_clock_value,
-	last_message_content_type,
-	last_message_content,
-	members,
-	membership_updates
+func (db sqlitePersistence) chats(tx *sql.Tx) ([]*Chat, error) {
+	var err error
+
+	if tx == nil {
+		tx, err = db.db.BeginTx(context.Background(), &sql.TxOptions{})
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			if err == nil {
+				err = tx.Commit()
+				return
+
+			}
+			// don't shadow original error
+			_ = tx.Rollback()
+		}()
+	}
+
+	rows, err := tx.Query(`SELECT
+		id,
+		name,
+		color,
+		active,
+		type,
+		timestamp,
+		deleted_at_clock_value,
+		public_key,
+		unviewed_message_count,
+		last_clock_value,
+		last_message_content_type,
+		last_message_content,
+		members,
+		membership_updates
 	FROM chats
-	ORDER BY chats.timestamp DESC LIMIT ? OFFSET ?`, to, from)
+	ORDER BY chats.timestamp DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -201,6 +161,9 @@ func (db sqlitePersistence) Chats(from, to int) ([]*Chat, error) {
 	var response []*Chat
 
 	for rows.Next() {
+		var lastMessageContentType sql.NullString
+		var lastMessageContent sql.NullString
+
 		chat := &Chat{}
 		encodedMembers := []byte{}
 		encodedMembershipUpdates := []byte{}
@@ -216,17 +179,16 @@ func (db sqlitePersistence) Chats(from, to int) ([]*Chat, error) {
 			&pkey,
 			&chat.UnviewedMessagesCount,
 			&chat.LastClockValue,
-			&chat.LastMessageContentType,
-			&chat.LastMessageContent,
+			&lastMessageContentType,
+			&lastMessageContent,
 			&encodedMembers,
 			&encodedMembershipUpdates,
 		)
 		if err != nil {
 			return nil, err
 		}
-
-		// Restore the backward compatible ID
-		chat.ID = chat.ID[:len(chat.ID)-2]
+		chat.LastMessageContent = lastMessageContent.String
+		chat.LastMessageContentType = lastMessageContentType.String
 
 		// Restore members
 		membersDecoder := gob.NewDecoder(bytes.NewBuffer(encodedMembers))
@@ -307,7 +269,25 @@ func (db sqlitePersistence) Contacts() ([]*Contact, error) {
 	return response, nil
 }
 
-func (db sqlitePersistence) SaveContact(contact Contact) error {
+func (db sqlitePersistence) SaveContact(contact Contact, tx *sql.Tx) error {
+	var err error
+
+	if tx == nil {
+		tx, err = db.db.BeginTx(context.Background(), &sql.TxOptions{})
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err == nil {
+				err = tx.Commit()
+				return
+
+			}
+			// don't shadow original error
+			_ = tx.Rollback()
+		}()
+	}
+
 	// Encode device info
 	var encodedDeviceInfo bytes.Buffer
 	deviceInfoEncoder := gob.NewEncoder(&encodedDeviceInfo)
@@ -325,7 +305,7 @@ func (db sqlitePersistence) SaveContact(contact Contact) error {
 	}
 
 	// Insert record
-	stmt, err := db.db.Prepare(`INSERT INTO contacts(
+	stmt, err := tx.Prepare(`INSERT INTO contacts(
 	  id,
 	  address,
 	  name,
@@ -355,19 +335,31 @@ func (db sqlitePersistence) SaveContact(contact Contact) error {
 }
 
 // Messages returns messages for a given contact, in a given period. Ordered by a timestamp.
-func (db sqlitePersistence) Messages(chatID string, from, to time.Time) (result []*protocol.Message, err error) {
+func (db sqlitePersistence) Messages(from, to time.Time) (result []*protocol.Message, err error) {
 	rows, err := db.db.Query(`SELECT
-id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags
-FROM user_messages WHERE chat_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp`,
-		chatID, protocol.TimestampInMsFromTime(from), protocol.TimestampInMsFromTime(to))
+			id, 
+			content_type, 
+			message_type, 
+			text, 
+			clock, 
+			timestamp, 
+			content_chat_id, 
+			content_text, 
+			public_key, 
+			public,
+			flags
+		FROM user_messages 
+		WHERE timestamp >= ? AND timestamp <= ? 
+		ORDER BY timestamp`,
+		protocol.TimestampInMsFromTime(from),
+		protocol.TimestampInMsFromTime(to),
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var (
-		rst = []*protocol.Message{}
-	)
+	var rst []*protocol.Message
 	for rows.Next() {
 		msg := protocol.Message{
 			Content: protocol.Content{},
@@ -375,7 +367,7 @@ FROM user_messages WHERE chat_id = ? AND timestamp >= ? AND timestamp <= ? ORDER
 		pkey := []byte{}
 		err = rows.Scan(
 			&msg.ID, &msg.ContentT, &msg.MessageT, &msg.Text, &msg.Clock,
-			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey, &msg.Flags)
+			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey, &msg.Public, &msg.Flags)
 		if err != nil {
 			return nil, err
 		}
@@ -392,7 +384,7 @@ FROM user_messages WHERE chat_id = ? AND timestamp >= ? AND timestamp <= ? ORDER
 
 func (db sqlitePersistence) NewMessages(chatID string, rowid int64) ([]*protocol.Message, error) {
 	rows, err := db.db.Query(`SELECT
-id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, flags
+id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, public, flags
 FROM user_messages WHERE chat_id = ? AND rowid >= ? ORDER BY clock`,
 		chatID, rowid)
 	if err != nil {
@@ -410,7 +402,7 @@ FROM user_messages WHERE chat_id = ? AND rowid >= ? ORDER BY clock`,
 		pkey := []byte{}
 		err = rows.Scan(
 			&msg.ID, &msg.ContentT, &msg.MessageT, &msg.Text, &msg.Clock,
-			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey, &msg.Flags)
+			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey, &msg.Public, &msg.Flags)
 		if err != nil {
 			return nil, err
 		}
@@ -439,6 +431,7 @@ func (db sqlitePersistence) UnreadMessages(chatID string) ([]*protocol.Message, 
 			content_chat_id,
 			content_text,
 			public_key,
+			public,
 			flags
 		FROM
 			user_messages
@@ -462,7 +455,7 @@ func (db sqlitePersistence) UnreadMessages(chatID string) ([]*protocol.Message, 
 		pkey := []byte{}
 		err = rows.Scan(
 			&msg.ID, &msg.ContentT, &msg.MessageT, &msg.Text, &msg.Clock,
-			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey, &msg.Flags)
+			&msg.Timestamp, &msg.Content.ChatID, &msg.Content.Text, &pkey, &msg.Public, &msg.Flags)
 		if err != nil {
 			return nil, err
 		}
@@ -476,6 +469,59 @@ func (db sqlitePersistence) UnreadMessages(chatID string) ([]*protocol.Message, 
 	}
 
 	return result, nil
+}
+
+func (db sqlitePersistence) SaveMessages(messages []*protocol.Message) (last int64, err error) {
+	var (
+		tx   *sql.Tx
+		stmt *sql.Stmt
+	)
+	tx, err = db.db.BeginTx(context.Background(), &sql.TxOptions{})
+	if err != nil {
+		return
+	}
+	stmt, err = tx.Prepare(`INSERT INTO user_messages(
+id, chat_id, content_type, message_type, text, clock, timestamp, content_chat_id, content_text, public_key, public, flags)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return
+	}
+	defer func() {
+		if err == nil {
+			err = tx.Commit()
+			return
+
+		}
+		// don't shadow original error
+		_ = tx.Rollback()
+	}()
+
+	var rst sql.Result
+
+	for _, msg := range messages {
+		pkey := []byte{}
+		if msg.SigPubKey != nil {
+			pkey, err = marshalECDSAPub(msg.SigPubKey)
+		}
+		rst, err = stmt.Exec(
+			msg.ID, msg.Content.ChatID, msg.ContentT, msg.MessageT, msg.Text,
+			msg.Clock, msg.Timestamp, msg.Content.ChatID, msg.Content.Text,
+			pkey, msg.Public, msg.Flags)
+		if err != nil {
+			if err.Error() == uniqueIDContstraint {
+				// skip duplicated messages
+				err = nil
+				continue
+			}
+			return
+		}
+
+		last, err = rst.LastInsertId()
+		if err != nil {
+			return
+		}
+	}
+	return
 }
 
 func marshalECDSAPub(pub *ecdsa.PublicKey) (rst []byte, err error) {

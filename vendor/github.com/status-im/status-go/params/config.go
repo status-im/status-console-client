@@ -346,6 +346,12 @@ type NodeConfig struct {
 	// WalletConfig extra configuration for wallet.Service.
 	WalletConfig WalletConfig
 
+	// BrowsersConfig extra configuration for browsers.Service.
+	BrowsersConfig BrowsersConfig
+
+	// PermissionsConfig extra configuration for permissions.Service.
+	PermissionsConfig PermissionsConfig
+
 	// SwarmConfig extra configuration for Swarm and ENS
 	SwarmConfig SwarmConfig `json:"SwarmConfig," validate:"structonly"`
 
@@ -363,6 +369,16 @@ type NodeConfig struct {
 
 // WalletConfig extra configuration for wallet.Service.
 type WalletConfig struct {
+	Enabled bool
+}
+
+// BrowsersConfig extra configuration for browsers.Service.
+type BrowsersConfig struct {
+	Enabled bool
+}
+
+// PermissionsConfig extra configuration for permissions.Service.
+type PermissionsConfig struct {
 	Enabled bool
 }
 
@@ -393,6 +409,15 @@ type ShhextConfig struct {
 	// WhisperCacheDir is a folder where whisper filters may persist messages before delivering them
 	// to a client.
 	WhisperCacheDir string
+
+	// DisableGenericDiscoveryTopic indicates whether we should be listening on the old discovery
+	DisableGenericDiscoveryTopic bool
+
+	// SendV1Messages indicates whether we should be sending v1-compatible only messages
+	SendV1Messages bool
+
+	// DatasyncEnabled indicates whether we should enable dataasync
+	DataSyncEnabled bool
 }
 
 // Validate validates the ShhextConfig struct and returns an error if inconsistent values are found

@@ -65,8 +65,8 @@ mock:
 	echo "no mocks"
 .PHONY: mock
 
-gen-migrations:
-	go generate ./protocol/client/migrations/sql/
+generate:
+	go generate ./...
 .PHONY: gen-migrations
 
 image:

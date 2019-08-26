@@ -4,8 +4,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"database/sql"
-	"fmt"
-	"math/big"
 	"sync"
 	"time"
 
@@ -14,13 +12,6 @@ import (
 	"github.com/pkg/errors"
 	whisper "github.com/status-im/whisper/whisperv6"
 	"go.uber.org/zap"
-
-	"github.com/status-im/status-protocol-go/transport/whisper/filter"
-)
-
-const (
-	// defaultRequestTimeout is the default request timeout in seconds
-	defaultRequestTimeout = 10
 )
 
 var (
@@ -65,125 +56,159 @@ func (m *whisperServiceKeysManager) RawSymKey(id string) ([]byte, error) {
 	return m.shh.GetSymKey(id)
 }
 
+type Option func(*WhisperServiceTransport) error
+
+func SetGenericDiscoveryTopicSupport(val bool) Option {
+	return func(t *WhisperServiceTransport) error {
+		t.genericDiscoveryTopicEnabled = val
+		return nil
+	}
+}
+
 // WhisperServiceTransport is a transport based on Whisper service.
 type WhisperServiceTransport struct {
-	node        Server
 	shh         *whisper.Whisper
 	shhAPI      *whisper.PublicWhisperAPI // only PublicWhisperAPI implements logic to send messages
 	keysManager *whisperServiceKeysManager
-	chats       *filter.ChatsManager
+	filters     *filtersManager
 	logger      *zap.Logger
 
-	mailservers             []string
-	selectedMailServerEnode string
+	mailservers      []string
+	envelopesMonitor *EnvelopesMonitor
+
+	genericDiscoveryTopicEnabled bool
 }
 
 // NewWhisperService returns a new WhisperServiceTransport.
 func NewWhisperServiceTransport(
-	node Server,
 	shh *whisper.Whisper,
 	privateKey *ecdsa.PrivateKey,
 	db *sql.DB,
 	mailservers []string,
+	envelopesMonitorConfig *EnvelopesMonitorConfig,
 	logger *zap.Logger,
+	opts ...Option,
 ) (*WhisperServiceTransport, error) {
-	chats, err := filter.New(db, shh, privateKey, logger)
+	filtersManager, err := newFiltersManager(db, shh, privateKey, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	return &WhisperServiceTransport{
-		node:   node,
-		shh:    shh,
-		shhAPI: whisper.NewPublicWhisperAPI(shh),
+	var envelopesMonitor *EnvelopesMonitor
+	if envelopesMonitorConfig != nil {
+		envelopesMonitor = NewEnvelopesMonitor(shh, envelopesMonitorConfig)
+		envelopesMonitor.Start()
+	}
+
+	t := &WhisperServiceTransport{
+		shh:              shh,
+		shhAPI:           whisper.NewPublicWhisperAPI(shh),
+		envelopesMonitor: envelopesMonitor,
 		keysManager: &whisperServiceKeysManager{
 			shh:               shh,
 			privateKey:        privateKey,
 			passToSymKeyCache: make(map[string]string),
 		},
-		chats:       chats,
+		filters:     filtersManager,
 		mailservers: mailservers,
 		logger:      logger.With(zap.Namespace("WhisperServiceTransport")),
-	}, nil
+	}
+
+	for _, opt := range opts {
+		if err := opt(t); err != nil {
+			return nil, err
+		}
+	}
+
+	return t, nil
+}
+
+func (a *WhisperServiceTransport) InitFilters(chatIDs []string, publicKeys []*ecdsa.PublicKey) ([]*Filter, error) {
+	return a.filters.Init(chatIDs, publicKeys, a.genericDiscoveryTopicEnabled)
+}
+
+func (a *WhisperServiceTransport) Filters() []*Filter {
+	return a.filters.Filters()
 }
 
 // DEPRECATED
-func (a *WhisperServiceTransport) LoadFilters(chats []*filter.Chat, genericDiscoveryTopicEnabled bool) ([]*filter.Chat, error) {
-	return a.chats.InitWithChats(chats, genericDiscoveryTopicEnabled)
+func (a *WhisperServiceTransport) LoadFilters(filters []*Filter) ([]*Filter, error) {
+	return a.filters.InitWithFilters(filters, a.genericDiscoveryTopicEnabled)
 }
 
 // DEPRECATED
-func (a *WhisperServiceTransport) RemoveFilters(chats []*filter.Chat) error {
-	return a.chats.Remove(chats...)
+func (a *WhisperServiceTransport) RemoveFilters(filters []*Filter) error {
+	return a.filters.Remove(filters...)
 }
 
 func (a *WhisperServiceTransport) Reset() error {
-	return a.chats.Reset()
+	return a.filters.Reset()
 }
 
-func (a *WhisperServiceTransport) ProcessNegotiatedSecret(secret filter.NegotiatedSecret) error {
-	_, err := a.chats.LoadNegotiated(secret)
+func (a *WhisperServiceTransport) ProcessNegotiatedSecret(secret NegotiatedSecret) error {
+	_, err := a.filters.LoadNegotiated(secret)
 	return err
 }
 
 func (a *WhisperServiceTransport) JoinPublic(chatID string) error {
-	_, err := a.chats.LoadPublic(chatID)
+	_, err := a.filters.LoadPublic(chatID)
 	return err
 }
 
 func (a *WhisperServiceTransport) LeavePublic(chatID string) error {
-	chat := a.chats.ChatByID(chatID)
+	chat := a.filters.Filter(chatID)
 	if chat != nil {
 		return nil
 	}
-	return a.chats.Remove(chat)
+	return a.filters.Remove(chat)
 }
 
 func (a *WhisperServiceTransport) JoinPrivate(publicKey *ecdsa.PublicKey) error {
-	_, err := a.chats.LoadContactCode(publicKey)
+	_, err := a.filters.LoadDiscovery()
+	if err != nil {
+		return err
+	}
+	_, err = a.filters.LoadContactCode(publicKey)
 	return err
 }
 
 func (a *WhisperServiceTransport) LeavePrivate(publicKey *ecdsa.PublicKey) error {
-	chats := a.chats.ChatsByPublicKey(publicKey)
-	return a.chats.Remove(chats...)
+	filters := a.filters.FiltersByPublicKey(publicKey)
+	return a.filters.Remove(filters...)
 }
 
-type ChatMessages struct {
-	Messages []*whisper.ReceivedMessage
-	Public   bool
-	ChatID   string
+type Message struct {
+	Message *whisper.ReceivedMessage // TODO: should it be whisper.Message?
+	Public  bool
 }
 
-func (a *WhisperServiceTransport) RetrieveAllMessages() ([]ChatMessages, error) {
-	chatMessages := make(map[string]ChatMessages)
+func (a *WhisperServiceTransport) RetrieveAllMessages() ([]Message, error) {
+	var messages []Message
 
-	for _, chat := range a.chats.Chats() {
-		f := a.shh.GetFilter(chat.FilterID)
+	for _, filter := range a.filters.Filters() {
+		f := a.shh.GetFilter(filter.FilterID)
 		if f == nil {
 			return nil, errors.New("failed to return a filter")
 		}
 
-		messages := chatMessages[chat.ChatID]
-		messages.ChatID = chat.ChatID
-		messages.Public = chat.IsPublic()
-		messages.Messages = append(messages.Messages, f.Retrieve()...)
+		for _, m := range f.Retrieve() {
+			messages = append(messages, Message{
+				Message: m,
+				Public:  filter.IsPublic(),
+			})
+		}
 	}
 
-	var result []ChatMessages
-	for _, messages := range chatMessages {
-		result = append(result, messages)
-	}
-	return result, nil
+	return messages, nil
 }
 
 func (a *WhisperServiceTransport) RetrievePublicMessages(chatID string) ([]*whisper.ReceivedMessage, error) {
-	chat, err := a.chats.LoadPublic(chatID)
+	filter, err := a.filters.LoadPublic(chatID)
 	if err != nil {
 		return nil, err
 	}
 
-	f := a.shh.GetFilter(chat.FilterID)
+	f := a.shh.GetFilter(filter.FilterID)
 	if f == nil {
 		return nil, errors.New("failed to return a filter")
 	}
@@ -192,8 +217,8 @@ func (a *WhisperServiceTransport) RetrievePublicMessages(chatID string) ([]*whis
 }
 
 func (a *WhisperServiceTransport) RetrievePrivateMessages(publicKey *ecdsa.PublicKey) ([]*whisper.ReceivedMessage, error) {
-	chats := a.chats.ChatsByPublicKey(publicKey)
-	discoveryChats, err := a.chats.Init(nil, nil, true)
+	chats := a.filters.FiltersByPublicKey(publicKey)
+	discoveryChats, err := a.filters.Init(nil, nil, true)
 	if err != nil {
 		return nil, err
 	}
@@ -213,17 +238,18 @@ func (a *WhisperServiceTransport) RetrievePrivateMessages(publicKey *ecdsa.Publi
 }
 
 // DEPRECATED
-func (a *WhisperServiceTransport) RetrieveRawAll() (map[filter.Chat][]*whisper.ReceivedMessage, error) {
-	result := make(map[filter.Chat][]*whisper.ReceivedMessage)
+// Use RetrieveAllMessages instead.
+func (a *WhisperServiceTransport) RetrieveRawAll() (map[Filter][]*whisper.ReceivedMessage, error) {
+	result := make(map[Filter][]*whisper.ReceivedMessage)
 
-	allChats := a.chats.Chats()
-	for _, chat := range allChats {
-		f := a.shh.GetFilter(chat.FilterID)
+	allFilters := a.filters.Filters()
+	for _, filter := range allFilters {
+		f := a.shh.GetFilter(filter.FilterID)
 		if f == nil {
 			return nil, errors.New("failed to return a filter")
 		}
 
-		result[*chat] = append(result[*chat], f.Retrieve()...)
+		result[*filter] = append(result[*filter], f.Retrieve()...)
 	}
 
 	return result, nil
@@ -239,30 +265,30 @@ func (a *WhisperServiceTransport) RetrieveRaw(filterID string) ([]*whisper.Recei
 }
 
 // SendPublic sends a new message using the Whisper service.
-// For public chats, chat name is used as an ID as well as
+// For public filters, chat name is used as an ID as well as
 // a topic.
-func (a *WhisperServiceTransport) SendPublic(ctx context.Context, newMessage whisper.NewMessage, chatName string) ([]byte, error) {
-	if err := a.addSig(&newMessage); err != nil {
+func (a *WhisperServiceTransport) SendPublic(ctx context.Context, newMessage *whisper.NewMessage, chatName string) ([]byte, error) {
+	if err := a.addSig(newMessage); err != nil {
 		return nil, err
 	}
 
-	chat, err := a.chats.LoadPublic(chatName)
+	filter, err := a.filters.LoadPublic(chatName)
 	if err != nil {
 		return nil, err
 	}
 
-	newMessage.SymKeyID = chat.SymKeyID
-	newMessage.Topic = chat.Topic
+	newMessage.SymKeyID = filter.SymKeyID
+	newMessage.Topic = filter.Topic
 
-	return a.shhAPI.Post(ctx, newMessage)
+	return a.shhAPI.Post(ctx, *newMessage)
 }
 
-func (a *WhisperServiceTransport) SendPrivateWithSharedSecret(ctx context.Context, newMessage whisper.NewMessage, publicKey *ecdsa.PublicKey, secret []byte) ([]byte, error) {
-	if err := a.addSig(&newMessage); err != nil {
+func (a *WhisperServiceTransport) SendPrivateWithSharedSecret(ctx context.Context, newMessage *whisper.NewMessage, publicKey *ecdsa.PublicKey, secret []byte) ([]byte, error) {
+	if err := a.addSig(newMessage); err != nil {
 		return nil, err
 	}
 
-	chat, err := a.chats.LoadNegotiated(filter.NegotiatedSecret{
+	filter, err := a.filters.LoadNegotiated(NegotiatedSecret{
 		PublicKey: publicKey,
 		Key:       secret,
 	})
@@ -270,31 +296,31 @@ func (a *WhisperServiceTransport) SendPrivateWithSharedSecret(ctx context.Contex
 		return nil, err
 	}
 
-	newMessage.SymKeyID = chat.SymKeyID
-	newMessage.Topic = chat.Topic
+	newMessage.SymKeyID = filter.SymKeyID
+	newMessage.Topic = filter.Topic
 	newMessage.PublicKey = nil
 
-	return a.shhAPI.Post(ctx, newMessage)
+	return a.shhAPI.Post(ctx, *newMessage)
 }
 
-func (a *WhisperServiceTransport) SendPrivateWithPartitioned(ctx context.Context, newMessage whisper.NewMessage, publicKey *ecdsa.PublicKey) ([]byte, error) {
-	if err := a.addSig(&newMessage); err != nil {
+func (a *WhisperServiceTransport) SendPrivateWithPartitioned(ctx context.Context, newMessage *whisper.NewMessage, publicKey *ecdsa.PublicKey) ([]byte, error) {
+	if err := a.addSig(newMessage); err != nil {
 		return nil, err
 	}
 
-	chat, err := a.chats.LoadPartitioned(publicKey)
+	filter, err := a.filters.LoadPartitioned(publicKey)
 	if err != nil {
 		return nil, err
 	}
 
-	newMessage.Topic = chat.Topic
+	newMessage.Topic = filter.Topic
 	newMessage.PublicKey = crypto.FromECDSAPub(publicKey)
 
-	return a.shhAPI.Post(ctx, newMessage)
+	return a.shhAPI.Post(ctx, *newMessage)
 }
 
-func (a *WhisperServiceTransport) SendPrivateOnDiscovery(ctx context.Context, newMessage whisper.NewMessage, publicKey *ecdsa.PublicKey) ([]byte, error) {
-	if err := a.addSig(&newMessage); err != nil {
+func (a *WhisperServiceTransport) SendPrivateOnDiscovery(ctx context.Context, newMessage *whisper.NewMessage, publicKey *ecdsa.PublicKey) ([]byte, error) {
+	if err := a.addSig(newMessage); err != nil {
 		return nil, err
 	}
 
@@ -305,11 +331,11 @@ func (a *WhisperServiceTransport) SendPrivateOnDiscovery(ctx context.Context, ne
 	// and idempotent.
 
 	newMessage.Topic = whisper.BytesToTopic(
-		filter.ToTopic(filter.DiscoveryTopic),
+		ToTopic(discoveryTopic),
 	)
 	newMessage.PublicKey = crypto.FromECDSAPub(publicKey)
 
-	return a.shhAPI.Post(ctx, newMessage)
+	return a.shhAPI.Post(ctx, *newMessage)
 }
 
 func (a *WhisperServiceTransport) addSig(newMessage *whisper.NewMessage) error {
@@ -318,6 +344,19 @@ func (a *WhisperServiceTransport) addSig(newMessage *whisper.NewMessage) error {
 		return err
 	}
 	newMessage.Sig = sigID
+	return nil
+}
+
+func (a *WhisperServiceTransport) Track(identifiers [][]byte, hash []byte, newMessage whisper.NewMessage) {
+	if a.envelopesMonitor != nil {
+		a.envelopesMonitor.Add(identifiers, common.BytesToHash(hash), newMessage)
+	}
+}
+
+func (a *WhisperServiceTransport) Stop() error {
+	if a.envelopesMonitor != nil {
+		a.envelopesMonitor.Stop()
+	}
 	return nil
 }
 
@@ -361,26 +400,6 @@ type MessagesRequest struct {
 	Force bool `json:"force"`
 }
 
-func (r *MessagesRequest) setDefaults(now time.Time) {
-	// set From and To defaults
-	if r.To == 0 {
-		r.To = uint32(now.UTC().Unix())
-	}
-
-	if r.From == 0 {
-		oneDay := uint32(86400) // -24 hours
-		if r.To < oneDay {
-			r.From = 0
-		} else {
-			r.From = r.To - oneDay
-		}
-	}
-
-	if r.Timeout == 0 {
-		r.Timeout = defaultRequestTimeout
-	}
-}
-
 type MessagesResponse struct {
 	// Cursor from the response can be used to retrieve more messages
 	// for the previous request.
@@ -397,84 +416,4 @@ type RetryConfig struct {
 	// StepTimeout defines duration increase per each retry.
 	StepTimeout time.Duration
 	MaxRetries  int
-}
-
-func waitForExpiredOrCompleted(requestID common.Hash, events chan whisper.EnvelopeEvent, timeout time.Duration) (*whisper.MailServerResponse, error) {
-	expired := fmt.Errorf("request %x expired", requestID)
-	after := time.NewTimer(timeout)
-	defer after.Stop()
-	for {
-		var ev whisper.EnvelopeEvent
-		select {
-		case ev = <-events:
-		case <-after.C:
-			return nil, expired
-		}
-		if ev.Hash != requestID {
-			continue
-		}
-		switch ev.Event {
-		case whisper.EventMailServerRequestCompleted:
-			data, ok := ev.Data.(*whisper.MailServerResponse)
-			if ok {
-				return data, nil
-			}
-			return nil, errors.New("invalid event data type")
-		case whisper.EventMailServerRequestExpired:
-			return nil, expired
-		}
-	}
-}
-
-// makeEnvelop makes an envelop for a historic messages request.
-// Symmetric key is used to authenticate to MailServer.
-// PK is the current node ID.
-func makeEnvelop(
-	payload []byte,
-	symKey []byte,
-	publicKey *ecdsa.PublicKey,
-	nodeID *ecdsa.PrivateKey,
-	pow float64,
-	now time.Time,
-) (*whisper.Envelope, error) {
-	params := whisper.MessageParams{
-		PoW:      pow,
-		Payload:  payload,
-		WorkTime: DefaultWhisperMessage().PowTime,
-		Src:      nodeID,
-	}
-	// Either symKey or public key is required.
-	// This condition is verified in `message.Wrap()` method.
-	if len(symKey) > 0 {
-		params.KeySym = symKey
-	} else if publicKey != nil {
-		params.Dst = publicKey
-	}
-	message, err := whisper.NewSentMessage(&params)
-	if err != nil {
-		return nil, err
-	}
-	return message.Wrap(&params, now)
-}
-
-func createBloomFilter(r MessagesRequest) []byte {
-	if len(r.Topics) > 0 {
-		return topicsToBloom(r.Topics...)
-	}
-
-	return whisper.TopicToBloom(r.Topic)
-}
-
-func topicsToBloom(topics ...whisper.TopicType) []byte {
-	i := new(big.Int)
-	for _, topic := range topics {
-		bloom := whisper.TopicToBloom(topic)
-		i.Or(i, new(big.Int).SetBytes(bloom[:]))
-	}
-
-	combined := make([]byte, whisper.BloomFilterSize)
-	data := i.Bytes()
-	copy(combined[whisper.BloomFilterSize-len(data):], data[:])
-
-	return combined
 }

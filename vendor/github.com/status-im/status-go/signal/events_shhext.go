@@ -4,7 +4,11 @@ import (
 	"encoding/hex"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/status-im/status-go/services/shhext/dedup"
 	whisper "github.com/status-im/whisper/whisperv6"
+
+	statustransp "github.com/status-im/status-protocol-go/transport/whisper"
 )
 
 const (
@@ -35,12 +39,16 @@ const (
 
 	// EventWhisperFilterAdded is triggered when we setup a new filter or restore existing ones
 	EventWhisperFilterAdded = "whisper.filter.added"
+
+	// EventNewMessages is triggered when we receive new messages
+	EventNewMessages = "messages.new"
 )
 
 // EnvelopeSignal includes hash of the envelope.
 type EnvelopeSignal struct {
-	Hash    common.Hash `json:"hash"`
-	Message string      `json:"message"`
+	IDs     []hexutil.Bytes `json:"ids"`
+	Hash    common.Hash     `json:"hash"`
+	Message string          `json:"message"`
 }
 
 // MailServerResponseSignal holds the data received in the response from the mailserver.
@@ -81,18 +89,35 @@ type WhisperFilterAddedSignal struct {
 	Filters []*Filter `json:"filters"`
 }
 
+// NewMessagesSignal notifies clients of new messages
+type NewMessagesSignal struct {
+	Messages []*Messages `json:"messages"`
+}
+
 // SendEnvelopeSent triggered when envelope delivered at least to 1 peer.
-func SendEnvelopeSent(hash common.Hash) {
-	send(EventEnvelopeSent, EnvelopeSignal{Hash: hash})
+func SendEnvelopeSent(identifiers [][]byte) {
+	var hexIdentifiers []hexutil.Bytes
+	for _, i := range identifiers {
+		hexIdentifiers = append(hexIdentifiers, i)
+	}
+
+	send(EventEnvelopeSent, EnvelopeSignal{
+		IDs: hexIdentifiers,
+	})
 }
 
 // SendEnvelopeExpired triggered when envelope delivered at least to 1 peer.
-func SendEnvelopeExpired(hash common.Hash, err error) {
+func SendEnvelopeExpired(identifiers [][]byte, err error) {
 	var message string
 	if err != nil {
 		message = err.Error()
 	}
-	send(EventEnvelopeExpired, EnvelopeSignal{Hash: hash, Message: message})
+	var hexIdentifiers []hexutil.Bytes
+	for _, i := range identifiers {
+		hexIdentifiers = append(hexIdentifiers, i)
+	}
+
+	send(EventEnvelopeExpired, EnvelopeSignal{IDs: hexIdentifiers, Message: message})
 }
 
 // SendMailServerRequestCompleted triggered when mail server response has been received
@@ -121,6 +146,12 @@ type EnodeDiscoveredSignal struct {
 	Topic string `json:"topic"`
 }
 
+type Messages struct {
+	Error    error                       `json:"error"`
+	Messages []*dedup.DeduplicateMessage `json:"messages"`
+	Chat     statustransp.Filter         `json:"chat"` // not a mistake, it's called chat in status-react
+}
+
 // SendEnodeDiscovered tiggered when an enode is discovered.
 // finds a new enode.
 func SendEnodeDiscovered(enode, topic string) {
@@ -140,4 +171,8 @@ func SendBundleAdded(identity string, installationID string) {
 
 func SendWhisperFilterAdded(filters []*Filter) {
 	send(EventWhisperFilterAdded, WhisperFilterAddedSignal{Filters: filters})
+}
+
+func SendNewMessages(messages []*Messages) {
+	send(EventNewMessages, NewMessagesSignal{Messages: messages})
 }

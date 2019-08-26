@@ -13,7 +13,6 @@ require (
 	github.com/ethereum/go-ethereum v1.8.27
 	github.com/fatih/color v1.7.0
 	github.com/fjl/memsize v0.0.0-20180929194037-2a09253e352a // indirect
-	github.com/golang-migrate/migrate/v4 v4.5.0 // indirect
 	github.com/golang/mock v1.3.1 // indirect
 	github.com/google/uuid v1.1.1
 	github.com/gorilla/mux v1.7.3 // indirect
@@ -36,9 +35,9 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/rjeczalik/notify v0.9.2 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
-	github.com/status-im/status-go v0.29.0-beta.3
+	github.com/status-im/status-go v0.30.1-beta.2.0.20190825172951-a8e5cc693b96
 	github.com/status-im/status-nim v0.0.0-20190724023117-a5693e6e4820
-	github.com/status-im/status-protocol-go v0.0.0-20190624072549-57675d19152c73af930b1e8f93d298322cbfe95c
+	github.com/status-im/status-protocol-go v0.1.5-0.20190826120241-866efa19b78d
 	github.com/stretchr/objx v0.2.0 // indirect
 	go.opencensus.io v0.22.0 // indirect
 	go.uber.org/zap v1.10.0
@@ -48,4 +47,4 @@ require (
 	gopkg.in/olebedev/go-duktape.v3 v3.0.0-20190213234257-ec84240a7772 // indirect
 )
 
-replace github.com/ethereum/go-ethereum v1.8.27 => github.com/status-im/go-ethereum v1.8.27-status.4
+replace github.com/ethereum/go-ethereum v1.8.27 => github.com/status-im/go-ethereum v1.8.27-status.5

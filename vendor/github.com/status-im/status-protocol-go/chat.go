@@ -1,6 +1,11 @@
 package statusproto
 
-import "crypto/ecdsa"
+import (
+	"crypto/ecdsa"
+
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
+)
 
 type ChatPagination struct {
 	From uint
@@ -57,7 +62,7 @@ type ChatMembershipUpdate struct {
 	// Type indicates the kind of event (i.e changed-name, added-member, etc)
 	Type string `json:"type"`
 	// Name represents the name in the event of changing name events
-	Name string `json:"name"`
+	Name string `json:"name,omitempty"`
 	// Clock value of the event
 	ClockValue uint64 `json:"clockValue"`
 	// Signature of the event
@@ -65,9 +70,9 @@ type ChatMembershipUpdate struct {
 	// Hex encoded public key of the creator of the event
 	From string `json:"from"`
 	// Target of the event for single-target events
-	Member string `json:"member"`
+	Member string `json:"member,omitempty"`
 	// Target of the event for multi-target events
-	Members []string `json:"members"`
+	Members []string `json:"members,omitempty"`
 }
 
 // ChatMember represents a member who participates in a group chat
@@ -78,4 +83,31 @@ type ChatMember struct {
 	Admin bool `json:"admin"`
 	// Joined indicates if the member has joined the group chat
 	Joined bool `json:"joined"`
+}
+
+func (c ChatMember) PublicKey() (*ecdsa.PublicKey, error) {
+	b, err := hexutil.Decode(c.ID)
+	if err != nil {
+		return nil, err
+	}
+	return crypto.UnmarshalPubkey(b)
+}
+
+func CreateOneToOneChat(name string, publicKey *ecdsa.PublicKey) Chat {
+	return Chat{
+		ID:        hexutil.Encode(crypto.FromECDSAPub(publicKey)),
+		Name:      name,
+		Active:    true,
+		ChatType:  ChatTypeOneToOne,
+		PublicKey: publicKey,
+	}
+}
+
+func CreatePublicChat(name string) Chat {
+	return Chat{
+		ID:       name,
+		Name:     name,
+		Active:   true,
+		ChatType: ChatTypePublic,
+	}
 }

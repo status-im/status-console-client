@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"go.uber.org/zap"
 	"log"
 	"math"
 	"os"
@@ -16,23 +15,22 @@ import (
 	"syscall"
 	"time"
 
+	"go.uber.org/zap/zapcore"
+
 	"github.com/ethereum/go-ethereum/crypto"
 	gethnode "github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-
-	"github.com/status-im/status-go/logutils"
-	"github.com/status-im/status-go/node"
-	"github.com/status-im/status-go/params"
-	"github.com/status-im/status-go/signal"
-
 	"github.com/google/uuid"
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
-
-	status "github.com/status-im/status-protocol-go"
-
 	"github.com/status-im/status-console-client/internal/gethservice"
+	"github.com/status-im/status-go/logutils"
+	"github.com/status-im/status-go/node"
+	"github.com/status-im/status-go/params"
+	"github.com/status-im/status-go/signal"
+	status "github.com/status-im/status-protocol-go"
+	"go.uber.org/zap"
 )
 
 var g *gocui.Gui
@@ -101,7 +99,7 @@ func main() {
 
 	// Prefix data directory with a public key.
 	// This is required because it's not possible
-	// or adviced to share data between different
+	// or advised to share data between different
 	// key pairs.
 	if !*noNamespace {
 		*dataDir = filepath.Join(
@@ -125,17 +123,25 @@ func main() {
 	if err != nil {
 		exitErr(err)
 	}
+
+	// Forward standard logger output.
 	log.SetOutput(clientLogFile)
 
+	// Create zap logger.
+	cfg := zap.NewProductionConfig()
+	cfg.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
+	cfg.OutputPaths = []string{clientLogFile.Name()}
+	logger, err := cfg.Build()
+	if err != nil {
+		exitErr(fmt.Errorf("failed to create logger: %v", err))
+	}
+
+	// Status node logs.
 	nodeLogPath := filepath.Join(*dataDir, "status.log")
 	err = logutils.OverrideRootLog(true, *logLevel, logutils.FileOptions{Filename: nodeLogPath}, false)
 	if err != nil {
 		exitErr(fmt.Errorf("failed to override root log: %v", err))
 	}
-
-	// Log the current chat info in two places for easy retrieval.
-	fmt.Printf("Chat address: %#x\n", crypto.FromECDSAPub(&privateKey.PublicKey))
-	log.Printf("chat address: %#x", crypto.FromECDSAPub(&privateKey.PublicKey))
 
 	// initialize protocol
 	var messenger *status.Messenger
@@ -147,8 +153,7 @@ func main() {
 		}
 	} else {
 		messengerDBPath := filepath.Join(*dataDir, "messenger.sql")
-
-		messenger, err = createMessengerInProc(privateKey, messengerDBPath)
+		messenger, err = createMessengerInProc(privateKey, messengerDBPath, logger)
 		if err != nil {
 			exitErr(err)
 		}
@@ -160,11 +165,11 @@ func main() {
 	ossignal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigs
-		log.Printf("received signal: %v", sig)
+		logger.Error("received signal", zap.String("signal", sig.String()))
 		done <- true
 	}()
 
-	log.Printf("starting UI...")
+	logger.Info("starting UI...")
 
 	if !*noUI {
 		go func() {
@@ -172,7 +177,11 @@ func main() {
 			exitErr(errors.New("exit with signal"))
 		}()
 
-		if err := setupGUI(privateKey, messenger); err != nil {
+		if err := setupGUI(privateKey, messenger, logger); err != nil {
+			exitErr(err)
+		}
+
+		if err := messenger.Init(); err != nil {
 			exitErr(err)
 		}
 
@@ -220,7 +229,7 @@ func createMessengerWithURI(uri string) (*status.Messenger, error) {
 	return nil, errors.New("not implemented")
 }
 
-func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string) (*status.Messenger, error) {
+func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logger) (*status.Messenger, error) {
 	// collect mail server request signals
 	signalsForwarder := newSignalForwarder()
 	go signalsForwarder.Start()
@@ -248,22 +257,13 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string) (*status.Messeng
 		},
 	}
 
-	if err := statusNode.Start(nodeConfig, services...); err != nil {
+	if err := statusNode.Start(nodeConfig, nil, services...); err != nil {
 		return nil, errors.Wrap(err, "failed to start node")
 	}
 
 	shhService, err := statusNode.WhisperService()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get Whisper service")
-	}
-
-	cfg := zap.NewProductionConfig()
-	cfg.OutputPaths = []string{
-		fmt.Sprintf("/tmp/%s.log", *installationID),
-	}
-	logger, err := cfg.Build()
-	if err != nil {
-		return nil, err
 	}
 
 	options := []status.Option{
@@ -286,7 +286,6 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string) (*status.Messeng
 
 	messenger, err := status.NewMessenger(
 		pk,
-		&server{node: statusNode},
 		shhService,
 		*installationID,
 		options...,
@@ -295,12 +294,16 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string) (*status.Messeng
 		return nil, errors.Wrap(err, "failed to create Messenger")
 	}
 
+	if err := messenger.Init(); err != nil {
+		return nil, err
+	}
+
 	// protocolGethService.SetMessenger(messenger)
 
 	return messenger, nil
 }
 
-func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger) error {
+func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger, logger *zap.Logger) error {
 	var err error
 
 	// global
@@ -310,33 +313,41 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger) error {
 	}
 
 	// prepare views
-	vm := NewViewManager(nil, g)
+	vm := NewViewManager(nil, g, logger)
 
 	notifications := NewNotificationViewController(&ViewController{vm, g, ViewNotification})
 
-	chatVC := NewChatViewController(
+	chatsVC := NewChatsViewController(&ViewController{vm, g, ViewChats}, messenger, logger)
+	if err := chatsVC.LoadAndRefresh(); err != nil {
+		return errors.Wrap(err, "failed to load chats")
+	}
+
+	messagesVC := NewMessagesViewController(
 		&ViewController{vm, g, ViewChat},
 		privateKey,
 		messenger,
+		logger,
+		func(chat status.Chat) error {
+			if err := messenger.SaveChat(chat); err != nil {
+				return err
+			}
+			return chatsVC.LoadAndRefresh()
+		},
 		func(err error) {
 			_ = notifications.Error("Chat error", fmt.Sprintf("%v", err))
 		},
 	)
-
-	chatsVC := NewChatsViewController(&ViewController{vm, g, ViewChats}, messenger)
-	if err := chatsVC.LoadAndRefresh(); err != nil {
-		return err
-	}
+	messagesVC.Start()
 
 	inputMultiplexer := NewInputMultiplexer()
 	inputMultiplexer.AddHandler(DefaultMultiplexerPrefix, func(b []byte) error {
-		log.Printf("default multiplexer handler")
+		logger.Info("default multiplexer handler")
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		_, err := chatVC.Send(ctx, b)
+		_, err := messagesVC.Send(ctx, b)
 		return err
 	})
-	inputMultiplexer.AddHandler("/chat", ChatCmdFactory(chatsVC, chatVC))
+	inputMultiplexer.AddHandler("/chat", ChatCmdFactory(chatsVC, messagesVC))
 	// inputMultiplexer.AddHandler("/request", RequestCmdFactory(chatVC))
 
 	views := []*View{
@@ -375,7 +386,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger) error {
 						// otherwise the main thread is blocked
 						// and nothing is rendered.
 						go func() {
-							chatVC.Select(selectedChat)
+							messagesVC.Select(selectedChat)
 						}()
 
 						return nil
@@ -470,7 +481,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger) error {
 					Key: gocui.KeyEnter,
 					Mod: gocui.ModNone,
 					Handler: func(g *gocui.Gui, v *gocui.View) error {
-						log.Printf("Notification Enter binding")
+						logger.Info("Notification Enter binding")
 
 						if err := vm.DisableView(ViewNotification); err != nil {
 							return err

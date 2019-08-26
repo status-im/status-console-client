@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	gethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -29,7 +30,6 @@ import (
 	"github.com/status-im/status-go/services/personal"
 	"github.com/status-im/status-go/services/shhext"
 	"github.com/status-im/status-go/services/status"
-	"github.com/status-im/status-go/services/wallet"
 	"github.com/status-im/status-go/static"
 	"github.com/status-im/status-go/timesource"
 	whisper "github.com/status-im/whisper/whisperv6"
@@ -46,14 +46,13 @@ var (
 	ErrStatusServiceRegistrationFailure           = errors.New("failed to register the Status service")
 	ErrPeerServiceRegistrationFailure             = errors.New("failed to register the Peer service")
 	ErrIncentivisationServiceRegistrationFailure  = errors.New("failed to register the Incentivisation service")
-	ErrWalletServiceRegistrationFailure           = errors.New("failed to register the Wallet service")
 )
 
 // All general log messages in this package should be routed through this logger.
 var logger = log.New("package", "status-go/node")
 
 // MakeNode creates a geth node entity
-func MakeNode(config *params.NodeConfig, db *leveldb.DB) (*node.Node, error) {
+func MakeNode(config *params.NodeConfig, accs *accounts.Manager, db *leveldb.DB) (*node.Node, error) {
 	// If DataDir is empty, it means we want to create an ephemeral node
 	// keeping data only in memory.
 	if config.DataDir != "" {
@@ -78,14 +77,22 @@ func MakeNode(config *params.NodeConfig, db *leveldb.DB) (*node.Node, error) {
 		return nil, fmt.Errorf(ErrNodeMakeFailureFormat, err.Error())
 	}
 
+	err = activateServices(stack, config, accs, db)
+	if err != nil {
+		return nil, err
+	}
+	return stack, nil
+}
+
+func activateServices(stack *node.Node, config *params.NodeConfig, accs *accounts.Manager, db *leveldb.DB) error {
 	// start Ethereum service if we are not expected to use an upstream server
 	if !config.UpstreamConfig.Enabled {
-		if err := activateLightEthService(stack, config); err != nil {
-			return nil, fmt.Errorf("%v: %v", ErrLightEthRegistrationFailure, err)
+		if err := activateLightEthService(stack, accs, config); err != nil {
+			return fmt.Errorf("%v: %v", ErrLightEthRegistrationFailure, err)
 		}
 	} else {
 		if config.LightEthConfig.Enabled {
-			return nil, fmt.Errorf("%v: %v", ErrLightEthRegistrationFailureUpstreamEnabled, err)
+			return ErrLightEthRegistrationFailureUpstreamEnabled
 		}
 
 		logger.Info("LES protocol is disabled")
@@ -95,36 +102,39 @@ func MakeNode(config *params.NodeConfig, db *leveldb.DB) (*node.Node, error) {
 		// Usually, they are provided by an ETH or a LES service, but when using
 		// upstream, we don't start any of these, so we need to start our own
 		// implementation.
-		if err := activatePersonalService(stack, config); err != nil {
-			return nil, fmt.Errorf("%v: %v", ErrPersonalServiceRegistrationFailure, err)
+		if err := activatePersonalService(stack, accs, config); err != nil {
+			return fmt.Errorf("%v: %v", ErrPersonalServiceRegistrationFailure, err)
 		}
 	}
 
+	if err := activateNodeServices(stack, config, db); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func activateNodeServices(stack *node.Node, config *params.NodeConfig, db *leveldb.DB) error {
 	// start Whisper service.
 	if err := activateShhService(stack, config, db); err != nil {
-		return nil, fmt.Errorf("%v: %v", ErrWhisperServiceRegistrationFailure, err)
+		return fmt.Errorf("%v: %v", ErrWhisperServiceRegistrationFailure, err)
 	}
 
 	// start incentivisation service
 	if err := activateIncentivisationService(stack, config); err != nil {
-		return nil, fmt.Errorf("%v: %v", ErrIncentivisationServiceRegistrationFailure, err)
+		return fmt.Errorf("%v: %v", ErrIncentivisationServiceRegistrationFailure, err)
 	}
 
 	// start status service.
 	if err := activateStatusService(stack, config); err != nil {
-		return nil, fmt.Errorf("%v: %v", ErrStatusServiceRegistrationFailure, err)
+		return fmt.Errorf("%v: %v", ErrStatusServiceRegistrationFailure, err)
 	}
 
 	// start peer service
 	if err := activatePeerService(stack); err != nil {
-		return nil, fmt.Errorf("%v: %v", ErrPeerServiceRegistrationFailure, err)
+		return fmt.Errorf("%v: %v", ErrPeerServiceRegistrationFailure, err)
 	}
-
-	if err := activateWalletService(stack, config.WalletConfig); err != nil {
-		return nil, fmt.Errorf("%v: %v", ErrWalletServiceRegistrationFailure, err)
-	}
-
-	return stack, nil
+	return nil
 }
 
 // newGethNodeConfig returns default stack configuration for mobile client node
@@ -220,7 +230,7 @@ func defaultStatusChainGenesisBlock() (*core.Genesis, error) {
 }
 
 // activateLightEthService configures and registers the eth.Ethereum service with a given node.
-func activateLightEthService(stack *node.Node, config *params.NodeConfig) error {
+func activateLightEthService(stack *node.Node, accs *accounts.Manager, config *params.NodeConfig) error {
 	if !config.LightEthConfig.Enabled {
 		logger.Info("LES protocol is disabled")
 		return nil
@@ -241,13 +251,18 @@ func activateLightEthService(stack *node.Node, config *params.NodeConfig) error 
 		MinTrustedFraction: config.LightEthConfig.MinTrustedFraction,
 	}
 	return stack.Register(func(ctx *node.ServiceContext) (node.Service, error) {
-		return les.New(ctx, &ethConf)
+		// NOTE(dshulyak) here we set our instance of the accounts manager.
+		// without sharing same instance selected account won't be visible for personal_* methods.
+		nctx := &node.ServiceContext{}
+		*nctx = *ctx
+		nctx.AccountManager = accs
+		return les.New(nctx, &ethConf)
 	})
 }
 
-func activatePersonalService(stack *node.Node, config *params.NodeConfig) error {
+func activatePersonalService(stack *node.Node, accs *accounts.Manager, config *params.NodeConfig) error {
 	return stack.Register(func(*node.ServiceContext) (node.Service, error) {
-		svc := personal.New(stack.AccountManager())
+		svc := personal.New(accs)
 		return svc, nil
 	})
 }
@@ -272,16 +287,6 @@ func activatePeerService(stack *node.Node) error {
 	return stack.Register(func(ctx *node.ServiceContext) (node.Service, error) {
 		svc := peer.New()
 		return svc, nil
-	})
-}
-
-func activateWalletService(stack *node.Node, config params.WalletConfig) error {
-	if !config.Enabled {
-		logger.Info("service.Wallet is disabled")
-		return nil
-	}
-	return stack.Register(func(*node.ServiceContext) (node.Service, error) {
-		return wallet.NewService(), nil
 	})
 }
 

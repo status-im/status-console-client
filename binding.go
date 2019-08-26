@@ -2,7 +2,6 @@ package main
 
 import (
 	"io"
-	"log"
 	"strings"
 
 	"github.com/jroimartin/gocui"
@@ -65,8 +64,6 @@ func CursorUpHandler(g *gocui.Gui, v *gocui.View) error {
 }
 
 func HomeHandler(g *gocui.Gui, v *gocui.View) error {
-	log.Printf("[HomeHandler]")
-
 	if v != nil {
 		if err := v.SetCursor(0, 0); err != nil {
 			return errors.Wrap(err, "invalid cursor position")
@@ -79,13 +76,9 @@ func HomeHandler(g *gocui.Gui, v *gocui.View) error {
 }
 
 func EndHandler(g *gocui.Gui, v *gocui.View) error {
-	log.Printf("[EndHandler]")
-
 	if v != nil {
 		lines := strings.Count(v.ViewBuffer(), "\n")
 		_, sy := v.Size()
-
-		log.Printf("[EndHandler] lines=%d sy=%d", lines, sy)
 
 		if lines < sy {
 			if err := v.SetOrigin(0, 0); err != nil {
