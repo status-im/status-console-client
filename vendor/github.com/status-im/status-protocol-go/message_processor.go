@@ -3,6 +3,7 @@ package statusproto
 import (
 	"context"
 	"crypto/ecdsa"
+	"database/sql"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -17,6 +18,8 @@ import (
 	"github.com/status-im/status-protocol-go/encryption/multidevice"
 	transport "github.com/status-im/status-protocol-go/transport/whisper"
 	protocol "github.com/status-im/status-protocol-go/v1"
+	datasyncnode "github.com/vacp2p/mvds/node"
+	datasyncproto "github.com/vacp2p/mvds/protobuf"
 )
 
 // Whisper message properties.
@@ -36,6 +39,54 @@ type messageProcessor struct {
 	featureFlags featureFlags
 }
 
+func newMessageProcessor(
+	identity *ecdsa.PrivateKey,
+	database *sql.DB,
+	enc *encryption.Protocol,
+	transport *transport.WhisperServiceTransport,
+	logger *zap.Logger,
+	features featureFlags,
+) (*messageProcessor, error) {
+
+	dataSyncTransport := datasync.NewDataSyncNodeTransport()
+	dataSyncNode, err := datasyncnode.NewPersistentNode(
+		database,
+		dataSyncTransport,
+		datasyncpeer.PublicKeyToPeerID(identity.PublicKey),
+		datasyncnode.BATCH,
+		datasync.CalculateSendTime,
+		logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	ds := datasync.New(dataSyncNode, dataSyncTransport, features.datasync, logger)
+
+	p := &messageProcessor{
+		identity:     identity,
+		datasync:     ds,
+		protocol:     enc,
+		transport:    transport,
+		logger:       logger,
+		featureFlags: features,
+	}
+
+	// Initializing DataSync is required to encrypt and send messages.
+	// With DataSync enabled, messages are added to the DataSync
+	// but actual encrypt and send calls are postponed.
+	// sendDataSync is responsible for encrypting and sending postponed messages.
+	if features.datasync {
+		ds.Init(p.sendDataSync)
+		ds.Start(300 * time.Millisecond)
+	}
+
+	return p, nil
+}
+
+func (p *messageProcessor) Stop() {
+	p.datasync.Stop() // idempotent op
+}
+
 func (p *messageProcessor) SendPrivate(
 	ctx context.Context,
 	publicKey *ecdsa.PublicKey,
@@ -47,29 +98,58 @@ func (p *messageProcessor) SendPrivate(
 	logger.Debug("sending a private message", zap.Binary("public-key", crypto.FromECDSAPub(publicKey)))
 
 	message := protocol.CreatePrivateTextMessage(data, clock, chatID)
-
 	encodedMessage, err := p.encodeMessage(message)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to encode message")
 	}
 
-	wrappedMessage, err := p.tryWrapMessageV1(encodedMessage)
+	messageID, err := p.SendPrivateRaw(ctx, publicKey, encodedMessage)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to wrap message")
+		return nil, nil, err
 	}
+
+	return messageID, &message, nil
+}
+
+// SendPrivateRaw takes encoded data, encrypts it and sends through the wire.
+// DEPRECATED
+func (p *messageProcessor) SendPrivateRaw(
+	ctx context.Context,
+	publicKey *ecdsa.PublicKey,
+	data []byte,
+) ([]byte, error) {
+	p.logger.Debug(
+		"sending a private message",
+		zap.Binary("public-key", crypto.FromECDSAPub(publicKey)),
+		zap.String("site", "SendPrivateRaw"),
+	)
+
+	wrappedMessage, err := p.tryWrapMessageV1(data)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to wrap message")
+	}
+
+	messageID := protocol.MessageID(&p.identity.PublicKey, wrappedMessage)
 
 	if p.featureFlags.datasync {
-		if err := p.sendWithDataSync(publicKey, wrappedMessage); err != nil {
-			return nil, nil, errors.Wrap(err, "failed to send message with datasync")
+		if err := p.addToDataSync(publicKey, wrappedMessage); err != nil {
+			return nil, errors.Wrap(err, "failed to send message with datasync")
 		}
 	} else {
-		err = p.encryptAndSend(ctx, publicKey, wrappedMessage)
+		messageSpec, err := p.protocol.BuildDirectMessage(p.identity, publicKey, wrappedMessage)
 		if err != nil {
-			return nil, nil, err
+			return nil, errors.Wrap(err, "failed to encrypt message")
 		}
+
+		hash, newMessage, err := p.sendMessageSpec(ctx, publicKey, messageSpec)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to send a message spec")
+		}
+
+		p.transport.Track([][]byte{messageID}, hash, *newMessage)
 	}
 
-	return protocol.MessageID(&p.identity.PublicKey, wrappedMessage), &message, nil
+	return messageID, nil
 }
 
 func (p *messageProcessor) SendPublic(ctx context.Context, chatID string, data []byte, clock int64) ([]byte, error) {
@@ -109,44 +189,6 @@ func (p *messageProcessor) SendPublic(ctx context.Context, chatID string, data [
 	return messageID, nil
 }
 
-// SendPrivateRaw takes encoded data, encrypts it and sends through the wire.
-// DEPRECATED
-func (p *messageProcessor) SendPrivateRaw(
-	ctx context.Context,
-	publicKey *ecdsa.PublicKey,
-	data []byte,
-) ([]byte, error) {
-	p.logger.Debug(
-		"sending a private message",
-		zap.Binary("public-key", crypto.FromECDSAPub(publicKey)),
-		zap.String("site", "SendPrivateRaw"),
-	)
-
-	wrappedMessage, err := p.tryWrapMessageV1(data)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to wrap message")
-	}
-
-	messageSpec, err := p.protocol.BuildDirectMessage(p.identity, publicKey, wrappedMessage)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to encrypt message")
-	}
-
-	messageID := protocol.MessageID(&p.identity.PublicKey, wrappedMessage)
-
-	if p.featureFlags.datasync {
-		if err := p.sendWithDataSync(publicKey, wrappedMessage); err != nil {
-			return nil, errors.Wrap(err, "failed to send message with datasync")
-		}
-		return messageID, nil
-	}
-
-	hash, newMessage, err := p.sendMessageSpec(ctx, publicKey, messageSpec)
-	p.transport.Track([][]byte{messageID}, hash, *newMessage)
-
-	return messageID, err
-}
-
 // SendPublicRaw takes encoded data, encrypts it and sends through the wire.
 // DEPRECATED
 func (p *messageProcessor) SendPublicRaw(ctx context.Context, chatName string, data []byte) ([]byte, error) {
@@ -176,7 +218,7 @@ func (p *messageProcessor) SendPublicRaw(ctx context.Context, chatName string, d
 	return messageID, nil
 }
 
-func (p *messageProcessor) Process(message *whisper.ReceivedMessage, public bool) ([]*protocol.Message, error) {
+func (p *messageProcessor) Process(message *whisper.ReceivedMessage) ([]*protocol.Message, error) {
 	logger := p.logger.With(zap.String("site", "Process"))
 
 	var decodedMessages []*protocol.Message
@@ -196,7 +238,6 @@ func (p *messageProcessor) Process(message *whisper.ReceivedMessage, public bool
 		case protocol.Message:
 			m.ID = statusMessage.ID
 			m.SigPubKey = statusMessage.SigPubKey()
-			m.Public = public
 			decodedMessages = append(decodedMessages, &m)
 		case protocol.PairMessage:
 			fromOurDevice := isPubKeyEqual(statusMessage.SigPubKey(), &p.identity.PublicKey)
@@ -225,7 +266,8 @@ func (p *messageProcessor) Process(message *whisper.ReceivedMessage, public bool
 // handleMessages expects a whisper message as input, and it will go through
 // a series of transformations until the message is parsed into an application
 // layer message, or in case of Raw methods, the processing stops at the layer
-// before
+// before.
+// It returns an error only if the processing of required steps failed.
 func (p *messageProcessor) handleMessages(shhMessage *whisper.Message, applicationLayer bool) ([]*protocol.StatusMessage, error) {
 	logger := p.logger.With(zap.String("site", "handleMessages"))
 	hlogger := logger.With(zap.Binary("hash", shhMessage.Hash))
@@ -328,24 +370,7 @@ func (p *messageProcessor) tryWrapMessageV1(encodedMessage []byte) ([]byte, erro
 	return encodedMessage, nil
 }
 
-func (p *messageProcessor) encryptAndSend(ctx context.Context, publicKey *ecdsa.PublicKey, encodedMessage []byte) error {
-	messageID := protocol.MessageID(&p.identity.PublicKey, encodedMessage)
-	messageSpec, err := p.protocol.BuildDirectMessage(p.identity, publicKey, encodedMessage)
-	if err != nil {
-		return errors.Wrap(err, "failed to encrypt message")
-	}
-
-	hash, newMessage, err := p.sendMessageSpec(ctx, publicKey, messageSpec)
-	if err != nil {
-		return err
-	}
-
-	p.transport.Track([][]byte{messageID}, hash, *newMessage)
-
-	return nil
-}
-
-func (p *messageProcessor) sendWithDataSync(publicKey *ecdsa.PublicKey, message []byte) error {
+func (p *messageProcessor) addToDataSync(publicKey *ecdsa.PublicKey, message []byte) error {
 	groupID := datasync.ToOneToOneGroupID(&p.identity.PublicKey, publicKey)
 	peerID := datasyncpeer.PublicKeyToPeerID(*publicKey)
 	exist, err := p.datasync.IsPeerInGroup(groupID, peerID)
@@ -361,6 +386,28 @@ func (p *messageProcessor) sendWithDataSync(publicKey *ecdsa.PublicKey, message 
 	if err != nil {
 		return errors.Wrap(err, "failed to append message to datasync")
 	}
+
+	return nil
+}
+
+// sendDataSync sends a message scheduled by the data sync layer.
+func (p *messageProcessor) sendDataSync(ctx context.Context, publicKey *ecdsa.PublicKey, encodedMessage []byte, payload *datasyncproto.Payload) error {
+	messageIDs := make([][]byte, 0, len(payload.Messages))
+	for _, payload := range payload.Messages {
+		messageIDs = append(messageIDs, protocol.MessageID(&p.identity.PublicKey, payload.Body))
+	}
+
+	messageSpec, err := p.protocol.BuildDirectMessage(p.identity, publicKey, encodedMessage)
+	if err != nil {
+		return errors.Wrap(err, "failed to encrypt message")
+	}
+
+	hash, newMessage, err := p.sendMessageSpec(ctx, publicKey, messageSpec)
+	if err != nil {
+		return err
+	}
+
+	p.transport.Track(messageIDs, hash, *newMessage)
 
 	return nil
 }

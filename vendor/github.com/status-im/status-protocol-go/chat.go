@@ -47,6 +47,7 @@ type Chat struct {
 	UnviewedMessagesCount  uint   `json:"unviewedMessagesCount"`
 	LastMessageContentType string `json:"lastMessageContentType"`
 	LastMessageContent     string `json:"lastMessageContent"`
+	LastMessageTimestamp   int64  `json:"lastMessageTimestamp"`
 
 	// Group chat fields
 	// Members are the members who have been invited to the group chat
@@ -110,4 +111,13 @@ func CreatePublicChat(name string) Chat {
 		Active:   true,
 		ChatType: ChatTypePublic,
 	}
+}
+
+func findChatByID(chatID string, chats []*Chat) *Chat {
+	for _, c := range chats {
+		if c.ID == chatID {
+			return c
+		}
+	}
+	return nil
 }

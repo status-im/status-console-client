@@ -2,6 +2,7 @@ package statusproto
 
 import (
 	"crypto/ecdsa"
+	"log"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -93,12 +94,17 @@ func (m *StatusMessage) HandleEncryption(myKey *ecdsa.PrivateKey, senderKey *ecd
 	return nil
 }
 
+// HandleDatasync processes StatusMessage through data sync layer.
+// This is optional and DataSync might be nil. In such a case,
+// only one payload will be returned equal to DecryptedPayload.
 func (m *StatusMessage) HandleDatasync(datasync *datasync.DataSync) ([]*StatusMessage, error) {
 	var statusMessages []*StatusMessage
+
 	payloads := datasync.Handle(
 		m.SigPubKey(),
 		m.DecryptedPayload,
 	)
+
 	for _, payload := range payloads {
 		message, err := m.Clone()
 		if err != nil {
@@ -134,6 +140,7 @@ func (m *StatusMessage) HandleApplicationMetadata() error {
 func (m *StatusMessage) HandleApplication() error {
 	value, err := decodeTransitMessage(m.DecryptedPayload)
 	if err != nil {
+		log.Printf("[message::DecodeMessage] could not decode message: %#x", m.Hash)
 		return err
 	}
 	m.ParsedMessage = value

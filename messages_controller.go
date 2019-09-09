@@ -186,7 +186,7 @@ func isRepaintNeeded(latest, messages []*protocol.Message) bool {
 func chatIDForMessage(myPublicKey *ecdsa.PublicKey, m *protocol.Message) string {
 	var chatID string
 
-	if m.Public {
+	if m.ContentT == protocol.MessageTypePublicGroup {
 		// Public messages use the same chat ID.
 		chatID = m.Content.ChatID
 	} else if isPubKeyEqual(m.SigPubKey, myPublicKey) {
@@ -214,9 +214,6 @@ func chatForMessage(myPublicKey *ecdsa.PublicKey, m *protocol.Message, chats []*
 }
 
 func newChatForMessage(m *protocol.Message) (chat status.Chat, ok bool) {
-	if m.Public {
-		return
-	}
 	return status.CreateOneToOneChat("", m.SigPubKey), true
 }
 
