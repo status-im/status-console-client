@@ -234,9 +234,3 @@ func formatMessageLine(id *ecdsa.PublicKey, hash []byte, clock int64, t time.Tim
 		strings.TrimSpace(text),
 	)
 }
-
-// isPubKeyEqual checks that two public keys are equal
-func isPubKeyEqual(a, b *ecdsa.PublicKey) bool {
-	// the curve is always the same, just compare the points
-	return a.X.Cmp(b.X) == 0 && a.Y.Cmp(b.Y) == 0
-}
