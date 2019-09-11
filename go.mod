@@ -37,7 +37,7 @@ require (
 	github.com/status-im/migrate/v4 v4.3.1-status.0.20190822050738-a9d340ec8fb7 // indirect
 	github.com/status-im/status-go v0.30.1-beta.2.0.20190829063346-b8ea79a3f005
 	github.com/status-im/status-nim v0.0.0-20190724023117-a5693e6e4820
-	github.com/status-im/status-protocol-go v0.2.3-0.20190911111902-9c5256e04228
+	github.com/status-im/status-protocol-go v0.2.3-0.20190911150757-d1eda25fd09d
 	github.com/stretchr/objx v0.2.0 // indirect
 	go.opencensus.io v0.22.0 // indirect
 	go.uber.org/zap v1.10.0

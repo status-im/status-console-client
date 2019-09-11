@@ -542,8 +542,8 @@ github.com/status-im/status-go v0.30.1-beta.2.0.20190829063346-b8ea79a3f005/go.m
 github.com/status-im/status-nim v0.0.0-20190724023117-a5693e6e4820 h1:vcKYLWz2hFyYfsE5j2il+c3tellhOrkaGREaF6OCof4=
 github.com/status-im/status-nim v0.0.0-20190724023117-a5693e6e4820/go.mod h1:q3TkDSDrrHpM9QAH2jS0WOKrw0UzhZzCNO/zKd4fBrk=
 github.com/status-im/status-protocol-go v0.0.0-20190701094942-822d18916e417b768a13f85601a7b10e02236655/go.mod h1:zEvtd2lNRzsqo4RCLU6WlK0EKFTGEoAAuYfj+lZjHNQ=
-github.com/status-im/status-protocol-go v0.2.3-0.20190911111902-9c5256e04228 h1:q4o/0wXzKo7qwQBbEJjE4CNcmSDSazDQknuwYhjt8GE=
-github.com/status-im/status-protocol-go v0.2.3-0.20190911111902-9c5256e04228/go.mod h1:Y+Ar4FVQlwK0XqIPHtZqXJMkGEuj/yhcU0+RDiblDJA=
+github.com/status-im/status-protocol-go v0.2.3-0.20190911150757-d1eda25fd09d h1:Lk4DSybRbfnOFAUjqpzHEmjhLV7Sgb5uwW9Z9c2Mlc0=
+github.com/status-im/status-protocol-go v0.2.3-0.20190911150757-d1eda25fd09d/go.mod h1:Y+Ar4FVQlwK0XqIPHtZqXJMkGEuj/yhcU0+RDiblDJA=
 github.com/status-im/whisper v1.4.14 h1:9VHqx4+PUYfhDnYYtDxHkg/3cfVvkHjPNciY4LO83yc=
 github.com/status-im/whisper v1.4.14/go.mod h1:WS6z39YJQ8WJa9s+DmTuEM/s2nVF6Iz3B1SZYw5cYf0=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

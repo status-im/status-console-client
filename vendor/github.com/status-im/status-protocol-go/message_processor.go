@@ -9,17 +9,16 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
-	whisper "github.com/status-im/whisper/whisperv6"
-	"go.uber.org/zap"
-
 	"github.com/status-im/status-protocol-go/datasync"
 	datasyncpeer "github.com/status-im/status-protocol-go/datasync/peer"
 	"github.com/status-im/status-protocol-go/encryption"
 	"github.com/status-im/status-protocol-go/encryption/multidevice"
 	transport "github.com/status-im/status-protocol-go/transport/whisper"
 	protocol "github.com/status-im/status-protocol-go/v1"
+	whisper "github.com/status-im/whisper/whisperv6"
 	datasyncnode "github.com/vacp2p/mvds/node"
 	datasyncproto "github.com/vacp2p/mvds/protobuf"
+	"go.uber.org/zap"
 )
 
 // Whisper message properties.
@@ -47,7 +46,6 @@ func newMessageProcessor(
 	logger *zap.Logger,
 	features featureFlags,
 ) (*messageProcessor, error) {
-
 	dataSyncTransport := datasync.NewDataSyncNodeTransport()
 	dataSyncNode, err := datasyncnode.NewPersistentNode(
 		database,
@@ -94,8 +92,10 @@ func (p *messageProcessor) SendPrivate(
 	data []byte,
 	clock int64,
 ) ([]byte, *protocol.Message, error) {
-	logger := p.logger.With(zap.String("site", "SendPrivate"))
-	logger.Debug("sending a private message", zap.Binary("public-key", crypto.FromECDSAPub(publicKey)))
+	p.logger.Debug(
+		"sending a private message",
+		zap.Binary("public-key", crypto.FromECDSAPub(publicKey)),
+	)
 
 	message := protocol.CreatePrivateTextMessage(data, clock, chatID)
 	encodedMessage, err := p.encodeMessage(message)
@@ -103,16 +103,14 @@ func (p *messageProcessor) SendPrivate(
 		return nil, nil, errors.Wrap(err, "failed to encode message")
 	}
 
-	messageID, err := p.SendPrivateRaw(ctx, publicKey, encodedMessage)
+	messageID, err := p.sendPrivate(ctx, publicKey, encodedMessage)
 	if err != nil {
 		return nil, nil, err
 	}
-
 	return messageID, &message, nil
 }
 
 // SendPrivateRaw takes encoded data, encrypts it and sends through the wire.
-// DEPRECATED
 func (p *messageProcessor) SendPrivateRaw(
 	ctx context.Context,
 	publicKey *ecdsa.PublicKey,
@@ -123,7 +121,15 @@ func (p *messageProcessor) SendPrivateRaw(
 		zap.Binary("public-key", crypto.FromECDSAPub(publicKey)),
 		zap.String("site", "SendPrivateRaw"),
 	)
+	return p.sendPrivate(ctx, publicKey, data)
+}
 
+// sendPrivate sends data to the recipient identifying with a given public key.
+func (p *messageProcessor) sendPrivate(
+	ctx context.Context,
+	publicKey *ecdsa.PublicKey,
+	data []byte,
+) ([]byte, error) {
 	wrappedMessage, err := p.tryWrapMessageV1(data)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to wrap message")
@@ -135,6 +141,9 @@ func (p *messageProcessor) SendPrivateRaw(
 		if err := p.addToDataSync(publicKey, wrappedMessage); err != nil {
 			return nil, errors.Wrap(err, "failed to send message with datasync")
 		}
+
+		// No need to call transport tracking.
+		// It is done in a data sync dispatch step.
 	} else {
 		messageSpec, err := p.protocol.BuildDirectMessage(p.identity, publicKey, wrappedMessage)
 		if err != nil {
@@ -182,6 +191,7 @@ func (p *messageProcessor) SendPublic(ctx context.Context, chatID string, data [
 	if err != nil {
 		return nil, err
 	}
+
 	messageID := protocol.MessageID(&p.identity.PublicKey, wrappedMessage)
 
 	p.transport.Track([][]byte{messageID}, hash, newMessage)
@@ -190,7 +200,6 @@ func (p *messageProcessor) SendPublic(ctx context.Context, chatID string, data [
 }
 
 // SendPublicRaw takes encoded data, encrypts it and sends through the wire.
-// DEPRECATED
 func (p *messageProcessor) SendPublicRaw(ctx context.Context, chatName string, data []byte) ([]byte, error) {
 	var newMessage whisper.NewMessage
 
@@ -218,6 +227,9 @@ func (p *messageProcessor) SendPublicRaw(ctx context.Context, chatName string, d
 	return messageID, nil
 }
 
+// Process processes received Whisper messages through all the layers
+// and returns decoded user messages.
+// It also handled all non-user messages like PairMessage.
 func (p *messageProcessor) Process(message *whisper.ReceivedMessage) ([]*protocol.Message, error) {
 	logger := p.logger.With(zap.String("site", "Process"))
 
@@ -246,14 +258,8 @@ func (p *messageProcessor) Process(message *whisper.ReceivedMessage) ([]*protoco
 				break
 			}
 
-			metadata := &multidevice.InstallationMetadata{
-				Name:       m.Name,
-				FCMToken:   m.FCMToken,
-				DeviceType: m.DeviceType,
-			}
-			err := p.protocol.SetInstallationMetadata(&p.identity.PublicKey, m.InstallationID, metadata)
-			if err != nil {
-				return nil, err
+			if err := p.processPairMessage(m); err != nil {
+				hlogger.Error("failed to process PairMessage", zap.Error(err))
 			}
 		default:
 			hlogger.Error("skipped a public message of unsupported type")
@@ -261,6 +267,15 @@ func (p *messageProcessor) Process(message *whisper.ReceivedMessage) ([]*protoco
 	}
 
 	return decodedMessages, nil
+}
+
+func (p *messageProcessor) processPairMessage(m protocol.PairMessage) error {
+	metadata := &multidevice.InstallationMetadata{
+		Name:       m.Name,
+		FCMToken:   m.FCMToken,
+		DeviceType: m.DeviceType,
+	}
+	return p.protocol.SetInstallationMetadata(&p.identity.PublicKey, m.InstallationID, metadata)
 }
 
 // handleMessages expects a whisper message as input, and it will go through
@@ -391,6 +406,7 @@ func (p *messageProcessor) addToDataSync(publicKey *ecdsa.PublicKey, message []b
 }
 
 // sendDataSync sends a message scheduled by the data sync layer.
+// Data Sync layer calls this method "dispatch" function.
 func (p *messageProcessor) sendDataSync(ctx context.Context, publicKey *ecdsa.PublicKey, encodedMessage []byte, payload *datasyncproto.Payload) error {
 	messageIDs := make([][]byte, 0, len(payload.Messages))
 	for _, payload := range payload.Messages {
@@ -412,6 +428,7 @@ func (p *messageProcessor) sendDataSync(ctx context.Context, publicKey *ecdsa.Pu
 	return nil
 }
 
+// sendMessageSpec analyses the spec properties and selects a proper transport method.
 func (p *messageProcessor) sendMessageSpec(ctx context.Context, publicKey *ecdsa.PublicKey, messageSpec *encryption.ProtocolMessageSpec) ([]byte, *whisper.NewMessage, error) {
 	newMessage, err := messageSpecToWhisper(messageSpec)
 	if err != nil {
