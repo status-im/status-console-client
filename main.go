@@ -327,11 +327,10 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger, logger 
 		privateKey,
 		messenger,
 		logger,
-		func(chat status.Chat) error {
-			if err := messenger.SaveChat(chat); err != nil {
-				return err
+		func() {
+			if err := chatsVC.LoadAndRefresh(); err != nil {
+				logger.Error("failed to load and refresh chats", zap.Error(err))
 			}
-			return chatsVC.LoadAndRefresh()
 		},
 		func(err error) {
 			_ = notifications.Error("Chat error", fmt.Sprintf("%v", err))

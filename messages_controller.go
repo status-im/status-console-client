@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
-
 	"go.uber.org/zap"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -32,7 +30,7 @@ type MessagesViewController struct {
 
 	activeChat *status.Chat
 	onError    func(error)
-	onNewChat  func(chat status.Chat) error
+	onMessages func()
 	changeChat chan *status.Chat
 
 	cancel chan struct{} // cancel the current chat loop
@@ -45,11 +43,11 @@ func NewMessagesViewController(
 	id Identity,
 	m *status.Messenger,
 	logger *zap.Logger,
-	onNewChat func(chat status.Chat) error,
+	onMessages func(),
 	onError func(error),
 ) *MessagesViewController {
-	if onNewChat == nil {
-		onNewChat = func(chat status.Chat) error { return nil }
+	if onMessages == nil {
+		onMessages = func() {}
 	}
 	if onError == nil {
 		onError = func(error) {}
@@ -60,7 +58,7 @@ func NewMessagesViewController(
 		identity:       id,
 		messenger:      m,
 		logger:         logger.With(zap.Namespace("MessagesViewController")),
-		onNewChat:      onNewChat,
+		onMessages:     onMessages,
 		onError:        onError,
 		changeChat:     make(chan *status.Chat, 1),
 	}
@@ -78,6 +76,7 @@ func (c *MessagesViewController) readMessagesLoop() {
 	defer close(c.done)
 
 	// TODO: It should be a round buffer instead.
+	// It is a map with chatID as a key and a list of messages.
 	store := make(map[string][]*protocol.Message)
 
 	t := time.NewTicker(time.Second)
@@ -96,29 +95,30 @@ func (c *MessagesViewController) readMessagesLoop() {
 
 			c.logger.Debug("received latest messages", zap.Int("count", len(allLatest)))
 
-			chats, err := c.messenger.Chats()
-			if err != nil {
-				c.logger.Error("failed to get chats", zap.Error(err))
-				continue
+			for _, m := range allLatest {
+				store[m.ChatID] = append(store[m.ChatID], m)
 			}
 
-			messagesPerChat := c.splitMessagesPerChat(allLatest, chats)
-			for chatID, messages := range messagesPerChat {
-				store[chatID] = append(store[chatID], messages...)
-			}
+			c.onMessages()
 
 			if c.activeChat == nil {
 				break
 			}
 
-			latestForActive := messagesPerChat[c.activeChat.ID]
+			var latestForActive []*protocol.Message
+			for _, m := range allLatest {
+				if m.ChatID == c.activeChat.ID {
+					latestForActive = append(latestForActive, m)
+				}
+			}
+
 			if len(latestForActive) == 0 {
 				break
 			}
 
 			var messagesToDraw []*protocol.Message
 
-			repaint := isRepaintNeeded(latestForActive, latestForActive)
+			repaint := isRepaintNeeded(latestForActive, store[c.activeChat.ID])
 			if repaint {
 				messagesToDraw = store[c.activeChat.ID]
 			} else {
@@ -135,33 +135,6 @@ func (c *MessagesViewController) readMessagesLoop() {
 			return
 		}
 	}
-}
-
-func (c *MessagesViewController) splitMessagesPerChat(latest []*protocol.Message, chats []*status.Chat) map[string][]*protocol.Message {
-	result := make(map[string][]*protocol.Message)
-
-	for _, message := range latest {
-		chat := chatForMessage(&c.identity.PublicKey, message, chats)
-		if chat == nil {
-			c.logger.Info("no chat found for the message; create a new one")
-			aChat, ok := newChatForMessage(message)
-			if !ok {
-				continue
-			}
-
-			c.logger.Info("new chat for message", zap.String("chatID", aChat.ID))
-
-			if err := c.onNewChat(aChat); err != nil {
-				c.logger.Error("failed to propagate new chat", zap.Error(err))
-				continue
-			}
-			chat = &aChat
-		}
-
-		result[chat.ID] = append(result[chat.ID], message)
-	}
-
-	return result
 }
 
 func sortMessages(messages []*protocol.Message) {
@@ -181,40 +154,6 @@ func isRepaintNeeded(latest, messages []*protocol.Message) bool {
 		}
 	}
 	return false
-}
-
-func chatIDForMessage(myPublicKey *ecdsa.PublicKey, m *protocol.Message) string {
-	var chatID string
-
-	if m.ContentT == protocol.MessageTypePublicGroup {
-		// Public messages use the same chat ID.
-		chatID = m.Content.ChatID
-	} else if isPubKeyEqual(m.SigPubKey, myPublicKey) {
-		// It's our message so we are fine with the chat ID from the message.
-		chatID = m.Content.ChatID
-	} else {
-		// It's a one-to-one chat so calculate chatID from the signature.
-		// TODO: support group messages.
-		chatID = hexutil.Encode(crypto.FromECDSAPub(m.SigPubKey))
-	}
-
-	return chatID
-}
-
-func chatForMessage(myPublicKey *ecdsa.PublicKey, m *protocol.Message, chats []*status.Chat) *status.Chat {
-	chatID := chatIDForMessage(myPublicKey, m)
-
-	for _, chat := range chats {
-		if chat.ID == chatID {
-			return chat
-		}
-	}
-
-	return nil
-}
-
-func newChatForMessage(m *protocol.Message) (chat status.Chat, ok bool) {
-	return status.CreateOneToOneChat("", m.SigPubKey), true
 }
 
 // ActiveChat returns the active chat, if any

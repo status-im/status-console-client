@@ -312,7 +312,7 @@ github.com/spaolacci/murmur3
 github.com/status-im/doubleratchet
 # github.com/status-im/go-multiaddr-ethv4 v1.2.0
 github.com/status-im/go-multiaddr-ethv4
-# github.com/status-im/migrate/v4 v4.3.1-status
+# github.com/status-im/migrate/v4 v4.3.1-status.0.20190822050738-a9d340ec8fb7
 github.com/status-im/migrate/v4
 github.com/status-im/migrate/v4/database/postgres
 github.com/status-im/migrate/v4/database/sqlcipher
@@ -354,7 +354,7 @@ github.com/status-im/status-go/static
 github.com/status-im/status-go/timesource
 # github.com/status-im/status-nim v0.0.0-20190724023117-a5693e6e4820
 github.com/status-im/status-nim
-# github.com/status-im/status-protocol-go v0.2.3-0.20190906191751-e00c8417eb81
+# github.com/status-im/status-protocol-go v0.2.3-0.20190911111902-9c5256e04228
 github.com/status-im/status-protocol-go
 github.com/status-im/status-protocol-go/applicationmetadata
 github.com/status-im/status-protocol-go/crypto
