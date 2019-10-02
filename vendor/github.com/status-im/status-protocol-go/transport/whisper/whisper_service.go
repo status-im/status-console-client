@@ -96,7 +96,7 @@ func NewWhisperServiceTransport(
 
 	var envelopesMonitor *EnvelopesMonitor
 	if envelopesMonitorConfig != nil {
-		envelopesMonitor = NewEnvelopesMonitor(shh, envelopesMonitorConfig)
+		envelopesMonitor = NewEnvelopesMonitor(shh, *envelopesMonitorConfig)
 		envelopesMonitor.Start()
 	}
 

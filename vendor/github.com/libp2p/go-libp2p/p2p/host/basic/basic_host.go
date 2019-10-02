@@ -100,10 +100,6 @@ type HostOpts struct {
 	// If below 0, timeouts on streams will be deactivated.
 	NegotiationTimeout time.Duration
 
-	// IdentifyService holds an implementation of the /ipfs/id/ protocol.
-	// If omitted, a new *identify.IDService will be used.
-	IdentifyService *identify.IDService
-
 	// AddrsFactory holds a function which can be used to override or filter the result of Addrs.
 	// If omitted, there's no override or filtering, and the results of Addrs and AllAddrs are the same.
 	AddrsFactory AddrsFactory
@@ -121,6 +117,9 @@ type HostOpts struct {
 
 	// EnablePing indicates whether to instantiate the ping service
 	EnablePing bool
+
+	// UserAgent sets the user-agent for the host. Defaults to ClientVersion.
+	UserAgent string
 }
 
 // NewHost constructs a new *BasicHost and activates it by attaching its stream and connection handlers to the given inet.Network.
@@ -146,6 +145,7 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		if h.cmgr != nil {
 			h.cmgr.Close()
 		}
+		_ = h.emitters.evtLocalProtocolsUpdated.Close()
 		return h.Network().Close()
 	})
 
@@ -153,12 +153,12 @@ func NewHost(ctx context.Context, net network.Network, opts *HostOpts) (*BasicHo
 		h.mux = opts.MultistreamMuxer
 	}
 
-	if opts.IdentifyService != nil {
-		h.ids = opts.IdentifyService
-	} else {
-		// we can't set this as a default above because it depends on the *BasicHost.
-		h.ids = identify.NewIDService(goprocessctx.WithProcessClosing(ctx, h.proc), h)
-	}
+	// we can't set this as a default above because it depends on the *BasicHost.
+	h.ids = identify.NewIDService(
+		goprocessctx.WithProcessClosing(ctx, h.proc),
+		h,
+		identify.UserAgent(opts.UserAgent),
+	)
 
 	if uint64(opts.NegotiationTimeout) != 0 {
 		h.negtimeout = opts.NegotiationTimeout
@@ -212,7 +212,7 @@ func New(net network.Network, opts ...interface{}) *BasicHost {
 				hostopts.NATManager = NewNATManager
 			}
 		case AddrsFactory:
-			hostopts.AddrsFactory = AddrsFactory(o)
+			hostopts.AddrsFactory = o
 		case connmgr.ConnManager:
 			hostopts.ConnManager = o
 		case *madns.Resolver:
@@ -257,7 +257,7 @@ func (h *BasicHost) newStreamHandler(s network.Stream) {
 	}
 
 	lzc, protoID, handle, err := h.Mux().NegotiateLazy(s)
-	took := time.Now().Sub(before)
+	took := time.Since(before)
 	if err != nil {
 		if err == io.EOF {
 			logf := log.Debugf
@@ -746,7 +746,13 @@ func (h *BasicHost) AllAddrs() []ma.Multiaddr {
 
 // Close shuts down the Host's services (network, etc).
 func (h *BasicHost) Close() error {
-	_ = h.emitters.evtLocalProtocolsUpdated.Close()
+	// You're thinking of adding some teardown logic here, right? Well
+	// don't! Add any process teardown logic to the teardown function in the
+	// constructor.
+	//
+	// This:
+	// 1. May be called multiple times.
+	// 2. May _never_ be called if the host is stopped by the context.
 	return h.proc.Close()
 }
 

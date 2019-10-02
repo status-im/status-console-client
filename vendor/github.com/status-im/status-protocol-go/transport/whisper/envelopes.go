@@ -40,7 +40,7 @@ type EnvelopeEventsHandler interface {
 }
 
 // NewEnvelopesMonitor returns a pointer to an instance of the EnvelopesMonitor.
-func NewEnvelopesMonitor(w *whisper.Whisper, config *EnvelopesMonitorConfig) *EnvelopesMonitor {
+func NewEnvelopesMonitor(w *whisper.Whisper, config EnvelopesMonitorConfig) *EnvelopesMonitor {
 	logger := config.Logger
 
 	if logger == nil {

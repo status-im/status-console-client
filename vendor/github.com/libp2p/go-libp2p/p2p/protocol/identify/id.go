@@ -2,6 +2,8 @@ package identify
 
 import (
 	"context"
+	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -31,9 +33,27 @@ const ID = "/ipfs/id/1.0.0"
 
 // LibP2PVersion holds the current protocol version for a client running this code
 // TODO(jbenet): fix the versioning mess.
+// XXX: Don't change this till 2020. You'll break all go-ipfs versions prior to
+// 0.4.17 which asserted an exact version match.
 const LibP2PVersion = "ipfs/0.1.0"
 
-var ClientVersion = "go-libp2p/3.3.4"
+// ClientVersion is the default user agent.
+//
+// Deprecated: Set this with the UserAgent option.
+var ClientVersion = "github.com/libp2p/go-libp2p"
+
+func init() {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return
+	}
+	version := bi.Main.Version
+	if version == "(devel)" {
+		ClientVersion = bi.Main.Path
+	} else {
+		ClientVersion = fmt.Sprintf("%s@%s", bi.Main.Path, bi.Main.Version)
+	}
+}
 
 // transientTTL is a short ttl for invalidated previously connected addrs
 const transientTTL = 10 * time.Second
@@ -47,7 +67,8 @@ const transientTTL = 10 * time.Second
 //  * Our IPFS Agent Version
 //  * Our public Listen Addresses
 type IDService struct {
-	Host host.Host
+	Host      host.Host
+	UserAgent string
 
 	ctx context.Context
 
@@ -70,9 +91,21 @@ type IDService struct {
 
 // NewIDService constructs a new *IDService and activates it by
 // attaching its stream handler to the given host.Host.
-func NewIDService(ctx context.Context, h host.Host) *IDService {
+func NewIDService(ctx context.Context, h host.Host, opts ...Option) *IDService {
+	var cfg config
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	userAgent := ClientVersion
+	if cfg.userAgent != "" {
+		userAgent = cfg.userAgent
+	}
+
 	s := &IDService{
-		Host:          h,
+		Host:      h,
+		UserAgent: userAgent,
+
 		ctx:           ctx,
 		currid:        make(map[network.Conn]chan struct{}),
 		observedAddrs: NewObservedAddrSet(ctx),
@@ -268,7 +301,7 @@ func (ids *IDService) populateMessage(mes *pb.Identify, c network.Conn) {
 	protos := ids.Host.Mux().Protocols()
 	mes.Protocols = make([]string, len(protos))
 	for i, p := range protos {
-		mes.Protocols[i] = string(p)
+		mes.Protocols[i] = p
 	}
 
 	// observed address so other side is informed of their
@@ -306,7 +339,7 @@ func (ids *IDService) populateMessage(mes *pb.Identify, c network.Conn) {
 
 	// set protocol versions
 	pv := LibP2PVersion
-	av := ClientVersion
+	av := ids.UserAgent
 	mes.ProtocolVersion = &pv
 	mes.AgentVersion = &av
 }
@@ -475,7 +508,7 @@ func HasConsistentTransport(a ma.Multiaddr, green []ma.Multiaddr) bool {
 // IdentifyWait returns a channel which will be closed once
 // "ProtocolIdentify" (handshake3) finishes on given conn.
 // This happens async so the connection can start to be used
-// even if handshake3 knowledge is not necesary.
+// even if handshake3 knowledge is not necessary.
 // Users **MUST** call IdentifyWait _after_ IdentifyConn
 func (ids *IDService) IdentifyWait(c network.Conn) <-chan struct{} {
 	ids.currmu.Lock()

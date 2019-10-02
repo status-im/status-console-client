@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"database/sql"
+	"encoding/hex"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
-
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/pkg/errors"
 	whisper "github.com/status-im/whisper/whisperv6"
@@ -16,6 +18,8 @@ import (
 	"github.com/status-im/status-protocol-go/encryption"
 	"github.com/status-im/status-protocol-go/encryption/multidevice"
 	"github.com/status-im/status-protocol-go/encryption/sharedsecret"
+	"github.com/status-im/status-protocol-go/identity/alias"
+	"github.com/status-im/status-protocol-go/identity/identicon"
 	"github.com/status-im/status-protocol-go/sqlite"
 	transport "github.com/status-im/status-protocol-go/transport/whisper"
 	protocol "github.com/status-im/status-protocol-go/v1"
@@ -24,6 +28,8 @@ import (
 var (
 	ErrChatIDEmpty    = errors.New("chat ID is empty")
 	ErrNotImplemented = errors.New("not implemented")
+
+	errChatNotFound = errors.New("chat not found")
 )
 
 // Messenger is a entity managing chats and messages.
@@ -487,10 +493,24 @@ func (m *Messenger) chatByID(id string) (*Chat, error) {
 			return c, nil
 		}
 	}
-	return nil, errors.New("chat not found")
+	return nil, errChatNotFound
 }
 
 func (m *Messenger) SaveContact(contact Contact) error {
+	identicon, err := identicon.GenerateBase64(contact.ID)
+	if err != nil {
+		return err
+	}
+
+	contact.Identicon = identicon
+
+	name, err := alias.GenerateFromPublicKeyString(contact.ID)
+	if err != nil {
+		return err
+	}
+
+	contact.Alias = name
+
 	return m.persistence.SaveContact(contact, nil)
 }
 
@@ -658,11 +678,50 @@ func (m *Messenger) RetrieveRawAll() (map[transport.Filter][]*protocol.StatusMes
 				logger.Info("failed to decode messages", zap.Error(err))
 				continue
 			}
+
 			result[chat] = append(result[chat], statusMessages...)
 		}
 	}
 
+	err = m.saveContacts(result)
+	if err != nil {
+		return nil, err
+	}
+
 	return result, nil
+}
+
+func (m *Messenger) saveContacts(messages map[transport.Filter][]*protocol.StatusMessage) error {
+	allContactsMap := make(map[string]bool)
+	var allContacts []Contact
+	for _, chatMessages := range messages {
+		for _, message := range chatMessages {
+			publicKey := message.SigPubKey()
+			address := strings.ToLower(crypto.PubkeyToAddress(*publicKey).Hex())
+
+			if _, ok := allContactsMap[address]; ok {
+				continue
+			}
+			id := fmt.Sprintf("0x%s", hex.EncodeToString(crypto.FromECDSAPub(publicKey)))
+
+			identicon, err := identicon.GenerateBase64(id)
+			if err != nil {
+				continue
+			}
+
+			contact := Contact{
+				ID:        id,
+				Address:   address[2:],
+				Alias:     alias.GenerateFromPublicKey(message.SigPubKey()),
+				Identicon: identicon,
+			}
+
+			allContactsMap[address] = true
+			allContacts = append(allContacts, contact)
+
+		}
+	}
+	return m.persistence.SetContactsGeneratedData(allContacts)
 }
 
 // DEPRECATED
@@ -753,7 +812,7 @@ func newPostProcessor(m *Messenger, config postProcessorConfig) *postProcessor {
 func (p *postProcessor) Run(messages []*protocol.Message) ([]*protocol.Message, error) {
 	var err error
 
-	p.logger.Debug("running post processor")
+	p.logger.Debug("running post processor", zap.Int("messages", len(messages)))
 
 	var fns []func([]*protocol.Message) ([]*protocol.Message, error)
 
@@ -815,10 +874,16 @@ func (p *postProcessor) matchMessage(message *protocol.Message, chats []*Chat) (
 		return chat, nil
 	case message.MessageT == protocol.MessageTypePrivate && isPubKeyEqual(message.SigPubKey, p.myPublicKey):
 		// It's a private message coming from us so we rely on Message.Content.ChatID.
+		// If chat does not exist, it should be created to support multidevice synchronization.
 		chatID := message.Content.ChatID
 		chat := findChatByID(chatID, chats)
 		if chat == nil {
-			return nil, errors.New("received a message from myself for non-existing chat")
+			// TODO: this should be a three-word name used in the mobile client
+			newChat := CreateOneToOneChat(chatID[:8], message.SigPubKey)
+			if err := p.persistence.SaveChat(newChat); err != nil {
+				return nil, errors.Wrap(err, "failed to save newly created chat")
+			}
+			chat = &newChat
 		}
 		return chat, nil
 	case message.MessageT == protocol.MessageTypePrivate:
@@ -827,6 +892,7 @@ func (p *postProcessor) matchMessage(message *protocol.Message, chats []*Chat) (
 		chatID := hexutil.Encode(crypto.FromECDSAPub(message.SigPubKey))
 		chat := findChatByID(chatID, chats)
 		if chat == nil {
+			// TODO: this should be a three-word name used in the mobile client
 			newChat := CreateOneToOneChat(chatID[:8], message.SigPubKey)
 			if err := p.persistence.SaveChat(newChat); err != nil {
 				return nil, errors.Wrap(err, "failed to save newly created chat")
@@ -849,4 +915,14 @@ func (p *postProcessor) matchMessage(message *protocol.Message, chats []*Chat) (
 	default:
 		return nil, errors.New("can not match a chat because there is no valid case")
 	}
+}
+
+// Identicon returns an identicon based on the input string
+func Identicon(id string) (string, error) {
+	return identicon.GenerateBase64(id)
+}
+
+// GenerateAlias name returns the generated name given a public key hex encoded prefixed with 0x
+func GenerateAlias(id string) (string, error) {
+	return alias.GenerateFromPublicKeyString(id)
 }

@@ -5,17 +5,13 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/google/uuid"
 )
-
-type ChatPagination struct {
-	From uint
-	To   uint
-}
 
 type ChatType int
 
 const (
-	ChatTypeOneToOne = iota + 1
+	ChatTypeOneToOne ChatType = iota + 1
 	ChatTypePublic
 	ChatTypePrivateGroupChat
 )
@@ -94,9 +90,13 @@ func (c ChatMember) PublicKey() (*ecdsa.PublicKey, error) {
 	return crypto.UnmarshalPubkey(b)
 }
 
+func oneToOneChatID(publicKey *ecdsa.PublicKey) string {
+	return hexutil.Encode(crypto.FromECDSAPub(publicKey))
+}
+
 func CreateOneToOneChat(name string, publicKey *ecdsa.PublicKey) Chat {
 	return Chat{
-		ID:        hexutil.Encode(crypto.FromECDSAPub(publicKey)),
+		ID:        oneToOneChatID(publicKey),
 		Name:      name,
 		Active:    true,
 		ChatType:  ChatTypeOneToOne,
@@ -110,6 +110,19 @@ func CreatePublicChat(name string) Chat {
 		Name:     name,
 		Active:   true,
 		ChatType: ChatTypePublic,
+	}
+}
+
+func groupChatID(creator *ecdsa.PublicKey) string {
+	return uuid.New().String() + hexutil.Encode(crypto.FromECDSAPub(creator))
+}
+
+func CreateGroupChat(name string, creator *ecdsa.PublicKey) Chat {
+	return Chat{
+		ID:       groupChatID(creator),
+		Name:     name,
+		Active:   true,
+		ChatType: ChatTypePrivateGroupChat,
 	}
 }
 

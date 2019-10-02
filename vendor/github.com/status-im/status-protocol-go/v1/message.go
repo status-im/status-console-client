@@ -116,9 +116,14 @@ func CreatePublicTextMessage(data []byte, lastClock int64, chatID string) Messag
 	return m
 }
 
-// CreatePrivateTextMessage creates a public text Message.
+// CreatePrivateTextMessage creates a one-to-one message.
 func CreatePrivateTextMessage(data []byte, lastClock int64, chatID string) Message {
 	return createTextMessage(data, lastClock, chatID, MessageTypePrivate)
+}
+
+// CreatePrivateGroupTextMessage creates a group message.
+func CreatePrivateGroupTextMessage(data []byte, lastClock int64, chatID string) Message {
+	return createTextMessage(data, lastClock, chatID, MessageTypePrivateGroup)
 }
 
 func decodeTransitMessage(originalPayload []byte) (interface{}, error) {
