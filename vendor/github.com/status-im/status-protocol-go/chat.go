@@ -3,9 +3,9 @@ package statusproto
 import (
 	"crypto/ecdsa"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/google/uuid"
+	statusproto "github.com/status-im/status-protocol-go/types"
 )
 
 type ChatType int
@@ -83,7 +83,7 @@ type ChatMember struct {
 }
 
 func (c ChatMember) PublicKey() (*ecdsa.PublicKey, error) {
-	b, err := hexutil.Decode(c.ID)
+	b, err := statusproto.DecodeHex(c.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func (c ChatMember) PublicKey() (*ecdsa.PublicKey, error) {
 }
 
 func oneToOneChatID(publicKey *ecdsa.PublicKey) string {
-	return hexutil.Encode(crypto.FromECDSAPub(publicKey))
+	return statusproto.EncodeHex(crypto.FromECDSAPub(publicKey))
 }
 
 func CreateOneToOneChat(name string, publicKey *ecdsa.PublicKey) Chat {
@@ -114,7 +114,7 @@ func CreatePublicChat(name string) Chat {
 }
 
 func groupChatID(creator *ecdsa.PublicKey) string {
-	return uuid.New().String() + hexutil.Encode(crypto.FromECDSAPub(creator))
+	return uuid.New().String() + statusproto.EncodeHex(crypto.FromECDSAPub(creator))
 }
 
 func CreateGroupChat(name string, creator *ecdsa.PublicKey) Chat {

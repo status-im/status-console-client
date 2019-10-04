@@ -30,6 +30,7 @@ import (
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/signal"
 	status "github.com/status-im/status-protocol-go"
+	gethbridge "github.com/status-im/status-transport-geth"
 	"go.uber.org/zap"
 )
 
@@ -286,7 +287,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 
 	messenger, err := status.NewMessenger(
 		pk,
-		shhService,
+		gethbridge.NewGethWhisperWrapper(shhService),
 		*installationID,
 		options...,
 	)
