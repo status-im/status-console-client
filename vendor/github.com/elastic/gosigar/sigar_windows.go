@@ -12,9 +12,25 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/StackExchange/wmi"
 	"github.com/elastic/gosigar/sys/windows"
 	"github.com/pkg/errors"
 )
+
+// Win32_Process represents a process on the Windows operating system. If
+// additional fields are added here (that match the Windows struct) they will
+// automatically be populated when calling getWin32Process.
+// https://msdn.microsoft.com/en-us/library/windows/desktop/aa394372(v=vs.85).aspx
+type Win32_Process struct {
+	CommandLine string
+}
+
+// Win32_OperatingSystem WMI class represents a Windows-based operating system
+// installed on a computer.
+// https://msdn.microsoft.com/en-us/library/windows/desktop/aa394239(v=vs.85).aspx
+type Win32_OperatingSystem struct {
+	LastBootUpTime time.Time
+}
 
 var (
 	// version is Windows version of the host OS.
@@ -67,12 +83,11 @@ func (self *Uptime) Get() error {
 	bootTimeLock.Lock()
 	defer bootTimeLock.Unlock()
 	if bootTime == nil {
-		uptime, err := windows.GetTickCount64()
+		os, err := getWin32OperatingSystem()
 		if err != nil {
-			return errors.Wrap(err, "failed to get boot time using win32 api")
+			return errors.Wrap(err, "failed to get boot time using WMI")
 		}
-		var boot = time.Unix(int64(uptime), 0)
-		bootTime = &boot
+		bootTime = &os.LastBootUpTime
 	}
 
 	self.Length = time.Since(*bootTime).Seconds()
@@ -140,9 +155,9 @@ func (self *CpuList) Get() error {
 }
 
 func (self *FileSystemList) Get() error {
-	drives, err := windows.GetAccessPaths()
+	drives, err := windows.GetLogicalDriveStrings()
 	if err != nil {
-		return errors.Wrap(err, "GetAccessPaths failed")
+		return errors.Wrap(err, "GetLogicalDriveStrings failed")
 	}
 
 	for _, drive := range drives {
@@ -194,11 +209,10 @@ func (self *ProcState) Get(pid int) error {
 		errs = append(errs, errors.Wrap(err, "getParentPid failed"))
 	}
 
-	// getProcCredName will often fail when run as a non-admin user. This is
-	// caused by strict ACL of the process token belonging to other users.
-	// Instead of failing completely, ignore this error and still return most
-	// data with an empty Username.
-	self.Username, _ = getProcCredName(pid)
+	self.Username, err = getProcCredName(pid)
+	if err != nil {
+		errs = append(errs, errors.Wrap(err, "getProcCredName failed"))
+	}
 
 	if len(errs) > 0 {
 		errStrs := make([]string, 0, len(errs))
@@ -237,7 +251,7 @@ func getProcStatus(pid int) (RunState, error) {
 	var exitCode uint32
 	err = syscall.GetExitCodeProcess(handle, &exitCode)
 	if err != nil {
-		return RunStateUnknown, errors.Wrapf(err, "GetExitCodeProcess failed for pid=%v", pid)
+		return RunStateUnknown, errors.Wrapf(err, "GetExitCodeProcess failed for pid=%v")
 	}
 
 	if exitCode == 259 { //still active
@@ -275,13 +289,17 @@ func getProcCredName(pid int) (string, error) {
 	if err != nil {
 		return "", errors.Wrapf(err, "OpenProcessToken failed for pid=%v", pid)
 	}
-	// Close token to prevent handle leaks.
-	defer token.Close()
 
 	// Find the token user.
 	tokenUser, err := token.GetTokenUser()
 	if err != nil {
 		return "", errors.Wrapf(err, "GetTokenInformation failed for pid=%v", pid)
+	}
+
+	// Close token to prevent handle leaks.
+	err = token.Close()
+	if err != nil {
+		return "", errors.Wrapf(err, "failed while closing process token handle for pid=%v", pid)
 	}
 
 	// Look up domain account by SID.
@@ -353,28 +371,13 @@ func (self *ProcArgs) Get(pid int) error {
 	if !version.IsWindowsVistaOrGreater() {
 		return ErrNotImplemented{runtime.GOOS}
 	}
-	handle, err := syscall.OpenProcess(processQueryLimitedInfoAccess|windows.PROCESS_VM_READ, false, uint32(pid))
+
+	process, err := getWin32Process(int32(pid))
 	if err != nil {
-		return errors.Wrapf(err, "OpenProcess failed for pid=%v", pid)
+		return errors.Wrapf(err, "ProcArgs failed for pid=%v", pid)
 	}
-	defer syscall.CloseHandle(handle)
-	pbi, err := windows.NtQueryProcessBasicInformation(handle)
-	if err != nil {
-		return errors.Wrapf(err, "NtQueryProcessBasicInformation failed for pid=%v", pid)
-	}
-	if err != nil {
-		return nil
-	}
-	userProcParams, err := windows.GetUserProcessParams(handle, pbi)
-	if err != nil {
-		return nil
-	}
-	if argsW, err := windows.ReadProcessUnicodeString(handle, &userProcParams.CommandLine); err == nil {
-		self.List, err = windows.ByteSliceToStringSlice(argsW)
-		if err != nil {
-			return err
-		}
-	}
+
+	self.List = []string{process.CommandLine}
 	return nil
 }
 
@@ -389,6 +392,35 @@ func (self *FileSystemUsage) Get(path string) error {
 	self.Used = self.Total - self.Free
 	self.Avail = freeBytesAvailable
 	return nil
+}
+
+// getWin32Process gets information about the process with the given process ID.
+// It uses a WMI query to get the information from the local system.
+func getWin32Process(pid int32) (Win32_Process, error) {
+	var dst []Win32_Process
+	query := fmt.Sprintf("WHERE ProcessId = %d", pid)
+	q := wmi.CreateQuery(&dst, query)
+	err := wmi.Query(q, &dst)
+	if err != nil {
+		return Win32_Process{}, fmt.Errorf("could not get Win32_Process %s: %v", query, err)
+	}
+	if len(dst) < 1 {
+		return Win32_Process{}, fmt.Errorf("could not get Win32_Process %s: Process not found", query)
+	}
+	return dst[0], nil
+}
+
+func getWin32OperatingSystem() (Win32_OperatingSystem, error) {
+	var dst []Win32_OperatingSystem
+	q := wmi.CreateQuery(&dst, "")
+	err := wmi.Query(q, &dst)
+	if err != nil {
+		return Win32_OperatingSystem{}, errors.Wrap(err, "wmi query for Win32_OperatingSystem failed")
+	}
+	if len(dst) != 1 {
+		return Win32_OperatingSystem{}, errors.New("wmi query for Win32_OperatingSystem failed")
+	}
+	return dst[0], nil
 }
 
 func (self *Rusage) Get(who int) error {

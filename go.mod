@@ -14,7 +14,6 @@ require (
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/edsrzf/mmap-go v1.0.0 // indirect
-	github.com/elastic/gosigar v0.10.3 // indirect
 	github.com/ethereum/go-ethereum v1.9.5
 	github.com/fatih/color v1.7.0
 	github.com/fjl/memsize v0.0.0-20180929194037-2a09253e352a // indirect
@@ -29,9 +28,9 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/rjeczalik/notify v0.9.2 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
-	github.com/status-im/status-go v0.33.0-beta.1.0.20191001145530-ef19a5d2ddbc
+	github.com/status-im/status-go v0.34.0-beta.0.0.20191011121408-2fd615d0e317
 	github.com/status-im/status-nim v0.0.0-20190724023117-a5693e6e4820
-	github.com/status-im/status-protocol-go v0.2.3-0.20191002111230-105b40ef0ec8
+	github.com/status-im/status-protocol-go v0.3.1-0.20191011120912-b115a9b0ae4f
 	github.com/stretchr/objx v0.2.0 // indirect
 	go.uber.org/zap v1.10.0
 	google.golang.org/genproto v0.0.0-20190701230453-710ae3a149df // indirect
