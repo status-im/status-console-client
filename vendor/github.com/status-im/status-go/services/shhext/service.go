@@ -3,12 +3,16 @@ package shhext
 import (
 	"context"
 	"crypto/ecdsa"
+	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/status-im/status-go/logutils"
+
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -16,20 +20,17 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/status-im/status-go/db"
-	"github.com/status-im/status-go/messaging/chat"
-	msgdb "github.com/status-im/status-go/messaging/db"
-	"github.com/status-im/status-go/messaging/filter"
-	"github.com/status-im/status-go/messaging/multidevice"
-	"github.com/status-im/status-go/messaging/publisher"
-	"github.com/status-im/status-go/messaging/sharedsecret"
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/services/shhext/dedup"
 	"github.com/status-im/status-go/services/shhext/mailservers"
 	"github.com/status-im/status-go/signal"
 
-	whisper "github.com/status-im/whisper/whisperv6"
+	protocol "github.com/status-im/status-protocol-go"
+	protocolwhisper "github.com/status-im/status-protocol-go/transport/whisper"
+	whispertypes "github.com/status-im/status-protocol-go/transport/whisper/types"
+	statusproto "github.com/status-im/status-protocol-go/types"
 	"github.com/syndtr/goleveldb/leveldb"
-	"golang.org/x/crypto/sha3"
+	"go.uber.org/zap"
 )
 
 const (
@@ -37,25 +38,24 @@ const (
 	defaultConnectionsTarget = 1
 	// defaultTimeoutWaitAdded is a timeout to use to establish initial connections.
 	defaultTimeoutWaitAdded = 5 * time.Second
-	// maxInstallations is a maximum number of supported devices for one account.
-	maxInstallations = 3
 )
 
 // EnvelopeEventsHandler used for two different event types.
 type EnvelopeEventsHandler interface {
-	EnvelopeSent(common.Hash)
-	EnvelopeExpired(common.Hash, error)
-	MailServerRequestCompleted(common.Hash, common.Hash, []byte, error)
-	MailServerRequestExpired(common.Hash)
+	EnvelopeSent([][]byte)
+	EnvelopeExpired([][]byte, error)
+	MailServerRequestCompleted(statusproto.Hash, statusproto.Hash, []byte, error)
+	MailServerRequestExpired(statusproto.Hash)
 }
 
 // Service is a service that provides some additional Whisper API.
 type Service struct {
-	*publisher.Publisher
+	messenger       *protocol.Messenger
+	cancelMessenger chan struct{}
+
 	storage          db.TransactionalStorage
-	w                *whisper.Whisper
+	w                whispertypes.Whisper
 	config           params.ShhextConfig
-	envelopesMonitor *EnvelopesMonitor
 	mailMonitor      *MailRequestMonitor
 	requestsRegistry *RequestsRegistry
 	historyUpdates   *HistoryUpdateReactor
@@ -66,14 +66,13 @@ type Service struct {
 	cache            *mailservers.Cache
 	connManager      *mailservers.ConnectionManager
 	lastUsedMonitor  *mailservers.LastUsedConnectionMonitor
-	filter           *filter.Service
 }
 
 // Make sure that Service implements node.Service interface.
 var _ node.Service = (*Service)(nil)
 
 // New returns a new Service.
-func New(w *whisper.Whisper, handler EnvelopeEventsHandler, ldb *leveldb.DB, config params.ShhextConfig) *Service {
+func New(w whispertypes.Whisper, handler EnvelopeEventsHandler, ldb *leveldb.DB, config params.ShhextConfig) *Service {
 	cache := mailservers.NewCache(ldb)
 	ps := mailservers.NewPeerStore(cache)
 	delay := defaultRequestsDelay
@@ -85,17 +84,13 @@ func New(w *whisper.Whisper, handler EnvelopeEventsHandler, ldb *leveldb.DB, con
 	mailMonitor := &MailRequestMonitor{
 		w:                w,
 		handler:          handler,
-		cache:            map[common.Hash]EnvelopeState{},
+		cache:            map[statusproto.Hash]EnvelopeState{},
 		requestsRegistry: requestsRegistry,
 	}
-	envelopesMonitor := NewEnvelopesMonitor(w, handler, config.MailServerConfirmations, ps, config.MaxMessageDeliveryAttempts)
-	publisher := publisher.New(w, publisher.Config{PFSEnabled: config.PFSEnabled})
 	return &Service{
-		Publisher:        publisher,
 		storage:          db.NewLevelDBStorage(ldb),
 		w:                w,
 		config:           config,
-		envelopesMonitor: envelopesMonitor,
 		mailMonitor:      mailMonitor,
 		requestsRegistry: requestsRegistry,
 		historyUpdates:   historyUpdates,
@@ -105,18 +100,7 @@ func New(w *whisper.Whisper, handler EnvelopeEventsHandler, ldb *leveldb.DB, con
 	}
 }
 
-func (s *Service) InitProtocolWithPassword(address string, password string) error {
-	digest := sha3.Sum256([]byte(password))
-	encKey := fmt.Sprintf("%x", digest)
-	return s.initProtocol(address, encKey, password)
-}
-
-// InitProtocolWithEncyptionKey creates an instance of ProtocolService given an address and encryption key.
-func (s *Service) InitProtocolWithEncyptionKey(address string, encKey string) error {
-	return s.initProtocol(address, encKey, "")
-}
-
-func (s *Service) initProtocol(address, encKey, password string) error {
+func (s *Service) InitProtocol(db *sql.DB) error { // nolint: gocyclo
 	if !s.config.PFSEnabled {
 		return nil
 	}
@@ -126,114 +110,149 @@ func (s *Service) initProtocol(address, encKey, password string) error {
 	if err := os.MkdirAll(dataDir, os.ModePerm); err != nil {
 		return err
 	}
-	v0Path := filepath.Join(dataDir, fmt.Sprintf("%x.db", address))
-	v1Path := filepath.Join(dataDir, fmt.Sprintf("%s.db", s.config.InstallationID))
-	v2Path := filepath.Join(dataDir, fmt.Sprintf("%s.v2.db", s.config.InstallationID))
-	v3Path := filepath.Join(dataDir, fmt.Sprintf("%s.v3.db", s.config.InstallationID))
-	v4Path := filepath.Join(dataDir, fmt.Sprintf("%s.v4.db", s.config.InstallationID))
 
-	if password != "" {
-		if err := msgdb.MigrateDBFile(v0Path, v1Path, "ON", password); err != nil {
-			return err
-		}
-
-		if err := msgdb.MigrateDBFile(v1Path, v2Path, password, encKey); err != nil {
-			// Remove db file as created with a blank password and never used,
-			// and there's no need to rekey in this case
-			os.Remove(v1Path)
-			os.Remove(v2Path)
-		}
-	}
-
-	if err := msgdb.MigrateDBKeyKdfIterations(v2Path, v3Path, encKey); err != nil {
-		os.Remove(v2Path)
-		os.Remove(v3Path)
-	}
-
-	// Fix IOS not encrypting database
-	if err := msgdb.EncryptDatabase(v3Path, v4Path, encKey); err != nil {
-		os.Remove(v3Path)
-		os.Remove(v4Path)
-	}
-
-	// Desktop was passing a network dependent directory, which meant that
-	// if running on testnet it would not access the right db. This copies
-	// the db from mainnet to the root location.
-	networkDependentPath := filepath.Join(dataDir, "ethereum", "mainnet_rpc", fmt.Sprintf("%s.v4.db", s.config.InstallationID))
-	if _, err := os.Stat(networkDependentPath); err == nil {
-		if err := os.Rename(networkDependentPath, v4Path); err != nil {
-			return err
-		}
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-
-	persistence, err := chat.NewSQLLitePersistence(v4Path, encKey)
+	// Create a custom zap.Logger which will forward logs from status-protocol-go to status-go logger.
+	zapLogger, err := logutils.NewZapLoggerWithAdapter(logutils.Logger())
 	if err != nil {
 		return err
 	}
 
-	// Initialize sharedsecret
-	sharedSecretService := sharedsecret.NewService(persistence.GetSharedSecretStorage())
-
-	// Initialize filter
-	filterService := filter.New(s.w, filter.NewSQLLitePersistence(persistence.DB), sharedSecretService)
-
-	// Initialize multidevice
-	multideviceConfig := &multidevice.Config{
-		InstallationID:   s.config.InstallationID,
-		ProtocolVersion:  chat.ProtocolVersion,
-		MaxInstallations: maxInstallations,
+	envelopesMonitorConfig := &protocolwhisper.EnvelopesMonitorConfig{
+		MaxAttempts:                    s.config.MaxMessageDeliveryAttempts,
+		MailserverConfirmationsEnabled: s.config.MailServerConfirmations,
+		IsMailserver: func(peer whispertypes.EnodeID) bool {
+			return s.peerStore.Exist(peer)
+		},
+		EnvelopeEventsHandler: EnvelopeSignalHandler{},
+		Logger:                zapLogger,
 	}
-	multideviceService := multidevice.New(multideviceConfig, persistence.GetMultideviceStorage())
+	options := buildMessengerOptions(s.config, db, envelopesMonitorConfig, zapLogger)
 
-	addedBundlesHandler := func(addedBundles []*multidevice.Installation) {
-		handler := PublisherSignalHandler{}
-		for _, bundle := range addedBundles {
-			handler.BundleAdded(bundle.Identity, bundle.ID)
-		}
+	selectedKeyID := s.w.SelectedKeyPairID()
+	identity, err := s.w.GetPrivateKey(selectedKeyID)
+	if err != nil {
+		return err
 	}
 
-	protocolService := chat.NewProtocolService(
-		chat.NewEncryptionService(
-			persistence,
-			chat.DefaultEncryptionServiceConfig(s.config.InstallationID)),
-		sharedSecretService,
-		multideviceService,
-		addedBundlesHandler,
-		s.newSharedSecretHandler(filterService))
-
-	s.Publisher.Init(persistence.DB, protocolService, filterService)
+	messenger, err := protocol.NewMessenger(
+		identity,
+		s.w,
+		s.config.InstallationID,
+		options...,
+	)
+	if err != nil {
+		return err
+	}
+	s.messenger = messenger
+	// Start a loop that retrieves all messages and propagates them to status-react.
+	s.cancelMessenger = make(chan struct{})
+	go s.retrieveMessagesLoop(time.Second, s.cancelMessenger)
 
 	return nil
 }
 
-func (s *Service) newSharedSecretHandler(filterService *filter.Service) func([]*sharedsecret.Secret) {
-	return func(sharedSecrets []*sharedsecret.Secret) {
-		var filters []*signal.Filter
-		for _, sharedSecret := range sharedSecrets {
-			chat, err := filterService.ProcessNegotiatedSecret(sharedSecret)
+func (s *Service) retrieveMessagesLoop(tick time.Duration, cancel <-chan struct{}) {
+	ticker := time.NewTicker(tick)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			chatWithMessages, err := s.messenger.RetrieveRawAll()
 			if err != nil {
-				log.Error("Failed to process negotiated secret", "err", err)
-				return
+				log.Error("failed to retrieve raw messages", "err", err)
+				continue
+			}
+			var messageIDs []string
+
+			for _, messages := range chatWithMessages {
+				for _, message := range messages {
+					messageIDs = append(messageIDs, message.ID.String())
+				}
 			}
 
-			filter := &signal.Filter{
-				ChatID:   chat.ChatID,
-				SymKeyID: chat.SymKeyID,
-				Listen:   chat.Listen,
-				FilterID: chat.FilterID,
-				Identity: chat.Identity,
-				Topic:    chat.Topic,
+			existingMessages, err := s.messenger.MessagesExist(messageIDs)
+			if err != nil {
+				log.Error("failed to check existing messages", "err", err)
+				continue
 			}
 
-			filters = append(filters, filter)
-		}
-		if len(filters) != 0 {
-			handler := PublisherSignalHandler{}
-			handler.WhisperFilterAdded(filters)
+			var signalMessages []*signal.Messages
+
+			for chat, messages := range chatWithMessages {
+
+				var dedupMessages []*dedup.DeduplicateMessage
+				// Filter out already saved messages
+				for _, message := range messages {
+					if !existingMessages[message.ID.String()] {
+						id := fmt.Sprintf("0x%s", hex.EncodeToString(crypto.FromECDSAPub(message.SigPubKey())))
+
+						identicon, err := protocol.Identicon(id)
+						if err != nil {
+							log.Error("failed to generate identicon", "err", err)
+							continue
+
+						}
+						alias, err := protocol.GenerateAlias(id)
+						if err != nil {
+							log.Error("failed to generate identicon", "err", err)
+							continue
+
+						}
+
+						dedupMessage := &dedup.DeduplicateMessage{
+							Metadata: dedup.Metadata{
+								Author: dedup.Author{
+									PublicKey: crypto.FromECDSAPub(message.SigPubKey()),
+									Alias:     alias,
+									Identicon: identicon,
+								},
+								MessageID:    message.ID,
+								EncryptionID: message.Hash,
+							},
+							Message: message.TransportMessage,
+						}
+						dedupMessage.Message.Payload = message.DecryptedPayload
+						dedupMessages = append(dedupMessages, dedupMessage)
+					}
+				}
+				dedupMessages = s.deduplicator.Deduplicate(dedupMessages)
+
+				if len(dedupMessages) != 0 {
+					signalMessage := &signal.Messages{
+						Chat:     chat,
+						Error:    nil, // TODO: what is it needed for?
+						Messages: dedupMessages,
+					}
+
+					signalMessages = append(signalMessages, signalMessage)
+				}
+			}
+
+			log.Debug("retrieve messages loop", "messages", len(signalMessages))
+
+			if len(signalMessages) == 0 {
+				continue
+			}
+
+			PublisherSignalHandler{}.NewMessages(signalMessages)
+		case <-cancel:
+			return
 		}
 	}
+}
+
+func (s *Service) ConfirmMessagesProcessed(messageIDs [][]byte) error {
+	return s.messenger.ConfirmMessagesProcessed(messageIDs)
+}
+
+func (s *Service) EnableInstallation(installationID string) error {
+	return s.messenger.EnableInstallation(installationID)
+}
+
+// DisableInstallation disables an installation for multi-device sync.
+func (s *Service) DisableInstallation(installationID string) error {
+	return s.messenger.DisableInstallation(installationID)
 }
 
 // UpdateMailservers updates information about selected mail servers.
@@ -288,15 +307,10 @@ func (s *Service) Start(server *p2p.Server) error {
 		s.lastUsedMonitor = mailservers.NewLastUsedConnectionMonitor(s.peerStore, s.cache, s.w)
 		s.lastUsedMonitor.Start()
 	}
-	s.envelopesMonitor.Start()
 	s.mailMonitor.Start()
 	s.nodeID = server.PrivateKey
 	s.server = server
-	return s.Publisher.Start(s.online, true)
-}
-
-func (s *Service) online() bool {
-	return s.server.PeerCount() != 0
+	return nil
 }
 
 // Stop is run when a service is stopped.
@@ -309,18 +323,28 @@ func (s *Service) Stop() error {
 		s.lastUsedMonitor.Stop()
 	}
 	s.requestsRegistry.Clear()
-	s.envelopesMonitor.Stop()
 	s.mailMonitor.Stop()
-	if s.filter != nil {
-		if err := s.filter.Stop(); err != nil {
-			log.Error("Failed to stop filter service with error", "err", err)
+
+	if s.cancelMessenger != nil {
+		select {
+		case <-s.cancelMessenger:
+			// channel already closed
+		default:
+			close(s.cancelMessenger)
+			s.cancelMessenger = nil
 		}
 	}
 
-	return s.Publisher.Stop()
+	if s.messenger != nil {
+		if err := s.messenger.Shutdown(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func (s *Service) syncMessages(ctx context.Context, mailServerID []byte, r whisper.SyncMailRequest) (resp whisper.SyncEventResponse, err error) {
+func (s *Service) syncMessages(ctx context.Context, mailServerID []byte, r whispertypes.SyncMailRequest) (resp whispertypes.SyncEventResponse, err error) {
 	err = s.w.SyncMessages(mailServerID, r)
 	if err != nil {
 		return
@@ -328,7 +352,7 @@ func (s *Service) syncMessages(ctx context.Context, mailServerID []byte, r whisp
 
 	// Wait for the response which is received asynchronously as a p2p packet.
 	// This packet handler will send an event which contains the response payload.
-	events := make(chan whisper.EnvelopeEvent, 1024)
+	events := make(chan whispertypes.EnvelopeEvent, 1024)
 	sub := s.w.SubscribeEnvelopeEvents(events)
 	defer sub.Unsubscribe()
 
@@ -342,7 +366,7 @@ func (s *Service) syncMessages(ctx context.Context, mailServerID []byte, r whisp
 	for {
 		select {
 		case event := <-events:
-			if event.Event != whisper.EventMailServerSyncFinished {
+			if event.Event != whispertypes.EventMailServerSyncFinished {
 				continue
 			}
 
@@ -350,7 +374,7 @@ func (s *Service) syncMessages(ctx context.Context, mailServerID []byte, r whisp
 
 			var ok bool
 
-			resp, ok = event.Data.(whisper.SyncEventResponse)
+			resp, ok = event.Data.(whispertypes.SyncEventResponse)
 			if !ok {
 				err = fmt.Errorf("did not understand the response event data")
 				return
@@ -361,4 +385,48 @@ func (s *Service) syncMessages(ctx context.Context, mailServerID []byte, r whisp
 			return
 		}
 	}
+}
+
+func onNegotiatedFilters(filters []*protocolwhisper.Filter) {
+	var signalFilters []*signal.Filter
+	for _, filter := range filters {
+
+		signalFilter := &signal.Filter{
+			ChatID:   filter.ChatID,
+			SymKeyID: filter.SymKeyID,
+			Listen:   filter.Listen,
+			FilterID: filter.FilterID,
+			Identity: filter.Identity,
+			Topic:    filter.Topic,
+		}
+
+		signalFilters = append(signalFilters, signalFilter)
+	}
+	if len(filters) != 0 {
+		handler := PublisherSignalHandler{}
+		handler.WhisperFilterAdded(signalFilters)
+	}
+}
+
+func buildMessengerOptions(config params.ShhextConfig, db *sql.DB, envelopesMonitorConfig *protocolwhisper.EnvelopesMonitorConfig, logger *zap.Logger) []protocol.Option {
+
+	options := []protocol.Option{
+		protocol.WithCustomLogger(logger),
+		protocol.WithDatabase(db),
+		protocol.WithEnvelopesMonitorConfig(envelopesMonitorConfig),
+		protocol.WithOnNegotiatedFilters(onNegotiatedFilters),
+	}
+
+	if !config.DisableGenericDiscoveryTopic {
+		options = append(options, protocol.WithGenericDiscoveryTopicSupport())
+	}
+
+	if config.DataSyncEnabled {
+		options = append(options, protocol.WithDatasync())
+	}
+
+	if config.SendV1Messages {
+		options = append(options, protocol.WithSendV1Messages())
+	}
+	return options
 }

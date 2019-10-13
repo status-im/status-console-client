@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"errors"
-	"log"
 	"strings"
+
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/jroimartin/gocui"
 	status "github.com/status-im/status-protocol-go"
@@ -63,24 +65,29 @@ func bytesToArgs(b []byte) []string {
 	return argsStr
 }
 
-func chatAddCmdHandler(args []string) (c *status.Chat, err error) {
+func chatAddCmdHandler(args []string) (chat status.Chat, err error) {
 	if len(args) == 1 {
 		name := args[0]
-		c = CreatePublicChat(name)
+		chat = status.CreatePublicChat(name)
 	} else if len(args) == 2 {
-		c, err = CreateOneToOneChat(args[1], args[0])
+		publicKeyBytes, err := hexutil.Decode(args[0])
+		if err != nil {
+			return chat, err
+		}
+		publicKey, err := crypto.UnmarshalPubkey(publicKeyBytes)
+		if err != nil {
+			return chat, err
+		}
+		chat = status.CreateOneToOneChat(args[1], publicKey)
 	} else {
-		err = errors.New("/chat: incorect arguments to add subcommand")
+		err = errors.New("/chat: incorrect arguments to add subcommand")
 	}
-
 	return
 }
 
-func ChatCmdFactory(chatsvc *ChatsViewController, chatvc *ChatViewController) CmdHandler {
+func ChatCmdFactory(chatsvc *ChatsViewController, chatvc *MessagesViewController) CmdHandler {
 	return func(b []byte) error {
 		args := bytesToArgs(b)[1:] // remove first item, i.e. "/chat"
-
-		log.Printf("handle /chat command: %s", b)
 
 		switch args[0] {
 		case "add":
@@ -90,11 +97,6 @@ func ChatCmdFactory(chatsvc *ChatsViewController, chatvc *ChatViewController) Cm
 			}
 			if err := chatsvc.Add(chat); err != nil {
 				return err
-			}
-
-			// Ensure we have an active chat. This is a quick hack and we should instead do things in an event driven manner.
-			if chatvc.ActiveChat() == nil {
-				chatvc.Select(chat)
 			}
 			// TODO: fix removing chats
 			// case "remove":

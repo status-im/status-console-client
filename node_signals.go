@@ -73,7 +73,6 @@ func (s *signalForwarder) Filter(reqID []byte) (<-chan mailTypeSignal, func()) {
 
 func filterMailTypesHandler(in chan<- mailTypeSignal) func(string) {
 	return func(event string) {
-
 		var envelope signalEnvelope
 		if err := json.Unmarshal([]byte(event), &envelope); err != nil {
 			log.Printf("faild to unmarshal signal Envelope: %v", err)

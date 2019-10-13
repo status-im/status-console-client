@@ -1,16 +1,17 @@
 package statusproto
 
-import "crypto/ecdsa"
+import (
+	"crypto/ecdsa"
 
-type ChatPagination struct {
-	From uint
-	To   uint
-}
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/google/uuid"
+	statusproto "github.com/status-im/status-protocol-go/types"
+)
 
 type ChatType int
 
 const (
-	ChatTypeOneToOne = iota + 1
+	ChatTypeOneToOne ChatType = iota + 1
 	ChatTypePublic
 	ChatTypePrivateGroupChat
 )
@@ -42,6 +43,7 @@ type Chat struct {
 	UnviewedMessagesCount  uint   `json:"unviewedMessagesCount"`
 	LastMessageContentType string `json:"lastMessageContentType"`
 	LastMessageContent     string `json:"lastMessageContent"`
+	LastMessageTimestamp   int64  `json:"lastMessageTimestamp"`
 
 	// Group chat fields
 	// Members are the members who have been invited to the group chat
@@ -57,7 +59,7 @@ type ChatMembershipUpdate struct {
 	// Type indicates the kind of event (i.e changed-name, added-member, etc)
 	Type string `json:"type"`
 	// Name represents the name in the event of changing name events
-	Name string `json:"name"`
+	Name string `json:"name,omitempty"`
 	// Clock value of the event
 	ClockValue uint64 `json:"clockValue"`
 	// Signature of the event
@@ -65,9 +67,9 @@ type ChatMembershipUpdate struct {
 	// Hex encoded public key of the creator of the event
 	From string `json:"from"`
 	// Target of the event for single-target events
-	Member string `json:"member"`
+	Member string `json:"member,omitempty"`
 	// Target of the event for multi-target events
-	Members []string `json:"members"`
+	Members []string `json:"members,omitempty"`
 }
 
 // ChatMember represents a member who participates in a group chat
@@ -78,4 +80,57 @@ type ChatMember struct {
 	Admin bool `json:"admin"`
 	// Joined indicates if the member has joined the group chat
 	Joined bool `json:"joined"`
+}
+
+func (c ChatMember) PublicKey() (*ecdsa.PublicKey, error) {
+	b, err := statusproto.DecodeHex(c.ID)
+	if err != nil {
+		return nil, err
+	}
+	return crypto.UnmarshalPubkey(b)
+}
+
+func oneToOneChatID(publicKey *ecdsa.PublicKey) string {
+	return statusproto.EncodeHex(crypto.FromECDSAPub(publicKey))
+}
+
+func CreateOneToOneChat(name string, publicKey *ecdsa.PublicKey) Chat {
+	return Chat{
+		ID:        oneToOneChatID(publicKey),
+		Name:      name,
+		Active:    true,
+		ChatType:  ChatTypeOneToOne,
+		PublicKey: publicKey,
+	}
+}
+
+func CreatePublicChat(name string) Chat {
+	return Chat{
+		ID:       name,
+		Name:     name,
+		Active:   true,
+		ChatType: ChatTypePublic,
+	}
+}
+
+func groupChatID(creator *ecdsa.PublicKey) string {
+	return uuid.New().String() + statusproto.EncodeHex(crypto.FromECDSAPub(creator))
+}
+
+func CreateGroupChat(name string, creator *ecdsa.PublicKey) Chat {
+	return Chat{
+		ID:       groupChatID(creator),
+		Name:     name,
+		Active:   true,
+		ChatType: ChatTypePrivateGroupChat,
+	}
+}
+
+func findChatByID(chatID string, chats []*Chat) *Chat {
+	for _, c := range chats {
+		if c.ID == chatID {
+			return c
+		}
+	}
+	return nil
 }

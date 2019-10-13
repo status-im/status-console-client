@@ -2,6 +2,7 @@ package datasync
 
 import (
 	"crypto/ecdsa"
+
 	"github.com/golang/protobuf/proto"
 	datasyncpeer "github.com/status-im/status-protocol-go/datasync/peer"
 	datasyncnode "github.com/vacp2p/mvds/node"
@@ -31,7 +32,6 @@ func (d *DataSync) Add(publicKey *ecdsa.PublicKey, datasyncMessage datasyncproto
 }
 
 func (d *DataSync) Handle(sender *ecdsa.PublicKey, payload []byte) [][]byte {
-
 	var payloads [][]byte
 	logger := d.logger.With(zap.String("site", "Handle"))
 
@@ -45,8 +45,6 @@ func (d *DataSync) Handle(sender *ecdsa.PublicKey, payload []byte) [][]byte {
 		logger.Debug("handling datasync message")
 		// datasync message
 		for _, message := range datasyncMessage.Messages {
-			//copiedMessage := statusMessage.Copy()
-			//copiedMessage.DataSyncLayerInfo.Payload = message.Body
 			payloads = append(payloads, message.Body)
 		}
 		if d.sendingEnabled {

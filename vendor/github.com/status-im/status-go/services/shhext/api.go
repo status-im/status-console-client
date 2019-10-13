@@ -9,21 +9,23 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/status-im/status-go/services/shhext/dedup"
 
 	"github.com/status-im/status-go/db"
 	"github.com/status-im/status-go/mailserver"
-	"github.com/status-im/status-go/messaging/chat"
-	"github.com/status-im/status-go/messaging/filter"
-	"github.com/status-im/status-go/messaging/multidevice"
-	"github.com/status-im/status-go/services/shhext/dedup"
 	"github.com/status-im/status-go/services/shhext/mailservers"
 	whisper "github.com/status-im/whisper/whisperv6"
+
+	statusproto "github.com/status-im/status-protocol-go"
+	gethbridge "github.com/status-im/status-protocol-go/bridge/geth"
+	"github.com/status-im/status-protocol-go/encryption/multidevice"
+	statustransp "github.com/status-im/status-protocol-go/transport/whisper"
+	whispertypes "github.com/status-im/status-protocol-go/transport/whisper/types"
+	statusproto_types "github.com/status-im/status-protocol-go/types"
 )
 
 const (
@@ -72,10 +74,10 @@ type MessagesRequest struct {
 
 	// Topic is a regular Whisper topic.
 	// DEPRECATED
-	Topic whisper.TopicType `json:"topic"`
+	Topic whispertypes.TopicType `json:"topic"`
 
 	// Topics is a list of Whisper topics.
-	Topics []whisper.TopicType `json:"topics"`
+	Topics []whispertypes.TopicType `json:"topics"`
 
 	// SymKeyID is an ID of a symmetric key to authenticate to MailServer.
 	// It's derived from MailServer password.
@@ -145,7 +147,7 @@ type SyncMessagesRequest struct {
 
 	// Topics is a list of Whisper topics.
 	// If empty, a full bloom filter will be used.
-	Topics []whisper.TopicType `json:"topics"`
+	Topics []whispertypes.TopicType `json:"topics"`
 }
 
 // SyncMessagesResponse is a response from the mail server
@@ -176,7 +178,7 @@ type InitiateHistoryRequestParams struct {
 // PublicAPI extends whisper public API.
 type PublicAPI struct {
 	service   *Service
-	publicAPI *whisper.PublicWhisperAPI
+	publicAPI whispertypes.PublicWhisperAPI
 	log       log.Logger
 }
 
@@ -184,21 +186,9 @@ type PublicAPI struct {
 func NewPublicAPI(s *Service) *PublicAPI {
 	return &PublicAPI{
 		service:   s,
-		publicAPI: whisper.NewPublicWhisperAPI(s.w),
+		publicAPI: s.w.PublicWhisperAPI(),
 		log:       log.New("package", "status-go/services/sshext.PublicAPI"),
 	}
-}
-
-// Post shamelessly copied from whisper codebase with slight modifications.
-func (api *PublicAPI) Post(ctx context.Context, req whisper.NewMessage) (hexutil.Bytes, error) {
-	hexID, err := api.publicAPI.Post(ctx, req)
-	if err == nil {
-		api.service.envelopesMonitor.Add(common.BytesToHash(hexID), req)
-	} else {
-		return nil, err
-	}
-	mID := messageID(req)
-	return mID[:], err
 }
 
 func (api *PublicAPI) getPeer(rawurl string) (*enode.Node, error) {
@@ -221,9 +211,9 @@ func (api *PublicAPI) RequestMessagesSync(conf RetryConfig, r MessagesRequest) (
 	var resp MessagesResponse
 
 	shh := api.service.w
-	events := make(chan whisper.EnvelopeEvent, 10)
+	events := make(chan whispertypes.EnvelopeEvent, 10)
 	var (
-		requestID hexutil.Bytes
+		requestID statusproto_types.HexBytes
 		err       error
 		retries   int
 	)
@@ -238,7 +228,7 @@ func (api *PublicAPI) RequestMessagesSync(conf RetryConfig, r MessagesRequest) (
 			sub.Unsubscribe()
 			return resp, err
 		}
-		mailServerResp, err := waitForExpiredOrCompleted(common.BytesToHash(requestID), events, timeout)
+		mailServerResp, err := waitForExpiredOrCompleted(statusproto_types.BytesToHash(requestID), events, timeout)
 		sub.Unsubscribe()
 		if err == nil {
 			resp.Cursor = hex.EncodeToString(mailServerResp.Cursor)
@@ -251,12 +241,12 @@ func (api *PublicAPI) RequestMessagesSync(conf RetryConfig, r MessagesRequest) (
 	return resp, fmt.Errorf("failed to request messages after %d retries", retries)
 }
 
-func waitForExpiredOrCompleted(requestID common.Hash, events chan whisper.EnvelopeEvent, timeout time.Duration) (*whisper.MailServerResponse, error) {
+func waitForExpiredOrCompleted(requestID statusproto_types.Hash, events chan whispertypes.EnvelopeEvent, timeout time.Duration) (*whispertypes.MailServerResponse, error) {
 	expired := fmt.Errorf("request %x expired", requestID)
 	after := time.NewTimer(timeout)
 	defer after.Stop()
 	for {
-		var ev whisper.EnvelopeEvent
+		var ev whispertypes.EnvelopeEvent
 		select {
 		case ev = <-events:
 		case <-after.C:
@@ -266,20 +256,20 @@ func waitForExpiredOrCompleted(requestID common.Hash, events chan whisper.Envelo
 			continue
 		}
 		switch ev.Event {
-		case whisper.EventMailServerRequestCompleted:
-			data, ok := ev.Data.(*whisper.MailServerResponse)
+		case whispertypes.EventMailServerRequestCompleted:
+			data, ok := ev.Data.(*whispertypes.MailServerResponse)
 			if ok {
 				return data, nil
 			}
 			return nil, errors.New("invalid event data type")
-		case whisper.EventMailServerRequestExpired:
+		case whispertypes.EventMailServerRequestExpired:
 			return nil, expired
 		}
 	}
 }
 
 // RequestMessages sends a request for historic messages to a MailServer.
-func (api *PublicAPI) RequestMessages(_ context.Context, r MessagesRequest) (hexutil.Bytes, error) {
+func (api *PublicAPI) RequestMessages(_ context.Context, r MessagesRequest) (statusproto_types.HexBytes, error) {
 	api.log.Info("RequestMessages", "request", r)
 	shh := api.service.w
 	now := api.service.w.GetCurrentTime()
@@ -345,20 +335,20 @@ func (api *PublicAPI) RequestMessages(_ context.Context, r MessagesRequest) (hex
 
 // createSyncMailRequest creates SyncMailRequest. It uses a full bloom filter
 // if no topics are given.
-func createSyncMailRequest(r SyncMessagesRequest) (whisper.SyncMailRequest, error) {
+func createSyncMailRequest(r SyncMessagesRequest) (whispertypes.SyncMailRequest, error) {
 	var bloom []byte
 	if len(r.Topics) > 0 {
 		bloom = topicsToBloom(r.Topics...)
 	} else {
-		bloom = whisper.MakeFullNodeBloom()
+		bloom = whispertypes.MakeFullNodeBloom()
 	}
 
 	cursor, err := hex.DecodeString(r.Cursor)
 	if err != nil {
-		return whisper.SyncMailRequest{}, err
+		return whispertypes.SyncMailRequest{}, err
 	}
 
-	return whisper.SyncMailRequest{
+	return whispertypes.SyncMailRequest{
 		Lower:  r.From,
 		Upper:  r.To,
 		Bloom:  bloom,
@@ -367,7 +357,7 @@ func createSyncMailRequest(r SyncMessagesRequest) (whisper.SyncMailRequest, erro
 	}, nil
 }
 
-func createSyncMessagesResponse(r whisper.SyncEventResponse) SyncMessagesResponse {
+func createSyncMessagesResponse(r whispertypes.SyncEventResponse) SyncMessagesResponse {
 	return SyncMessagesResponse{
 		Cursor: hex.EncodeToString(r.Cursor),
 		Error:  r.Error,
@@ -410,108 +400,62 @@ func (api *PublicAPI) SyncMessages(ctx context.Context, r SyncMessagesRequest) (
 	}
 }
 
-// GetNewFilterMessages is a prototype method with deduplication
-func (api *PublicAPI) GetNewFilterMessages(filterID string) ([]dedup.DeduplicateMessage, error) {
-	msgs, err := api.publicAPI.GetFilterMessages(filterID)
-	if err != nil {
-		return nil, err
-	}
-
-	dedupMessages := api.service.deduplicator.Deduplicate(msgs)
-
-	// Attempt to decrypt message, otherwise leave unchanged
-	for _, dedupMessage := range dedupMessages {
-		err := api.service.ProcessMessage(dedupMessage.Message, dedupMessage.DedupID)
-		switch err {
-		case chat.ErrNotPairedDevice:
-			api.log.Info("Received a message from non-paired device", "err", err)
-		case chat.ErrDeviceNotFound:
-			api.log.Warn("Device not found, sending signal", "err", err)
-
-			publicKey, err := crypto.UnmarshalPubkey(dedupMessage.Message.Sig)
-			if err != nil {
-				return nil, fmt.Errorf("failed to handler chat.ErrDeviceNotFound: %v", err)
-			}
-
-			keyString := fmt.Sprintf("%#x", crypto.FromECDSAPub(publicKey))
-			handler := PublisherSignalHandler{}
-			handler.DecryptMessageFailed(keyString)
-		default:
-			api.log.Error("Failed handling message with error", "err", err)
-		}
-	}
-
-	return dedupMessages, nil
-}
-
-// ConfirmMessagesProcessed is a method to confirm that messages was consumed by
-// the client side.
-func (api *PublicAPI) ConfirmMessagesProcessed(messages []*whisper.Message) (err error) {
-	tx := api.service.storage.NewTx()
-	defer func() {
-		if err == nil {
-			err = tx.Commit()
-		}
-	}()
-	ctx := NewContextFromService(context.Background(), api.service, tx)
-	for _, msg := range messages {
-		if msg.P2P {
-			err = api.service.historyUpdates.UpdateTopicHistory(ctx, msg.Topic, time.Unix(int64(msg.Timestamp), 0))
-			if err != nil {
-				return err
-			}
-		}
-	}
-	err = api.service.deduplicator.AddMessages(messages)
-	return err
-}
-
 // ConfirmMessagesProcessedByID is a method to confirm that messages was consumed by
 // the client side.
-func (api *PublicAPI) ConfirmMessagesProcessedByID(messageIDs [][]byte) error {
-	if err := api.service.ConfirmMessagesProcessed(messageIDs); err != nil {
+// TODO: this is broken now as it requires dedup ID while a message hash should be used.
+func (api *PublicAPI) ConfirmMessagesProcessedByID(messageConfirmations []*dedup.Metadata) error {
+	confirmationCount := len(messageConfirmations)
+	dedupIDs := make([][]byte, confirmationCount)
+	encryptionIDs := make([][]byte, confirmationCount)
+
+	for i, confirmation := range messageConfirmations {
+		dedupIDs[i] = confirmation.DedupID
+		encryptionIDs[i] = confirmation.EncryptionID
+	}
+
+	if err := api.service.ConfirmMessagesProcessed(encryptionIDs); err != nil {
 		return err
 	}
 
-	return api.service.deduplicator.AddMessageByID(messageIDs)
+	return api.service.deduplicator.AddMessageByID(dedupIDs)
 }
 
-// SendPublicMessage sends a public chat message to the underlying transport
-func (api *PublicAPI) SendPublicMessage(ctx context.Context, msg SendPublicMessageRPC) (hexutil.Bytes, error) {
-	privateKey, err := api.service.w.GetPrivateKey(msg.Sig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to obtain a private key from Sig: %v", err)
-	}
+// Post is used to send one-to-one for those who did not enabled device-to-device sync,
+// in other words don't use PFS-enabled messages. Otherwise, SendDirectMessage is used.
+// It's important to call PublicAPI.afterSend() so that the client receives a signal
+// with confirmation that the message left the device.
+func (api *PublicAPI) Post(ctx context.Context, newMessage whispertypes.NewMessage) (statusproto_types.HexBytes, error) {
+	return api.publicAPI.Post(ctx, newMessage)
+}
 
-	message, err := api.service.CreatePublicMessage(privateKey, msg.Chat, msg.Payload, false)
-	if err != nil {
-		return nil, err
+// SendPublicMessage sends a public chat message to the underlying transport.
+// Message's payload is a transit encoded message.
+// It's important to call PublicAPI.afterSend() so that the client receives a signal
+// with confirmation that the message left the device.
+func (api *PublicAPI) SendPublicMessage(ctx context.Context, msg SendPublicMessageRPC) (statusproto_types.HexBytes, error) {
+	chat := statusproto.Chat{
+		Name: msg.Chat,
 	}
-
-	return api.Post(ctx, *message)
+	return api.service.messenger.SendRaw(ctx, chat, msg.Payload)
 }
 
 // SendDirectMessage sends a 1:1 chat message to the underlying transport
-func (api *PublicAPI) SendDirectMessage(ctx context.Context, msg SendDirectMessageRPC) (hexutil.Bytes, error) {
-	privateKey, err := api.service.w.GetPrivateKey(msg.Sig)
-	if err != nil {
-		return nil, err
-	}
-
+// Message's payload is a transit encoded message.
+// It's important to call PublicAPI.afterSend() so that the client receives a signal
+// with confirmation that the message left the device.
+func (api *PublicAPI) SendDirectMessage(ctx context.Context, msg SendDirectMessageRPC) (statusproto_types.HexBytes, error) {
 	publicKey, err := crypto.UnmarshalPubkey(msg.PubKey)
 	if err != nil {
 		return nil, err
 	}
-
-	message, err := api.service.CreateDirectMessage(privateKey, publicKey, msg.DH, msg.Payload)
-	if err != nil {
-		return nil, err
+	chat := statusproto.Chat{
+		PublicKey: publicKey,
 	}
 
-	return api.Post(ctx, *message)
+	return api.service.messenger.SendRaw(ctx, chat, msg.Payload)
 }
 
-func (api *PublicAPI) requestMessagesUsingPayload(request db.HistoryRequest, peer, symkeyID string, payload []byte, force bool, timeout time.Duration, topics []whisper.TopicType) (hash common.Hash, err error) {
+func (api *PublicAPI) requestMessagesUsingPayload(request db.HistoryRequest, peer, symkeyID string, payload []byte, force bool, timeout time.Duration, topics []whispertypes.TopicType) (hash statusproto_types.Hash, err error) {
 	shh := api.service.w
 	now := api.service.w.GetCurrentTime()
 
@@ -575,7 +519,7 @@ func (api *PublicAPI) requestMessagesUsingPayload(request db.HistoryRequest, pee
 // - Topic
 // - Duration in nanoseconds. Will be used to determine starting time for history request.
 // After that status-go will guarantee that request for this topic and date will be performed.
-func (api *PublicAPI) InitiateHistoryRequests(parent context.Context, request InitiateHistoryRequestParams) (rst []hexutil.Bytes, err error) {
+func (api *PublicAPI) InitiateHistoryRequests(parent context.Context, request InitiateHistoryRequestParams) (rst []statusproto_types.HexBytes, err error) {
 	tx := api.service.storage.NewTx()
 	defer func() {
 		if err == nil {
@@ -589,7 +533,7 @@ func (api *PublicAPI) InitiateHistoryRequests(parent context.Context, request In
 	}
 	var (
 		payload []byte
-		hash    common.Hash
+		hash    statusproto_types.Hash
 	)
 	for i := range requests {
 		req := requests[i]
@@ -612,46 +556,102 @@ func (api *PublicAPI) InitiateHistoryRequests(parent context.Context, request In
 func (api *PublicAPI) CompleteRequest(parent context.Context, hex string) (err error) {
 	tx := api.service.storage.NewTx()
 	ctx := NewContextFromService(parent, api.service, tx)
-	err = api.service.historyUpdates.UpdateFinishedRequest(ctx, common.HexToHash(hex))
+	err = api.service.historyUpdates.UpdateFinishedRequest(ctx, statusproto_types.HexToHash(hex))
 	if err == nil {
 		return tx.Commit()
 	}
 	return err
 }
 
-// LoadFilters load all the necessary filters
-func (api *PublicAPI) LoadFilters(parent context.Context, chats []*filter.Chat) ([]*filter.Chat, error) {
-	return api.service.LoadFilters(chats)
+func (api *PublicAPI) LoadFilters(parent context.Context, chats []*statustransp.Filter) ([]*statustransp.Filter, error) {
+	return api.service.messenger.LoadFilters(chats)
 }
 
-// LoadFilter load a single filter
-func (api *PublicAPI) LoadFilter(parent context.Context, chat *filter.Chat) ([]*filter.Chat, error) {
-	return api.service.LoadFilter(chat)
+func (api *PublicAPI) SaveChat(parent context.Context, chat statusproto.Chat) error {
+	api.log.Info("saving chat", "chat", chat)
+	return api.service.messenger.SaveChat(chat)
 }
 
-// RemoveFilter remove a single filter
-func (api *PublicAPI) RemoveFilters(parent context.Context, chats []*filter.Chat) error {
-	return api.service.RemoveFilters(chats)
+func (api *PublicAPI) Chats(parent context.Context) ([]*statusproto.Chat, error) {
+	return api.service.messenger.Chats()
+}
+
+func (api *PublicAPI) DeleteChat(parent context.Context, chatID string) error {
+	return api.service.messenger.DeleteChat(chatID)
+}
+
+func (api *PublicAPI) SaveContact(parent context.Context, contact statusproto.Contact) error {
+	return api.service.messenger.SaveContact(contact)
+}
+
+func (api *PublicAPI) BlockContact(parent context.Context, contact statusproto.Contact) ([]*statusproto.Chat, error) {
+	api.log.Info("blocking contact", "contact", contact.ID)
+	return api.service.messenger.BlockContact(contact)
+}
+
+func (api *PublicAPI) Contacts(parent context.Context) ([]*statusproto.Contact, error) {
+	return api.service.messenger.Contacts()
+}
+
+func (api *PublicAPI) RemoveFilters(parent context.Context, chats []*statustransp.Filter) error {
+	return api.service.messenger.RemoveFilters(chats)
 }
 
 // EnableInstallation enables an installation for multi-device sync.
 func (api *PublicAPI) EnableInstallation(installationID string) error {
-	return api.service.EnableInstallation(installationID)
+	return api.service.messenger.EnableInstallation(installationID)
 }
 
 // DisableInstallation disables an installation for multi-device sync.
 func (api *PublicAPI) DisableInstallation(installationID string) error {
-	return api.service.DisableInstallation(installationID)
+	return api.service.messenger.DisableInstallation(installationID)
 }
 
 // GetOurInstallations returns all the installations available given an identity
 func (api *PublicAPI) GetOurInstallations() ([]*multidevice.Installation, error) {
-	return api.service.GetOurInstallations()
+	return api.service.messenger.Installations()
 }
 
 // SetInstallationMetadata sets the metadata for our own installation
 func (api *PublicAPI) SetInstallationMetadata(installationID string, data *multidevice.InstallationMetadata) error {
-	return api.service.SetInstallationMetadata(installationID, data)
+	return api.service.messenger.SetInstallationMetadata(installationID, data)
+}
+
+type ApplicationMessagesResponse struct {
+	Messages []*statusproto.Message `json:"messages"`
+	Cursor   string                 `json:"cursor"`
+}
+
+func (api *PublicAPI) ChatMessages(chatID, cursor string, limit int) (*ApplicationMessagesResponse, error) {
+	messages, cursor, err := api.service.messenger.MessageByChatID(chatID, cursor, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ApplicationMessagesResponse{
+		Messages: messages,
+		Cursor:   cursor,
+	}, nil
+}
+
+func (api *PublicAPI) SaveMessages(messages []*statusproto.Message) error {
+	return api.service.messenger.SaveMessages(messages)
+}
+
+func (api *PublicAPI) DeleteMessage(id string) error {
+	return api.service.messenger.DeleteMessage(id)
+}
+
+func (api *PublicAPI) DeleteMessagesByChatID(id string) error {
+	return api.service.messenger.DeleteMessagesByChatID(id)
+}
+
+func (api *PublicAPI) MarkMessagesSeen(ids []string) error {
+	return api.service.messenger.MarkMessagesSeen(ids...)
+}
+
+func (api *PublicAPI) UpdateMessageOutgoingStatus(id, newOutgoingStatus string) error {
+	return api.service.messenger.UpdateMessageOutgoingStatus(id, newOutgoingStatus)
 }
 
 // -----
@@ -668,7 +668,7 @@ func makeEnvelop(
 	nodeID *ecdsa.PrivateKey,
 	pow float64,
 	now time.Time,
-) (*whisper.Envelope, error) {
+) (whispertypes.Envelope, error) {
 	params := whisper.MessageParams{
 		PoW:      pow,
 		Payload:  payload,
@@ -686,7 +686,11 @@ func makeEnvelop(
 	if err != nil {
 		return nil, err
 	}
-	return message.Wrap(&params, now)
+	envelope, err := message.Wrap(&params, now)
+	if err != nil {
+		return nil, err
+	}
+	return gethbridge.NewGethEnvelopeWrapper(envelope), nil
 }
 
 // makeMessagesRequestPayload makes a specific payload for MailServer
@@ -720,13 +724,13 @@ func createBloomFilter(r MessagesRequest) []byte {
 		return topicsToBloom(r.Topics...)
 	}
 
-	return whisper.TopicToBloom(r.Topic)
+	return whisper.TopicToBloom(whisper.TopicType(r.Topic))
 }
 
-func topicsToBloom(topics ...whisper.TopicType) []byte {
+func topicsToBloom(topics ...whispertypes.TopicType) []byte {
 	i := new(big.Int)
 	for _, topic := range topics {
-		bloom := whisper.TopicToBloom(topic)
+		bloom := whispertypes.TopicToBloom(topic)
 		i.Or(i, new(big.Int).SetBytes(bloom[:]))
 	}
 

@@ -38,8 +38,13 @@ type Transfer struct {
 	Address     common.Address     `json:"address"`
 	BlockNumber *big.Int           `json:"blockNumber"`
 	BlockHash   common.Hash        `json:"blockhash"`
+	Timestamp   uint64             `json:"timestamp"`
 	Transaction *types.Transaction `json:"transaction"`
-	Receipt     *types.Receipt     `json:"receipt"`
+	// From is derived from tx signature in order to offload this computation from UI component.
+	From    common.Address `json:"from"`
+	Receipt *types.Receipt `json:"receipt"`
+	// Log that was used to generate erc20 transfer. Nil for eth transfer.
+	Log *types.Log `json:"log"`
 }
 
 // ETHTransferDownloader downloads regular eth transfers.
@@ -96,33 +101,32 @@ func (d *ETHTransferDownloader) GetTransfersByNumber(ctx context.Context, number
 
 func (d *ETHTransferDownloader) getTransfersInBlock(ctx context.Context, blk *types.Block, accounts []common.Address) (rst []Transfer, err error) {
 	for _, tx := range blk.Transactions() {
-		var address *common.Address
-		from, err := types.Sender(d.signer, tx)
-		if err != nil {
-			return nil, err
-		}
-		if any(from, accounts) {
-			address = &from
-		} else if tx.To() != nil && any(*tx.To(), accounts) {
-			address = tx.To()
-		}
-		if address != nil {
-			receipt, err := d.client.TransactionReceipt(ctx, tx.Hash())
+		for _, address := range accounts {
+			from, err := types.Sender(d.signer, tx)
 			if err != nil {
 				return nil, err
 			}
-			if isTokenTransfer(receipt.Logs) {
-				log.Debug("eth downloader found token transfer", "hash", tx.Hash())
-				continue
-			}
-			rst = append(rst, Transfer{
-				Type:        ethTransfer,
-				ID:          tx.Hash(),
-				Address:     *address,
-				BlockNumber: blk.Number(),
-				BlockHash:   blk.Hash(),
-				Transaction: tx, Receipt: receipt})
+			if from == address || (tx.To() != nil && *tx.To() == address) {
+				receipt, err := d.client.TransactionReceipt(ctx, tx.Hash())
+				if err != nil {
+					return nil, err
+				}
+				if isTokenTransfer(receipt.Logs) {
+					log.Debug("eth downloader found token transfer", "hash", tx.Hash())
+					continue
+				}
+				rst = append(rst, Transfer{
+					Type:        ethTransfer,
+					ID:          tx.Hash(),
+					Address:     address,
+					BlockNumber: blk.Number(),
+					BlockHash:   blk.Hash(),
+					Timestamp:   blk.Time(),
+					Transaction: tx,
+					From:        from,
+					Receipt:     receipt})
 
+			}
 		}
 	}
 	// TODO(dshulyak) test that balance difference was covered by transactions
@@ -130,12 +134,13 @@ func (d *ETHTransferDownloader) getTransfersInBlock(ctx context.Context, blk *ty
 }
 
 // NewERC20TransfersDownloader returns new instance.
-func NewERC20TransfersDownloader(client *ethclient.Client, accounts []common.Address) *ERC20TransfersDownloader {
+func NewERC20TransfersDownloader(client *ethclient.Client, accounts []common.Address, signer types.Signer) *ERC20TransfersDownloader {
 	signature := crypto.Keccak256Hash([]byte(erc20TransferEventSignature))
 	return &ERC20TransfersDownloader{
 		client:    client,
 		accounts:  accounts,
 		signature: signature,
+		signer:    signer,
 	}
 }
 
@@ -146,6 +151,9 @@ type ERC20TransfersDownloader struct {
 
 	// hash of the Transfer event signature
 	signature common.Hash
+
+	// signer is used to derive tx sender from tx signature
+	signer types.Signer
 }
 
 func (d *ERC20TransfersDownloader) paddedAddress(address common.Address) common.Hash {
@@ -162,31 +170,43 @@ func (d *ERC20TransfersDownloader) outboundTopics(address common.Address) [][]co
 	return [][]common.Hash{{d.signature}, {d.paddedAddress(address)}, {}}
 }
 
-func (d *ERC20TransfersDownloader) transferFromLog(parent context.Context, log types.Log, address common.Address) (Transfer, error) {
+func (d *ERC20TransfersDownloader) transferFromLog(parent context.Context, ethlog types.Log, address common.Address) (Transfer, error) {
 	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
-	tx, _, err := d.client.TransactionByHash(ctx, log.TxHash)
+	tx, _, err := d.client.TransactionByHash(ctx, ethlog.TxHash)
+	cancel()
+	if err != nil {
+		return Transfer{}, err
+	}
+	from, err := types.Sender(d.signer, tx)
+	if err != nil {
+		return Transfer{}, err
+	}
+	ctx, cancel = context.WithTimeout(parent, 3*time.Second)
+	receipt, err := d.client.TransactionReceipt(ctx, ethlog.TxHash)
 	cancel()
 	if err != nil {
 		return Transfer{}, err
 	}
 	ctx, cancel = context.WithTimeout(parent, 3*time.Second)
-	receipt, err := d.client.TransactionReceipt(ctx, log.TxHash)
+	blk, err := d.client.BlockByHash(ctx, ethlog.BlockHash)
 	cancel()
 	if err != nil {
 		return Transfer{}, err
 	}
-	// TODO(dshulyak) what is the max number of logs?
 	index := [4]byte{}
-	binary.BigEndian.PutUint32(index[:], uint32(log.Index))
-	id := crypto.Keccak256Hash(log.TxHash.Bytes(), index[:])
+	binary.BigEndian.PutUint32(index[:], uint32(ethlog.Index))
+	id := crypto.Keccak256Hash(ethlog.TxHash.Bytes(), index[:])
 	return Transfer{
 		Address:     address,
 		ID:          id,
 		Type:        erc20Transfer,
-		BlockNumber: new(big.Int).SetUint64(log.BlockNumber),
-		BlockHash:   log.BlockHash,
+		BlockNumber: new(big.Int).SetUint64(ethlog.BlockNumber),
+		BlockHash:   ethlog.BlockHash,
 		Transaction: tx,
+		From:        from,
 		Receipt:     receipt,
+		Timestamp:   blk.Time(),
+		Log:         &ethlog,
 	}, nil
 }
 
@@ -194,6 +214,9 @@ func (d *ERC20TransfersDownloader) transfersFromLogs(parent context.Context, log
 	concurrent := NewConcurrentDownloader(parent)
 	for i := range logs {
 		l := logs[i]
+		if l.Removed {
+			continue
+		}
 		concurrent.Add(func(ctx context.Context) error {
 			transfer, err := d.transferFromLog(ctx, l, address)
 			if err != nil {
@@ -208,7 +231,7 @@ func (d *ERC20TransfersDownloader) transfersFromLogs(parent context.Context, log
 	case <-parent.Done():
 		return nil, errors.New("logs downloader stuck")
 	}
-	return concurrent.Get(), nil
+	return concurrent.Get(), concurrent.Error()
 }
 
 // GetTransfers for erc20 uses eth_getLogs rpc with Transfer event signature and our address acount.
@@ -282,15 +305,6 @@ func (d *ERC20TransfersDownloader) GetTransfersInRange(parent context.Context, f
 	}
 	log.Debug("found erc20 transfers between two blocks", "from", from, "to", to, "lth", len(transfers), "took", time.Since(start))
 	return transfers, nil
-}
-
-func any(address common.Address, compare []common.Address) bool {
-	for _, c := range compare {
-		if c == address {
-			return true
-		}
-	}
-	return false
 }
 
 func isTokenTransfer(logs []*types.Log) bool {

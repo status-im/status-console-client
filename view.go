@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/jroimartin/gocui"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 // Type of views.
@@ -43,13 +43,15 @@ type ViewManager struct {
 	views        []*View
 	activeView   string
 	previousView string
+	logger       *zap.Logger
 }
 
 // NewViewManager returns a new view manager.
-func NewViewManager(views []*View, g *gocui.Gui) *ViewManager {
+func NewViewManager(views []*View, g *gocui.Gui, logger *zap.Logger) *ViewManager {
 	m := ViewManager{
-		g:     g,
-		views: views,
+		g:      g,
+		views:  views,
+		logger: logger.With(zap.Namespace("ViewManager")),
 	}
 
 	if len(views) > 0 {
@@ -194,7 +196,7 @@ func (m *ViewManager) setCurrentView(name string) (*gocui.View, error) {
 
 // EnableView makes the view enable and selects it immediately.
 func (m *ViewManager) EnableView(name string) error {
-	log.Printf("[ViewManager::EnableView] enabling '%s'", name)
+	m.logger.Debug("enabling view", zap.String("name", name))
 
 	view := m.ViewByName(name)
 	if view == nil {
@@ -213,7 +215,7 @@ func (m *ViewManager) EnableView(name string) error {
 
 // DisableView disables the view and selects the previous active one.
 func (m *ViewManager) DisableView(name string) error {
-	log.Printf("[ViewManager::DisableView] disabling '%s'", name)
+	m.logger.Debug("disabling view", zap.String("name", name))
 
 	view := m.ViewByName(name)
 	if view == nil {
@@ -232,7 +234,7 @@ func (m *ViewManager) DisableView(name string) error {
 
 // SelectView selects a view to be active by name.
 func (m *ViewManager) SelectView(name string) (*gocui.View, error) {
-	log.Printf("[ViewManager::SelectView] selecting %s", name)
+	m.logger.Debug("selecting view", zap.String("name", name))
 
 	if m.activeView == name {
 		return m.RawView(name)

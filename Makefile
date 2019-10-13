@@ -49,7 +49,7 @@ vendor:
 
 install-linter:
 	# install linter
-	curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(shell go env GOPATH)/bin v1.17.1
+	curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(shell go env GOPATH)/bin v1.19.1
 .PHONY: install-linter
 
 install-dev:
@@ -65,8 +65,8 @@ mock:
 	echo "no mocks"
 .PHONY: mock
 
-gen-migrations:
-	go generate ./protocol/client/migrations/sql/
+generate:
+	go generate ./...
 .PHONY: gen-migrations
 
 image:

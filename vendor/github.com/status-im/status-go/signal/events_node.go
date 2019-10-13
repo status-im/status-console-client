@@ -16,11 +16,19 @@ const (
 
 	// EventChainDataRemoved is triggered when node's chain data is removed
 	EventChainDataRemoved = "chaindata.removed"
+
+	// EventLoggedIn is once node was injected with user account and ready to be used.
+	EventLoggedIn = "node.login"
 )
 
 // NodeCrashEvent is special kind of error, used to report node crashes
 type NodeCrashEvent struct {
 	Error string `json:"error"`
+}
+
+// NodeLoginEvent returns the result of the login event
+type NodeLoginEvent struct {
+	Error string `json:"error,omitempty"`
 }
 
 // SendNodeCrashed emits a signal when status node has crashed, and
@@ -52,4 +60,12 @@ func SendNodeStopped() {
 // SendChainDataRemoved emits a signal when node's chain data has been removed.
 func SendChainDataRemoved() {
 	send(EventChainDataRemoved, nil)
+}
+
+func SendLoggedIn(err error) {
+	event := NodeLoginEvent{}
+	if err != nil {
+		event.Error = err.Error()
+	}
+	send(EventLoggedIn, event)
 }

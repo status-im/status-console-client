@@ -3,8 +3,12 @@ package signal
 import (
 	"encoding/hex"
 
-	"github.com/ethereum/go-ethereum/common"
-	whisper "github.com/status-im/whisper/whisperv6"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/status-im/status-go/services/shhext/dedup"
+
+	statustransp "github.com/status-im/status-protocol-go/transport/whisper"
+	whispertypes "github.com/status-im/status-protocol-go/transport/whisper/types"
+	statusproto "github.com/status-im/status-protocol-go/types"
 )
 
 const (
@@ -35,20 +39,24 @@ const (
 
 	// EventWhisperFilterAdded is triggered when we setup a new filter or restore existing ones
 	EventWhisperFilterAdded = "whisper.filter.added"
+
+	// EventNewMessages is triggered when we receive new messages
+	EventNewMessages = "messages.new"
 )
 
 // EnvelopeSignal includes hash of the envelope.
 type EnvelopeSignal struct {
-	Hash    common.Hash `json:"hash"`
-	Message string      `json:"message"`
+	IDs     []hexutil.Bytes  `json:"ids"`
+	Hash    statusproto.Hash `json:"hash"`
+	Message string           `json:"message"`
 }
 
 // MailServerResponseSignal holds the data received in the response from the mailserver.
 type MailServerResponseSignal struct {
-	RequestID        common.Hash `json:"requestID"`
-	LastEnvelopeHash common.Hash `json:"lastEnvelopeHash"`
-	Cursor           string      `json:"cursor"`
-	ErrorMsg         string      `json:"errorMessage"`
+	RequestID        statusproto.Hash `json:"requestID"`
+	LastEnvelopeHash statusproto.Hash `json:"lastEnvelopeHash"`
+	Cursor           string           `json:"cursor"`
+	ErrorMsg         string           `json:"errorMessage"`
 }
 
 // DecryptMessageFailedSignal holds the sender of the message that could not be decrypted
@@ -74,29 +82,46 @@ type Filter struct {
 	// Identity is the public key of the other recipient for non-public chats
 	Identity string `json:"identity"`
 	// Topic is the whisper topic
-	Topic whisper.TopicType `json:"topic"`
+	Topic whispertypes.TopicType `json:"topic"`
 }
 
 type WhisperFilterAddedSignal struct {
 	Filters []*Filter `json:"filters"`
 }
 
+// NewMessagesSignal notifies clients of new messages
+type NewMessagesSignal struct {
+	Messages []*Messages `json:"messages"`
+}
+
 // SendEnvelopeSent triggered when envelope delivered at least to 1 peer.
-func SendEnvelopeSent(hash common.Hash) {
-	send(EventEnvelopeSent, EnvelopeSignal{Hash: hash})
+func SendEnvelopeSent(identifiers [][]byte) {
+	var hexIdentifiers []hexutil.Bytes
+	for _, i := range identifiers {
+		hexIdentifiers = append(hexIdentifiers, i)
+	}
+
+	send(EventEnvelopeSent, EnvelopeSignal{
+		IDs: hexIdentifiers,
+	})
 }
 
 // SendEnvelopeExpired triggered when envelope delivered at least to 1 peer.
-func SendEnvelopeExpired(hash common.Hash, err error) {
+func SendEnvelopeExpired(identifiers [][]byte, err error) {
 	var message string
 	if err != nil {
 		message = err.Error()
 	}
-	send(EventEnvelopeExpired, EnvelopeSignal{Hash: hash, Message: message})
+	var hexIdentifiers []hexutil.Bytes
+	for _, i := range identifiers {
+		hexIdentifiers = append(hexIdentifiers, i)
+	}
+
+	send(EventEnvelopeExpired, EnvelopeSignal{IDs: hexIdentifiers, Message: message})
 }
 
 // SendMailServerRequestCompleted triggered when mail server response has been received
-func SendMailServerRequestCompleted(requestID common.Hash, lastEnvelopeHash common.Hash, cursor []byte, err error) {
+func SendMailServerRequestCompleted(requestID statusproto.Hash, lastEnvelopeHash statusproto.Hash, cursor []byte, err error) {
 	errorMsg := ""
 	if err != nil {
 		errorMsg = err.Error()
@@ -111,7 +136,7 @@ func SendMailServerRequestCompleted(requestID common.Hash, lastEnvelopeHash comm
 }
 
 // SendMailServerRequestExpired triggered when mail server request expires
-func SendMailServerRequestExpired(hash common.Hash) {
+func SendMailServerRequestExpired(hash statusproto.Hash) {
 	send(EventMailServerRequestExpired, EnvelopeSignal{Hash: hash})
 }
 
@@ -119,6 +144,12 @@ func SendMailServerRequestExpired(hash common.Hash) {
 type EnodeDiscoveredSignal struct {
 	Enode string `json:"enode"`
 	Topic string `json:"topic"`
+}
+
+type Messages struct {
+	Error    error                       `json:"error"`
+	Messages []*dedup.DeduplicateMessage `json:"messages"`
+	Chat     statustransp.Filter         `json:"chat"` // not a mistake, it's called chat in status-react
 }
 
 // SendEnodeDiscovered tiggered when an enode is discovered.
@@ -140,4 +171,8 @@ func SendBundleAdded(identity string, installationID string) {
 
 func SendWhisperFilterAdded(filters []*Filter) {
 	send(EventWhisperFilterAdded, WhisperFilterAddedSignal{Filters: filters})
+}
+
+func SendNewMessages(messages []*Messages) {
+	send(EventNewMessages, NewMessagesSignal{Messages: messages})
 }

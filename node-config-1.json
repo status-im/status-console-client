@@ -1,0 +1,6 @@
+{
+	"APIModules": "status",
+	"ListenAddr": "127.0.0.1:8585",
+	"HTTPEnabled": true,
+	"IPCEnabled": true
+}

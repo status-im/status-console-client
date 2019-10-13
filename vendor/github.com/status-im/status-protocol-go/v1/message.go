@@ -5,12 +5,13 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/pkg/errors"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang/protobuf/proto"
-	"strings"
+	"github.com/pkg/errors"
+	statusproto "github.com/status-im/status-protocol-go/types"
 )
 
 const (
@@ -77,8 +78,7 @@ type Message struct {
 	Flags     Flags            `json:"-"`
 	ID        []byte           `json:"-"`
 	SigPubKey *ecdsa.PublicKey `json:"-"`
-	ChatID    string           `json:"-"`
-	Public    bool             `json:"-"`
+	ChatID    string           `json:"-"` // reference to Chat.ID; not connected to Content.ChatID which is set by sender
 }
 
 func (m *Message) MarshalJSON() ([]byte, error) {
@@ -112,12 +112,18 @@ func createTextMessage(data []byte, lastClock int64, chatID, messageType string)
 
 // CreatePublicTextMessage creates a public text Message.
 func CreatePublicTextMessage(data []byte, lastClock int64, chatID string) Message {
-	return createTextMessage(data, lastClock, chatID, MessageTypePublicGroup)
+	m := createTextMessage(data, lastClock, chatID, MessageTypePublicGroup)
+	return m
 }
 
-// CreatePrivateTextMessage creates a public text Message.
+// CreatePrivateTextMessage creates a one-to-one message.
 func CreatePrivateTextMessage(data []byte, lastClock int64, chatID string) Message {
 	return createTextMessage(data, lastClock, chatID, MessageTypePrivate)
+}
+
+// CreatePrivateGroupTextMessage creates a group message.
+func CreatePrivateGroupTextMessage(data []byte, lastClock int64, chatID string) Message {
+	return createTextMessage(data, lastClock, chatID, MessageTypePrivateGroup)
 }
 
 func decodeTransitMessage(originalPayload []byte) (interface{}, error) {
@@ -144,8 +150,9 @@ func EncodeMessage(value Message) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// MessageID calculates the messageID, by appending the sha3-256 to the pubkey bytes
-func MessageID(author *ecdsa.PublicKey, data []byte) []byte {
+// MessageID calculates the messageID from author's compressed public key
+// and not encrypted but encoded payload.
+func MessageID(author *ecdsa.PublicKey, data []byte) statusproto.HexBytes {
 	keyBytes := crypto.FromECDSAPub(author)
 	return crypto.Keccak256(append(keyBytes, data...))
 }
