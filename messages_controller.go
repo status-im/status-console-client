@@ -169,7 +169,7 @@ func (c *MessagesViewController) Select(chat *status.Chat) {
 }
 
 // Send sends a payload as a message.
-func (c *MessagesViewController) Send(ctx context.Context, data []byte) ([]byte, error) {
+func (c *MessagesViewController) Send(ctx context.Context, data []byte) ([][]byte, error) {
 	if c.activeChat == nil {
 		return nil, errors.New("no selected chat")
 	}

@@ -30,7 +30,7 @@ require (
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/status-im/status-go v0.34.0-beta.0.0.20191011121408-2fd615d0e317
 	github.com/status-im/status-nim v0.0.0-20190724023117-a5693e6e4820
-	github.com/status-im/status-protocol-go v0.3.1
+	github.com/status-im/status-protocol-go v0.4.0
 	github.com/stretchr/objx v0.2.0 // indirect
 	go.uber.org/zap v1.10.0
 	google.golang.org/genproto v0.0.0-20190701230453-710ae3a149df // indirect

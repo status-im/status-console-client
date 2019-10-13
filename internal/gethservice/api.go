@@ -41,11 +41,19 @@ func NewPublicAPI(s *Service) *PublicAPI {
 // Send sends payload to specified chat.
 // Chat should be added before sending message,
 // otherwise error will be received.
-func (api *PublicAPI) Send(ctx context.Context, chatID string, payload string) (hexutil.Bytes, error) {
+func (api *PublicAPI) Send(ctx context.Context, chatID string, payload string) ([]hexutil.Bytes, error) {
 	if api.service.messenger == nil {
 		return nil, ErrMessengerNotSet
 	}
-	return api.service.messenger.Send(ctx, chatID, []byte(payload))
+	ids, err := api.service.messenger.Send(ctx, chatID, []byte(payload))
+	if err != nil {
+		return nil, err
+	}
+	result := make([]hexutil.Bytes, len(ids))
+	for idx, id := range ids {
+		result[idx] = id
+	}
+	return result, nil
 }
 
 // Request sends a request for historic messages matching the provided RequestParams.
