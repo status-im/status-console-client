@@ -15,8 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"go.uber.org/zap/zapcore"
-
 	"github.com/ethereum/go-ethereum/crypto"
 	gethnode "github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -31,7 +29,9 @@ import (
 	"github.com/status-im/status-go/signal"
 	status "github.com/status-im/status-protocol-go"
 	gethbridge "github.com/status-im/status-protocol-go/bridge/geth"
+	"github.com/status-im/status-protocol-go/zaputil"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var g *gocui.Gui
@@ -129,9 +129,13 @@ func main() {
 	log.SetOutput(clientLogFile)
 
 	// Create zap logger.
+	if err := zaputil.RegisterJSONHexEncoder(); err != nil {
+		exitErr(err)
+	}
 	cfg := zap.NewProductionConfig()
-	cfg.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
+	cfg.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
 	cfg.OutputPaths = []string{clientLogFile.Name()}
+	cfg.Encoding = "json-hex"
 	logger, err := cfg.Build()
 	if err != nil {
 		exitErr(fmt.Errorf("failed to create logger: %v", err))
