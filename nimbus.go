@@ -3,15 +3,50 @@
 package main
 
 import (
-	statusnim "github.com/status-im/status-nim"
-	"runtime"
+	"time"
+
+	"crypto/ecdsa"
+
+	"github.com/jroimartin/gocui"
+	nimbusbridge "github.com/status-im/status-protocol-go/bridge/nimbus"
+	whispertypes "github.com/status-im/status-protocol-go/transport/whisper/types"
 )
 
 func init() {
-	runtime.LockOSThread()
+	nimbusbridge.Init()
 }
 
-func startNimbus() {
-	statusnim.Start()
-	statusnim.ListenAndPost()
+func startNimbus(privateKey *ecdsa.PrivateKey, listenAddr string, staging bool) error {
+	return nimbusbridge.StartNimbus(privateKey, listenAddr, staging)
+}
+
+func startPolling(g *gocui.Gui, pollFunc func(), delay time.Duration, cancel <-chan struct{}) {
+	if pollFunc != nil {
+		// Start a worker goroutine to periodically schedule polling on the UI thread
+		go func() {
+			for {
+				schedulePoll(g, pollFunc)
+				select {
+				case <-time.After(delay):
+				case <-cancel:
+					return
+				}
+			}
+		}()
+	}
+}
+
+func schedulePoll(g *gocui.Gui, pollFunc func()) {
+	if pollFunc == nil {
+		return
+	}
+
+	g.Update(func(g *gocui.Gui) error {
+		pollFunc()
+		return nil
+	})
+}
+
+func newNimbusWhisperWrapper() whispertypes.Whisper {
+	return nimbusbridge.NewNimbusWhisperWrapper()
 }
