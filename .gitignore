@@ -19,3 +19,10 @@ status-console-client
 
 .vscode
 .idea
+
+# Nimbus-related stuff
+# We build Nimbus and place the libraries in vendor/github.com/status-im/nimbus
+# and header files in vendor/github.com/status-im/status-protocol-go/bridge/nimbus
+# but we don't want to add that to source code control
+vendor/github.com/status-im/nimbus
+vendor/github.com/status-im/status-protocol-go/bridge/nimbus/libnimbus.*

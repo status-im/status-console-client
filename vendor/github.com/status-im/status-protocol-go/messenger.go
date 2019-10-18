@@ -4,12 +4,8 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"database/sql"
-	"encoding/hex"
-	"fmt"
 	"strings"
 	"time"
-
-	"github.com/ethereum/go-ethereum/common/hexutil"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/pkg/errors"
@@ -18,6 +14,7 @@ import (
 	"github.com/status-im/status-protocol-go/encryption"
 	"github.com/status-im/status-protocol-go/encryption/multidevice"
 	"github.com/status-im/status-protocol-go/encryption/sharedsecret"
+	"github.com/status-im/status-protocol-go/ens"
 	"github.com/status-im/status-protocol-go/identity/alias"
 	"github.com/status-im/status-protocol-go/identity/identicon"
 	"github.com/status-im/status-protocol-go/sqlite"
@@ -500,7 +497,7 @@ func (m *Messenger) AddMembersToChat(ctx context.Context, chat *Chat, members []
 	}
 	encodedMembers := make([]string, len(members))
 	for idx, member := range members {
-		encodedMembers[idx] = hexutil.Encode(crypto.FromECDSAPub(member))
+		encodedMembers[idx] = statusproto.EncodeHex(crypto.FromECDSAPub(member))
 	}
 	event := protocol.NewMembersAddedEvent(encodedMembers, group.NextClockValue())
 	err = group.ProcessEvent(&m.identity.PublicKey, event)
@@ -640,16 +637,13 @@ func (m *Messenger) Send(ctx context.Context, chatID string, data []byte) ([][]b
 	switch chat.ChatType {
 	case ChatTypeOneToOne:
 		logger.Debug("sending private message", zap.Binary("publicKey", crypto.FromECDSAPub(chat.PublicKey)))
-
 		id, message, err := m.processor.SendPrivate(ctx, chat.PublicKey, chat.ID, data, clock)
 		if err != nil {
 			return nil, err
 		}
-
 		if err := m.cacheOwnMessage(chatID, id, message); err != nil {
 			return nil, err
 		}
-
 		return [][]byte{id}, nil
 	case ChatTypePublic:
 		logger.Debug("sending public message", zap.String("chatName", chat.Name))
@@ -809,17 +803,27 @@ func (m *Messenger) RetrieveRawAll() (map[transport.Filter][]*protocol.StatusMes
 	for chat, messages := range chatWithMessages {
 		for _, shhMessage := range messages {
 			// TODO: fix this to use an exported method.
-			statusMessages, err := m.processor.handleMessages(shhMessage, false)
+			statusMessages, err := m.processor.handleMessages(shhMessage, true)
 			if err != nil {
 				logger.Info("failed to decode messages", zap.Error(err))
 				continue
+			}
+
+			for _, msg := range statusMessages {
+				if msg.ParsedMessage != nil {
+					if textMessage, ok := msg.ParsedMessage.(protocol.Message); ok {
+						textMessage.Content = protocol.PrepareContent(textMessage.Content)
+						msg.ParsedMessage = textMessage
+					}
+				}
+
 			}
 
 			result[chat] = append(result[chat], statusMessages...)
 		}
 	}
 
-	err = m.saveContacts(result)
+	err = m.updateContactsFromMessages(result)
 	if err != nil {
 		return nil, err
 	}
@@ -827,7 +831,7 @@ func (m *Messenger) RetrieveRawAll() (map[transport.Filter][]*protocol.StatusMes
 	return result, nil
 }
 
-func (m *Messenger) saveContacts(messages map[transport.Filter][]*protocol.StatusMessage) error {
+func (m *Messenger) updateContactsFromMessages(messages map[transport.Filter][]*protocol.StatusMessage) error {
 	allContactsMap := make(map[string]bool)
 	var allContacts []Contact
 	for _, chatMessages := range messages {
@@ -838,26 +842,25 @@ func (m *Messenger) saveContacts(messages map[transport.Filter][]*protocol.Statu
 			if _, ok := allContactsMap[address]; ok {
 				continue
 			}
-			id := fmt.Sprintf("0x%s", hex.EncodeToString(crypto.FromECDSAPub(publicKey)))
-
-			identicon, err := identicon.GenerateBase64(id)
+			contact, err := buildContact(publicKey)
 			if err != nil {
 				continue
 			}
 
-			contact := Contact{
-				ID:        id,
-				Address:   address[2:],
-				Alias:     alias.GenerateFromPublicKey(message.SigPubKey()),
-				Identicon: identicon,
-			}
-
 			allContactsMap[address] = true
-			allContacts = append(allContacts, contact)
-
+			allContacts = append(allContacts, *contact)
 		}
 	}
-	return m.persistence.SetContactsGeneratedData(allContacts)
+	return m.persistence.SetContactsGeneratedData(allContacts, nil)
+}
+
+func (m *Messenger) RequestHistoricMessages(
+	ctx context.Context,
+	peer []byte, // should be removed after mailserver logic is ported
+	from, to uint32,
+	cursor []byte,
+) ([]byte, error) {
+	return m.transport.SendMessagesRequest(ctx, peer, from, to, cursor)
 }
 
 // DEPRECATED
@@ -934,6 +937,7 @@ type postProcessor struct {
 type postProcessorConfig struct {
 	MatchChat bool // match each messages to a chat; may result in a new chat creation
 	Persist   bool // if true, all sent and received user messages will be persisted
+	Parse     bool // if true, it will parse the content
 }
 
 func newPostProcessor(m *Messenger, config postProcessorConfig) *postProcessor {
@@ -955,6 +959,9 @@ func (p *postProcessor) Run(messages []*protocol.Message) ([]*protocol.Message, 
 	// Order is important. Persisting messages should be always at the end.
 	if p.config.MatchChat {
 		fns = append(fns, p.matchMessages)
+	}
+	if p.config.Parse {
+		fns = append(fns, p.parseMessages)
 	}
 	if p.config.Persist {
 		fns = append(fns, p.saveMessages)
@@ -978,6 +985,14 @@ func (p *postProcessor) saveMessages(messages []*protocol.Message) ([]*protocol.
 	return messages, nil
 }
 
+func (p *postProcessor) parseMessages(messages []*protocol.Message) ([]*protocol.Message, error) {
+	for _, m := range messages {
+		m.Content = protocol.PrepareContent(m.Content)
+	}
+
+	return messages, nil
+}
+
 func (p *postProcessor) matchMessages(messages []*protocol.Message) ([]*protocol.Message, error) {
 	chats, err := p.persistence.Chats()
 	if err != nil {
@@ -998,6 +1013,11 @@ func (p *postProcessor) matchMessages(messages []*protocol.Message) ([]*protocol
 }
 
 func (p *postProcessor) matchMessage(message *protocol.Message, chats []*Chat) (*Chat, error) {
+	if message.SigPubKey == nil {
+		p.logger.Error("public key can't be empty")
+		return nil, errors.New("received a message with empty public key")
+	}
+
 	switch {
 	case message.MessageT == protocol.MessageTypePublicGroup:
 		// For public messages, all outgoing and incoming messages have the same chatID
@@ -1041,6 +1061,10 @@ func (p *postProcessor) matchMessage(message *protocol.Message, chats []*Chat) (
 		// It needs to be verified if the signature public key belongs to the chat.
 		chatID := message.Content.ChatID
 		chat := findChatByID(chatID, chats)
+		if chat == nil {
+			return nil, errors.New("received group chat message for non-existing chat")
+		}
+
 		sigPubKeyHex := statusproto.EncodeHex(crypto.FromECDSAPub(message.SigPubKey))
 		for _, member := range chat.Members {
 			if member.ID == sigPubKeyHex {
@@ -1058,7 +1082,53 @@ func Identicon(id string) (string, error) {
 	return identicon.GenerateBase64(id)
 }
 
+// VerifyENSName verifies that a registered ENS name matches the expected public key
+func (m *Messenger) VerifyENSNames(rpcEndpoint, contractAddress string, ensDetails []ens.ENSDetails) (map[string]ens.ENSResponse, error) {
+	verifier := ens.NewVerifier(m.logger)
+
+	ensResponse, err := verifier.CheckBatch(ensDetails, rpcEndpoint, contractAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update contacts
+	var contacts []Contact
+	for _, details := range ensResponse {
+		if details.Error == nil {
+			contact, err := buildContact(details.PublicKey)
+			if err != nil {
+				return nil, err
+			}
+			contact.ENSVerified = details.Verified
+			contact.ENSVerifiedAt = details.VerifiedAt
+			contact.Name = details.Name
+
+			contacts = append(contacts, *contact)
+		} else {
+			m.logger.Warn("Failed to resolve ens name",
+				zap.String("name", details.Name),
+				zap.String("publicKey", details.PublicKeyString),
+				zap.Error(details.Error),
+			)
+		}
+	}
+
+	if len(contacts) != 0 {
+		err = m.persistence.SetContactsENSData(contacts)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return ensResponse, nil
+}
+
 // GenerateAlias name returns the generated name given a public key hex encoded prefixed with 0x
 func GenerateAlias(id string) (string, error) {
 	return alias.GenerateFromPublicKeyString(id)
+}
+
+// PrepareContent parses the content of a message and returns the parsed version
+func (m *Messenger) PrepareContent(content protocol.Content) protocol.Content {
+	return protocol.PrepareContent(content)
 }

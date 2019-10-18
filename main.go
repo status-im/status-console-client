@@ -16,19 +16,15 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	gethnode "github.com/ethereum/go-ethereum/node"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/google/uuid"
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
-	"github.com/status-im/status-console-client/internal/gethservice"
 	"github.com/status-im/status-go/logutils"
-	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/signal"
 	status "github.com/status-im/status-protocol-go"
-	gethbridge "github.com/status-im/status-protocol-go/bridge/geth"
+	whispertypes "github.com/status-im/status-protocol-go/transport/whisper/types"
 	"github.com/status-im/status-protocol-go/zaputil"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -52,7 +48,7 @@ var (
 	noNamespace           = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
 	fleet                 = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
 	configFile            = fs.String("node-config", "", "a JSON file with node config")
-	listenAddr            = fs.String("listen-addr", ":30303", "The address the geth node should be listening to")
+	listenAddr            = fs.String("listen-addr", ":30303", "The address the Ethereum node should be listening to")
 	datasync              = fs.Bool("datasync", false, "enable datasync")
 	sendV1Messages        = fs.Bool("send-v1-messages", false, "enable sending v1 compatible only messages")
 	genericDiscoveryTopic = fs.Bool("generic-discovery-topic", true, "enable generic discovery topic, for compatibility with pre-v1")
@@ -66,10 +62,6 @@ var (
 func main() {
 	if err := ff.Parse(fs, os.Args[1:]); err != nil {
 		exitErr(errors.Wrap(err, "failed to parse flags"))
-	}
-
-	if *useNimbus {
-		startNimbus()
 	}
 
 	if *createKeyPair {
@@ -96,6 +88,12 @@ func main() {
 		}
 		privateKey = k
 		fmt.Printf("Starting with a new private key: %#x\n", crypto.FromECDSA(privateKey))
+	}
+
+	if *useNimbus {
+		if err := startNimbus(privateKey, *listenAddr, *fleet == params.FleetStaging); err != nil {
+			exitErr(err)
+		}
 	}
 
 	// Prefix data directory with a public key.
@@ -149,7 +147,10 @@ func main() {
 	}
 
 	// initialize protocol
-	var messenger *status.Messenger
+	var (
+		messenger *status.Messenger
+		pollFunc  func()
+	)
 
 	if *providerURI != "" {
 		messenger, err = createMessengerWithURI(*providerURI)
@@ -158,7 +159,7 @@ func main() {
 		}
 	} else {
 		messengerDBPath := filepath.Join(*dataDir, "messenger.sql")
-		messenger, err = createMessengerInProc(privateKey, messengerDBPath, logger)
+		messenger, pollFunc, err = createMessengerInProc(privateKey, messengerDBPath, logger)
 		if err != nil {
 			exitErr(err)
 		}
@@ -176,28 +177,32 @@ func main() {
 
 	logger.Info("starting UI...")
 
-	if !*noUI {
-		go func() {
-			<-done
-			exitErr(errors.New("exit with signal"))
-		}()
-
-		if err := setupGUI(privateKey, messenger, logger); err != nil {
-			exitErr(err)
-		}
-
-		if err := messenger.Init(); err != nil {
-			exitErr(err)
-		}
-
-		if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
-			exitErr(err)
-		}
-
-		g.Close()
-	} else {
+	if *noUI {
 		<-done
+		return
 	}
+
+	go func() {
+		<-done
+		exitErr(errors.New("exit with signal"))
+	}()
+
+	if err := setupGUI(privateKey, messenger, logger); err != nil {
+		exitErr(err)
+	}
+
+	if err := messenger.Init(); err != nil {
+		exitErr(err)
+	}
+
+	cancelPolling := make(chan struct{}, 1)
+	startPolling(g, pollFunc, 50*time.Millisecond, cancelPolling)
+	defer close(cancelPolling)
+	if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
+		close(cancelPolling)
+		exitErr(err)
+	}
+	g.Close()
 }
 
 func exitErr(err error) {
@@ -217,24 +222,7 @@ func (k keysGetter) PrivateKey() (*ecdsa.PrivateKey, error) {
 	return k.privateKey, nil
 }
 
-func createMessengerWithURI(uri string) (*status.Messenger, error) {
-	_, err := rpc.Dial(*providerURI)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to dial")
-	}
-
-	// TODO: provide Mail Servers in a different way.
-	_, err = generateStatusNodeConfig(*dataDir, *fleet, *listenAddr, *configFile)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to generate node config")
-	}
-
-	// TODO
-
-	return nil, errors.New("not implemented")
-}
-
-func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logger) (*status.Messenger, error) {
+func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logger) (*status.Messenger, func(), error) {
 	// collect mail server request signals
 	signalsForwarder := newSignalForwarder()
 	go signalsForwarder.Start()
@@ -244,31 +232,14 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 		filterMailTypesHandler(signalsForwarder.in),
 	)
 
-	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *listenAddr, *configFile)
-	if err != nil {
-		exitErr(errors.Wrap(err, "failed to generate node config"))
-	}
-
-	statusNode := node.New()
-
-	protocolGethService := gethservice.New(
-		statusNode,
-		&keysGetter{privateKey: pk},
-	)
-
-	services := []gethnode.ServiceConstructor{
-		func(ctx *gethnode.ServiceContext) (gethnode.Service, error) {
-			return protocolGethService, nil
-		},
-	}
-
-	if err := statusNode.Start(nodeConfig, nil, services...); err != nil {
-		return nil, errors.Wrap(err, "failed to start node")
-	}
-
-	shhService, err := statusNode.WhisperService()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get Whisper service")
+	var whisper whispertypes.Whisper
+	if *useNimbus {
+		whisper = newNimbusWhisperWrapper()
+	} else {
+		var err error
+		if whisper, err = newGethWhisperWrapper(pk); err != nil {
+			exitErr(err)
+		}
 	}
 
 	options := []status.Option{
@@ -291,21 +262,21 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 
 	messenger, err := status.NewMessenger(
 		pk,
-		gethbridge.NewGethWhisperWrapper(shhService),
+		whisper,
 		*installationID,
 		options...,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create Messenger")
+		return nil, nil, errors.Wrap(err, "failed to create Messenger")
 	}
 
 	if err := messenger.Init(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// protocolGethService.SetMessenger(messenger)
 
-	return messenger, nil
+	return messenger, whisper.Poll, nil
 }
 
 func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger, logger *zap.Logger) error {

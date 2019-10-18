@@ -17,15 +17,18 @@ import (
 
 	"github.com/status-im/status-go/db"
 	"github.com/status-im/status-go/mailserver"
+	"github.com/status-im/status-go/params"
 	"github.com/status-im/status-go/services/shhext/mailservers"
 	whisper "github.com/status-im/whisper/whisperv6"
 
 	statusproto "github.com/status-im/status-protocol-go"
 	gethbridge "github.com/status-im/status-protocol-go/bridge/geth"
 	"github.com/status-im/status-protocol-go/encryption/multidevice"
+	"github.com/status-im/status-protocol-go/ens"
 	statustransp "github.com/status-im/status-protocol-go/transport/whisper"
 	whispertypes "github.com/status-im/status-protocol-go/transport/whisper/types"
 	statusproto_types "github.com/status-im/status-protocol-go/types"
+	statusprotomessage "github.com/status-im/status-protocol-go/v1"
 )
 
 const (
@@ -33,6 +36,9 @@ const (
 	defaultWorkTime = 5
 	// defaultRequestTimeout is the default request timeout in seconds
 	defaultRequestTimeout = 10
+
+	// ensContractAddress is the address of the ENS resolver
+	ensContractAddress = "0x314159265dd8dbb310642f98f50c066173c1259b"
 )
 
 var (
@@ -439,6 +445,10 @@ func (api *PublicAPI) SendPublicMessage(ctx context.Context, msg SendPublicMessa
 	return api.service.messenger.SendRaw(ctx, chat, msg.Payload)
 }
 
+func (api *PublicAPI) PrepareContent(ctx context.Context, content statusprotomessage.Content) statusprotomessage.Content {
+	return api.service.messenger.PrepareContent(content)
+}
+
 // SendDirectMessage sends a 1:1 chat message to the underlying transport
 // Message's payload is a transit encoded message.
 // It's important to call PublicAPI.afterSend() so that the client receives a signal
@@ -617,6 +627,11 @@ func (api *PublicAPI) SetInstallationMetadata(installationID string, data *multi
 	return api.service.messenger.SetInstallationMetadata(installationID, data)
 }
 
+// VerifyENSNames takes a list of ensdetails and returns whether they match the public key specified
+func (api *PublicAPI) VerifyENSNames(details []ens.ENSDetails) (map[string]ens.ENSResponse, error) {
+	return api.service.messenger.VerifyENSNames(params.MainnetEthereumNetworkURL, ensContractAddress, details)
+}
+
 type ApplicationMessagesResponse struct {
 	Messages []*statusproto.Message `json:"messages"`
 	Cursor   string                 `json:"cursor"`
@@ -724,7 +739,7 @@ func createBloomFilter(r MessagesRequest) []byte {
 		return topicsToBloom(r.Topics...)
 	}
 
-	return whisper.TopicToBloom(whisper.TopicType(r.Topic))
+	return whispertypes.TopicToBloom(r.Topic)
 }
 
 func topicsToBloom(topics ...whispertypes.TopicType) []byte {
@@ -734,9 +749,9 @@ func topicsToBloom(topics ...whispertypes.TopicType) []byte {
 		i.Or(i, new(big.Int).SetBytes(bloom[:]))
 	}
 
-	combined := make([]byte, whisper.BloomFilterSize)
+	combined := make([]byte, whispertypes.BloomFilterSize)
 	data := i.Bytes()
-	copy(combined[whisper.BloomFilterSize-len(data):], data[:])
+	copy(combined[whispertypes.BloomFilterSize-len(data):], data[:])
 
 	return combined
 }

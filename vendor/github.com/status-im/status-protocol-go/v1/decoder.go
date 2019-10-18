@@ -76,6 +76,10 @@ func statusMessageHandler(d transit.Decoder, value interface{}) (interface{}, er
 				switch keyKeyword {
 				case transit.Keyword("text"):
 					sm.Content.Text, ok = contentVal.(string)
+				case transit.Keyword("response-to"):
+					sm.Content.ResponseTo, ok = contentVal.(string)
+				case transit.Keyword("name"):
+					sm.Content.Name, ok = contentVal.(string)
 				case transit.Keyword("chat-id"):
 					sm.Content.ChatID, ok = contentVal.(string)
 				}

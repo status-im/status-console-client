@@ -5,11 +5,11 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 
 	"github.com/jroimartin/gocui"
 	status "github.com/status-im/status-protocol-go"
+	statusproto "github.com/status-im/status-protocol-go/types"
 )
 
 const DefaultMultiplexerPrefix = "default"
@@ -70,7 +70,7 @@ func chatAddCmdHandler(args []string) (chat status.Chat, err error) {
 		name := args[0]
 		chat = status.CreatePublicChat(name)
 	} else if len(args) == 2 {
-		publicKeyBytes, err := hexutil.Decode(args[0])
+		publicKeyBytes, err := statusproto.DecodeHex(args[0])
 		if err != nil {
 			return chat, err
 		}

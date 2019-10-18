@@ -1,3 +1,5 @@
+// +build geth !nimbus
+
 package gethservice
 
 import (
