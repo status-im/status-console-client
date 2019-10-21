@@ -383,7 +383,7 @@ github.com/status-im/status-go/static
 github.com/status-im/status-go/timesource
 # github.com/status-im/status-nim v0.0.0-20190724023117-a5693e6e4820
 github.com/status-im/status-nim
-# github.com/status-im/status-protocol-go v0.3.1
+# github.com/status-im/status-protocol-go v0.4.0
 github.com/status-im/status-protocol-go
 github.com/status-im/status-protocol-go/applicationmetadata
 github.com/status-im/status-protocol-go/bridge/geth
