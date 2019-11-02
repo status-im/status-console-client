@@ -51,6 +51,7 @@ var (
 	installationID        = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
 	noNamespace           = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
 	fleet                 = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
+	mailserverAddr        = fs.String("mailserver-addr", "", "a mailserver address to connect to")
 	configFile            = fs.String("node-config", "", "a JSON file with node config")
 	listenAddr            = fs.String("listen-addr", ":30303", "The address the geth node should be listening to")
 	datasync              = fs.Bool("datasync", false, "enable datasync")
@@ -133,7 +134,7 @@ func main() {
 		exitErr(err)
 	}
 	cfg := zap.NewProductionConfig()
-	cfg.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
+	cfg.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
 	cfg.OutputPaths = []string{clientLogFile.Name()}
 	cfg.Encoding = "json-hex"
 	logger, err := cfg.Build()
@@ -223,13 +224,10 @@ func createMessengerWithURI(uri string) (*status.Messenger, error) {
 		return nil, errors.Wrap(err, "failed to dial")
 	}
 
-	// TODO: provide Mail Servers in a different way.
 	_, err = generateStatusNodeConfig(*dataDir, *fleet, *listenAddr, *configFile)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to generate node config")
 	}
-
-	// TODO
 
 	return nil, errors.New("not implemented")
 }
@@ -246,7 +244,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 
 	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *listenAddr, *configFile)
 	if err != nil {
-		exitErr(errors.Wrap(err, "failed to generate node config"))
+		return nil, errors.Wrap(err, "failed to generate node config")
 	}
 
 	statusNode := node.New()
@@ -264,6 +262,13 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 
 	if err := statusNode.Start(nodeConfig, nil, services...); err != nil {
 		return nil, errors.Wrap(err, "failed to start node")
+	}
+
+	if *mailserverAddr != "" {
+		logger.Info("selected mailserver", zap.String("url", *mailserverAddr))
+		if err := statusNode.AddPeer(*mailserverAddr); err != nil {
+			return nil, errors.Wrap(err, "failed to add a mailserver")
+		}
 	}
 
 	shhService, err := statusNode.WhisperService()
@@ -302,8 +307,6 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 	if err := messenger.Init(); err != nil {
 		return nil, err
 	}
-
-	// protocolGethService.SetMessenger(messenger)
 
 	return messenger, nil
 }
@@ -352,7 +355,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger, logger 
 		return err
 	})
 	inputMultiplexer.AddHandler("/chat", ChatCmdFactory(chatsVC, messagesVC))
-	// inputMultiplexer.AddHandler("/request", RequestCmdFactory(chatVC))
+	inputMultiplexer.AddHandler("/request", RequestCmdFactory(messagesVC, messenger))
 
 	views := []*View{
 		&View{

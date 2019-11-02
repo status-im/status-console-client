@@ -3,14 +3,12 @@ package statusproto
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
 	"database/sql"
 	"encoding/gob"
 	"encoding/hex"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/crypto/secp256k1"
 	"github.com/pkg/errors"
 
 	protocol "github.com/status-im/status-protocol-go/v1"
@@ -430,7 +428,7 @@ func (db sqlitePersistence) Messages(from, to time.Time) (result []*protocol.Mes
 			return nil, err
 		}
 		if len(pkey) != 0 {
-			msg.SigPubKey, err = unmarshalECDSAPub(pkey)
+			msg.SigPubKey, err = crypto.UnmarshalPubkey(pkey)
 			if err != nil {
 				return nil, err
 			}
@@ -480,9 +478,9 @@ func (db sqlitePersistence) SaveMessages(messages []*protocol.Message) (last int
 	var rst sql.Result
 
 	for _, msg := range messages {
-		pkey := []byte{}
+		var pkey []byte
 		if msg.SigPubKey != nil {
-			pkey, err = marshalECDSAPub(msg.SigPubKey)
+			pkey = crypto.FromECDSAPub(msg.SigPubKey)
 		}
 		rst, err = stmt.Exec(
 			msg.ID, msg.ChatID, msg.ContentT, msg.MessageT, msg.Text, msg.Clock, msg.Timestamp,
@@ -503,35 +501,4 @@ func (db sqlitePersistence) SaveMessages(messages []*protocol.Message) (last int
 		}
 	}
 	return
-}
-
-func marshalECDSAPub(pub *ecdsa.PublicKey) (rst []byte, err error) {
-	switch pub.Curve.(type) {
-	case *secp256k1.BitCurve:
-		rst = make([]byte, 34)
-		rst[0] = 1
-		copy(rst[1:], secp256k1.CompressPubkey(pub.X, pub.Y))
-		return rst[:], nil
-	default:
-		return nil, errors.New("unknown curve")
-	}
-}
-
-func unmarshalECDSAPub(buf []byte) (*ecdsa.PublicKey, error) {
-	pub := &ecdsa.PublicKey{}
-	if len(buf) < 1 {
-		return nil, errors.New("too small")
-	}
-	switch buf[0] {
-	case 1:
-		pub.Curve = secp256k1.S256()
-		pub.X, pub.Y = secp256k1.DecompressPubkey(buf[1:])
-		ok := pub.IsOnCurve(pub.X, pub.Y)
-		if !ok {
-			return nil, errors.New("not on curve")
-		}
-		return pub, nil
-	default:
-		return nil, errors.New("unknown curve")
-	}
 }

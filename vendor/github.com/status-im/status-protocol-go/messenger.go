@@ -640,16 +640,13 @@ func (m *Messenger) Send(ctx context.Context, chatID string, data []byte) ([][]b
 	switch chat.ChatType {
 	case ChatTypeOneToOne:
 		logger.Debug("sending private message", zap.Binary("publicKey", crypto.FromECDSAPub(chat.PublicKey)))
-
 		id, message, err := m.processor.SendPrivate(ctx, chat.PublicKey, chat.ID, data, clock)
 		if err != nil {
 			return nil, err
 		}
-
 		if err := m.cacheOwnMessage(chatID, id, message); err != nil {
 			return nil, err
 		}
-
 		return [][]byte{id}, nil
 	case ChatTypePublic:
 		logger.Debug("sending public message", zap.String("chatName", chat.Name))
@@ -819,7 +816,7 @@ func (m *Messenger) RetrieveRawAll() (map[transport.Filter][]*protocol.StatusMes
 		}
 	}
 
-	err = m.saveContacts(result)
+	err = m.updateContactsFromMessages(result)
 	if err != nil {
 		return nil, err
 	}
@@ -827,7 +824,7 @@ func (m *Messenger) RetrieveRawAll() (map[transport.Filter][]*protocol.StatusMes
 	return result, nil
 }
 
-func (m *Messenger) saveContacts(messages map[transport.Filter][]*protocol.StatusMessage) error {
+func (m *Messenger) updateContactsFromMessages(messages map[transport.Filter][]*protocol.StatusMessage) error {
 	allContactsMap := make(map[string]bool)
 	var allContacts []Contact
 	for _, chatMessages := range messages {
@@ -858,6 +855,15 @@ func (m *Messenger) saveContacts(messages map[transport.Filter][]*protocol.Statu
 		}
 	}
 	return m.persistence.SetContactsGeneratedData(allContacts)
+}
+
+func (m *Messenger) RequestHistoricMessages(
+	ctx context.Context,
+	peer []byte, // should be removed after mailserver logic is ported
+	from, to uint32,
+	cursor []byte,
+) ([]byte, error) {
+	return m.transport.SendMessagesRequest(ctx, peer, from, to, cursor)
 }
 
 // DEPRECATED

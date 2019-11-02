@@ -28,9 +28,9 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/rjeczalik/notify v0.9.2 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
-	github.com/status-im/status-go v0.34.0-beta.3
+	github.com/status-im/status-go v0.34.0-beta.3.0.20191102115453-d96e5bcd5588
 	github.com/status-im/status-nim v0.0.0-20190724023117-a5693e6e4820
-	github.com/status-im/status-protocol-go v0.4.2
+	github.com/status-im/status-protocol-go v0.4.3-0.20191102124925-64a4afd561c0
 	github.com/stretchr/objx v0.2.0 // indirect
 	go.uber.org/zap v1.10.0
 	google.golang.org/genproto v0.0.0-20190701230453-710ae3a149df // indirect
