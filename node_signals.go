@@ -6,7 +6,6 @@ import (
 	"log"
 	"sync"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/status-im/status-go/signal"
 )
 
@@ -16,9 +15,11 @@ type signalEnvelope struct {
 }
 
 type mailTypeEvent struct {
-	RequestID        common.Hash `json:"requestID"`
-	Hash             common.Hash `json:"hash"`
-	LastEnvelopeHash common.Hash `json:"lastEnvelopeHash"`
+	RequestID        []byte `json:"requestID"`
+	Hash             []byte `json:"hash"`
+	LastEnvelopeHash []byte `json:"lastEnvelopeHash"`
+	Cursor           string `json:"cursor"`
+	Error            string `json:"errorMessage"`
 }
 
 type mailTypeSignal struct {
@@ -76,7 +77,10 @@ func filterMailTypesHandler(in chan<- mailTypeSignal) func(string) {
 		var envelope signalEnvelope
 		if err := json.Unmarshal([]byte(event), &envelope); err != nil {
 			log.Printf("faild to unmarshal signal Envelope: %v", err)
+			return
 		}
+
+		log.Printf("recieved signal (%s) with event: %s", envelope.Type, envelope.Event)
 
 		switch envelope.Type {
 		case signal.EventMailServerRequestCompleted:
@@ -86,8 +90,8 @@ func filterMailTypesHandler(in chan<- mailTypeSignal) func(string) {
 			}
 			in <- mailTypeSignal{
 				envelope.Type,
-				hex.EncodeToString(event.RequestID.Bytes()),
-				event.LastEnvelopeHash.Bytes(),
+				hex.EncodeToString(event.RequestID),
+				event.LastEnvelopeHash,
 			}
 		case signal.EventMailServerRequestExpired:
 			var event mailTypeEvent
@@ -96,7 +100,7 @@ func filterMailTypesHandler(in chan<- mailTypeSignal) func(string) {
 			}
 			in <- mailTypeSignal{
 				envelope.Type,
-				hex.EncodeToString(event.Hash.Bytes()),
+				hex.EncodeToString(event.Hash),
 				nil,
 			}
 		}

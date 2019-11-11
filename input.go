@@ -2,8 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
+	"time"
+
+	"github.com/ethereum/go-ethereum/p2p/enode"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -111,5 +115,26 @@ func ChatCmdFactory(chatsvc *ChatsViewController, chatvc *MessagesViewController
 		}
 
 		return nil
+	}
+}
+
+func RequestCmdFactory(messagesVC *MessagesViewController, messenger *status.Messenger) CmdHandler {
+	return func(b []byte) error {
+		parsedNode, err := enode.ParseV4(*mailserverAddr)
+		if err != nil {
+			return err
+		}
+		peerID := parsedNode.ID()
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+		_, err = messenger.RequestHistoricMessages(
+			ctx,
+			peerID[:],
+			uint32(time.Now().UTC().Add(-time.Hour).Unix()),
+			uint32(time.Now().UTC().Unix()),
+			nil,
+		)
+		return err
 	}
 }
