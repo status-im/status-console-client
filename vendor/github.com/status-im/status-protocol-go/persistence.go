@@ -76,8 +76,8 @@ func (db sqlitePersistence) SaveChat(chat Chat) error {
 	}
 
 	// Insert record
-	stmt, err := db.db.Prepare(`INSERT INTO chats(id, name, color, active, type, timestamp,  deleted_at_clock_value, public_key, unviewed_message_count, last_clock_value, last_message_content_type, last_message_content, last_message_timestamp, members, membership_updates)
-	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	stmt, err := db.db.Prepare(`INSERT INTO chats(id, name, color, active, type, timestamp,  deleted_at_clock_value, public_key, unviewed_message_count, last_clock_value, last_message_content_type, last_message_content, last_message_timestamp, last_message_clock_value, members, membership_updates)
+	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -97,6 +97,7 @@ func (db sqlitePersistence) SaveChat(chat Chat) error {
 		chat.LastMessageContentType,
 		chat.LastMessageContent,
 		chat.LastMessageTimestamp,
+		chat.LastMessageClockValue,
 		encodedMembers.Bytes(),
 		encodedMembershipUpdates.Bytes(),
 	)
@@ -149,6 +150,7 @@ func (db sqlitePersistence) chats(tx *sql.Tx) ([]*Chat, error) {
 		last_message_content_type,
 		last_message_content,
 		last_message_timestamp,
+		last_message_clock_value,
 		members,
 		membership_updates
 	FROM chats
@@ -164,6 +166,7 @@ func (db sqlitePersistence) chats(tx *sql.Tx) ([]*Chat, error) {
 		var lastMessageContentType sql.NullString
 		var lastMessageContent sql.NullString
 		var lastMessageTimestamp sql.NullInt64
+		var lastMessageClockValue sql.NullInt64
 
 		chat := &Chat{}
 		encodedMembers := []byte{}
@@ -183,6 +186,7 @@ func (db sqlitePersistence) chats(tx *sql.Tx) ([]*Chat, error) {
 			&lastMessageContentType,
 			&lastMessageContent,
 			&lastMessageTimestamp,
+			&lastMessageClockValue,
 			&encodedMembers,
 			&encodedMembershipUpdates,
 		)
@@ -192,6 +196,7 @@ func (db sqlitePersistence) chats(tx *sql.Tx) ([]*Chat, error) {
 		chat.LastMessageContent = lastMessageContent.String
 		chat.LastMessageContentType = lastMessageContentType.String
 		chat.LastMessageTimestamp = lastMessageTimestamp.Int64
+		chat.LastMessageClockValue = lastMessageClockValue.Int64
 
 		// Restore members
 		membersDecoder := gob.NewDecoder(bytes.NewBuffer(encodedMembers))
@@ -228,6 +233,8 @@ func (db sqlitePersistence) Contacts() ([]*Contact, error) {
 	last_updated,
 	system_tags,
 	device_info,
+	ens_verified,
+	ens_verified_at,
 	tribute_to_talk
 	FROM contacts`)
 
@@ -252,6 +259,8 @@ func (db sqlitePersistence) Contacts() ([]*Contact, error) {
 			&contact.LastUpdated,
 			&encodedSystemTags,
 			&encodedDeviceInfo,
+			&contact.ENSVerified,
+			&contact.ENSVerifiedAt,
 			&contact.TributeToTalk,
 		)
 		if err != nil {
@@ -280,9 +289,7 @@ func (db sqlitePersistence) Contacts() ([]*Contact, error) {
 	return response, nil
 }
 
-// SetContactsGeneratedData sets a contact generated data if not existing already
-// in the database
-func (db sqlitePersistence) SetContactsGeneratedData(contacts []Contact) error {
+func (db sqlitePersistence) SetContactsENSData(contacts []Contact) error {
 	tx, err := db.db.BeginTx(context.Background(), &sql.TxOptions{})
 	if err != nil {
 		return err
@@ -296,6 +303,44 @@ func (db sqlitePersistence) SetContactsGeneratedData(contacts []Contact) error {
 		// don't shadow original error
 		_ = tx.Rollback()
 	}()
+
+	// Ensure contacts exists
+
+	err = db.SetContactsGeneratedData(contacts, tx)
+	if err != nil {
+		return err
+	}
+
+	// Update ens data
+	for _, contact := range contacts {
+		_, err := tx.Exec(`UPDATE contacts SET name = ?, ens_verified = ? , ens_verified_at = ? WHERE id = ?`, contact.Name, contact.ENSVerified, contact.ENSVerifiedAt, contact.ID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// SetContactsGeneratedData sets a contact generated data if not existing already
+// in the database
+func (db sqlitePersistence) SetContactsGeneratedData(contacts []Contact, tx *sql.Tx) error {
+	var err error
+	if tx == nil {
+		tx, err = db.db.BeginTx(context.Background(), &sql.TxOptions{})
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err == nil {
+				err = tx.Commit()
+				return
+
+			}
+			// don't shadow original error
+			_ = tx.Rollback()
+		}()
+	}
 
 	for _, contact := range contacts {
 		_, err := tx.Exec(`INSERT OR IGNORE INTO contacts(
@@ -366,9 +411,11 @@ func (db sqlitePersistence) SaveContact(contact Contact, tx *sql.Tx) error {
 	  last_updated,
 	  system_tags,
 	  device_info,
+	  ens_verified,
+	  ens_verified_at,
 	  tribute_to_talk
 	)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -384,6 +431,8 @@ func (db sqlitePersistence) SaveContact(contact Contact, tx *sql.Tx) error {
 		contact.LastUpdated,
 		encodedSystemTags.Bytes(),
 		encodedDeviceInfo.Bytes(),
+		contact.ENSVerified,
+		contact.ENSVerifiedAt,
 		contact.TributeToTalk,
 	)
 	return err

@@ -4,8 +4,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"database/sql"
-	"encoding/hex"
-	"fmt"
 	"strings"
 	"time"
 
@@ -18,6 +16,7 @@ import (
 	"github.com/status-im/status-protocol-go/encryption"
 	"github.com/status-im/status-protocol-go/encryption/multidevice"
 	"github.com/status-im/status-protocol-go/encryption/sharedsecret"
+	"github.com/status-im/status-protocol-go/ens"
 	"github.com/status-im/status-protocol-go/identity/alias"
 	"github.com/status-im/status-protocol-go/identity/identicon"
 	"github.com/status-im/status-protocol-go/sqlite"
@@ -806,7 +805,7 @@ func (m *Messenger) RetrieveRawAll() (map[transport.Filter][]*protocol.StatusMes
 	for chat, messages := range chatWithMessages {
 		for _, shhMessage := range messages {
 			// TODO: fix this to use an exported method.
-			statusMessages, err := m.processor.handleMessages(shhMessage, false)
+			statusMessages, err := m.processor.handleMessages(shhMessage, true)
 			if err != nil {
 				logger.Info("failed to decode messages", zap.Error(err))
 				continue
@@ -835,26 +834,16 @@ func (m *Messenger) updateContactsFromMessages(messages map[transport.Filter][]*
 			if _, ok := allContactsMap[address]; ok {
 				continue
 			}
-			id := fmt.Sprintf("0x%s", hex.EncodeToString(crypto.FromECDSAPub(publicKey)))
-
-			identicon, err := identicon.GenerateBase64(id)
+			contact, err := buildContact(publicKey)
 			if err != nil {
 				continue
 			}
 
-			contact := Contact{
-				ID:        id,
-				Address:   address[2:],
-				Alias:     alias.GenerateFromPublicKey(message.SigPubKey()),
-				Identicon: identicon,
-			}
-
 			allContactsMap[address] = true
-			allContacts = append(allContacts, contact)
-
+			allContacts = append(allContacts, *contact)
 		}
 	}
-	return m.persistence.SetContactsGeneratedData(allContacts)
+	return m.persistence.SetContactsGeneratedData(allContacts, nil)
 }
 
 func (m *Messenger) RequestHistoricMessages(
@@ -1004,6 +993,11 @@ func (p *postProcessor) matchMessages(messages []*protocol.Message) ([]*protocol
 }
 
 func (p *postProcessor) matchMessage(message *protocol.Message, chats []*Chat) (*Chat, error) {
+	if message.SigPubKey == nil {
+		p.logger.Error("public key can't be empty")
+		return nil, errors.New("received a message with empty public key")
+	}
+
 	switch {
 	case message.MessageT == protocol.MessageTypePublicGroup:
 		// For public messages, all outgoing and incoming messages have the same chatID
@@ -1047,6 +1041,10 @@ func (p *postProcessor) matchMessage(message *protocol.Message, chats []*Chat) (
 		// It needs to be verified if the signature public key belongs to the chat.
 		chatID := message.Content.ChatID
 		chat := findChatByID(chatID, chats)
+		if chat == nil {
+			return nil, errors.New("received group chat message for non-existing chat")
+		}
+
 		sigPubKeyHex := statusproto.EncodeHex(crypto.FromECDSAPub(message.SigPubKey))
 		for _, member := range chat.Members {
 			if member.ID == sigPubKeyHex {
@@ -1062,6 +1060,47 @@ func (p *postProcessor) matchMessage(message *protocol.Message, chats []*Chat) (
 // Identicon returns an identicon based on the input string
 func Identicon(id string) (string, error) {
 	return identicon.GenerateBase64(id)
+}
+
+// VerifyENSName verifies that a registered ENS name matches the expected public key
+func (m *Messenger) VerifyENSNames(rpcEndpoint, contractAddress string, ensDetails []ens.ENSDetails) (map[string]ens.ENSResponse, error) {
+	verifier := ens.NewVerifier(m.logger)
+
+	ensResponse, err := verifier.CheckBatch(ensDetails, rpcEndpoint, contractAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update contacts
+	var contacts []Contact
+	for _, details := range ensResponse {
+		if details.Error == nil {
+			contact, err := buildContact(details.PublicKey)
+			if err != nil {
+				return nil, err
+			}
+			contact.ENSVerified = details.Verified
+			contact.ENSVerifiedAt = details.VerifiedAt
+			contact.Name = details.Name
+
+			contacts = append(contacts, *contact)
+		} else {
+			m.logger.Warn("Failed to resolve ens name",
+				zap.String("name", details.Name),
+				zap.String("publicKey", details.PublicKeyString),
+				zap.Error(details.Error),
+			)
+		}
+	}
+
+	if len(contacts) != 0 {
+		err = m.persistence.SetContactsENSData(contacts)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return ensResponse, nil
 }
 
 // GenerateAlias name returns the generated name given a public key hex encoded prefixed with 0x
