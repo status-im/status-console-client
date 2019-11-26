@@ -5,11 +5,10 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/crypto"
-
 	"github.com/jroimartin/gocui"
-	status "github.com/status-im/status-protocol-go"
-	statusproto "github.com/status-im/status-protocol-go/types"
+	"github.com/status-im/status-go/eth-node/crypto"
+	"github.com/status-im/status-go/eth-node/types"
+	"github.com/status-im/status-go/protocol"
 )
 
 const DefaultMultiplexerPrefix = "default"
@@ -65,12 +64,12 @@ func bytesToArgs(b []byte) []string {
 	return argsStr
 }
 
-func chatAddCmdHandler(args []string) (chat status.Chat, err error) {
+func chatAddCmdHandler(args []string) (chat protocol.Chat, err error) {
 	if len(args) == 1 {
 		name := args[0]
-		chat = status.CreatePublicChat(name)
+		chat = protocol.CreatePublicChat(name)
 	} else if len(args) == 2 {
-		publicKeyBytes, err := statusproto.DecodeHex(args[0])
+		publicKeyBytes, err := types.DecodeHex(args[0])
 		if err != nil {
 			return chat, err
 		}
@@ -78,7 +77,7 @@ func chatAddCmdHandler(args []string) (chat status.Chat, err error) {
 		if err != nil {
 			return chat, err
 		}
-		chat = status.CreateOneToOneChat(args[1], publicKey)
+		chat = protocol.CreateOneToOneChat(args[1], publicKey)
 	} else {
 		err = errors.New("/chat: incorrect arguments to add subcommand")
 	}

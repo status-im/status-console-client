@@ -4,14 +4,13 @@ import (
 	"encoding/binary"
 	"errors"
 
-	whispertypes "github.com/status-im/status-protocol-go/transport/whisper/types"
-	statusproto "github.com/status-im/status-protocol-go/types"
+	"github.com/status-im/status-go/eth-node/types"
 )
 
 const (
 	// DBKeyLength is a size of the envelope key.
-	DBKeyLength  = statusproto.HashLength + timestampLength + whispertypes.TopicLength
-	CursorLength = statusproto.HashLength + timestampLength
+	DBKeyLength  = types.HashLength + timestampLength + types.TopicLength
+	CursorLength = types.HashLength + timestampLength
 )
 
 var (
@@ -30,12 +29,12 @@ func (k *DBKey) Bytes() []byte {
 	return k.raw
 }
 
-func (k *DBKey) Topic() whispertypes.TopicType {
-	return whispertypes.BytesToTopic(k.raw[timestampLength+statusproto.HashLength:])
+func (k *DBKey) Topic() types.TopicType {
+	return types.BytesToTopic(k.raw[timestampLength+types.HashLength:])
 }
 
-func (k *DBKey) EnvelopeHash() statusproto.Hash {
-	return statusproto.BytesToHash(k.raw[timestampLength : statusproto.HashLength+timestampLength])
+func (k *DBKey) EnvelopeHash() types.Hash {
+	return types.BytesToHash(k.raw[timestampLength : types.HashLength+timestampLength])
 }
 
 func (k *DBKey) Cursor() []byte {
@@ -44,11 +43,11 @@ func (k *DBKey) Cursor() []byte {
 }
 
 // NewDBKey creates a new DBKey with the given values.
-func NewDBKey(timestamp uint32, topic whispertypes.TopicType, h statusproto.Hash) *DBKey {
+func NewDBKey(timestamp uint32, topic types.TopicType, h types.Hash) *DBKey {
 	var k DBKey
 	k.raw = make([]byte, DBKeyLength)
 	binary.BigEndian.PutUint32(k.raw, timestamp)
 	copy(k.raw[timestampLength:], h[:])
-	copy(k.raw[timestampLength+statusproto.HashLength:], topic[:])
+	copy(k.raw[timestampLength+types.HashLength:], topic[:])
 	return &k
 }

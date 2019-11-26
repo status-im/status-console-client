@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/jroimartin/gocui"
-	whispertypes "github.com/status-im/status-protocol-go/transport/whisper/types"
+	"github.com/status-im/status-go/eth-node/types"
 )
 
 const noNimbusError = "executable needs to be built with -tags nimbus"
@@ -18,6 +18,6 @@ func startNimbus(privateKey *ecdsa.PrivateKey, listenAddr string, staging bool) 
 
 func startPolling(g *gocui.Gui, pollFunc func(), delay time.Duration, cancel <-chan struct{}) {}
 
-func newNimbusWhisperWrapper() whispertypes.Whisper {
+func newNimbusNodeWrapper() types.Node {
 	panic(noNimbusError)
 }

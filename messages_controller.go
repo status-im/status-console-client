@@ -12,12 +12,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/fatih/color"
 	"github.com/jroimartin/gocui"
 
-	status "github.com/status-im/status-protocol-go"
-	protocol "github.com/status-im/status-protocol-go/v1"
+	"github.com/status-im/status-go/eth-node/crypto"
+	"github.com/status-im/status-go/protocol"
+	v1protocol "github.com/status-im/status-go/protocol/v1"
 )
 
 // MessagesViewController manages chat view.
@@ -25,13 +25,13 @@ type MessagesViewController struct {
 	*ViewController
 
 	identity  *ecdsa.PrivateKey
-	messenger *status.Messenger
+	messenger *protocol.Messenger
 	logger    *zap.Logger
 
-	activeChat *status.Chat
+	activeChat *protocol.Chat
 	onError    func(error)
 	onMessages func()
-	changeChat chan *status.Chat
+	changeChat chan *protocol.Chat
 
 	cancel chan struct{} // cancel the current chat loop
 	done   chan struct{} // wait for the current chat loop to finish
@@ -41,7 +41,7 @@ type MessagesViewController struct {
 func NewMessagesViewController(
 	vc *ViewController,
 	id Identity,
-	m *status.Messenger,
+	m *protocol.Messenger,
 	logger *zap.Logger,
 	onMessages func(),
 	onError func(error),
@@ -60,7 +60,7 @@ func NewMessagesViewController(
 		logger:         logger.With(zap.Namespace("MessagesViewController")),
 		onMessages:     onMessages,
 		onError:        onError,
-		changeChat:     make(chan *status.Chat, 1),
+		changeChat:     make(chan *protocol.Chat, 1),
 	}
 }
 
@@ -77,7 +77,7 @@ func (c *MessagesViewController) readMessagesLoop() {
 
 	// TODO: It should be a round buffer instead.
 	// It is a map with chatID as a key and a list of messages.
-	store := make(map[string][]*protocol.Message)
+	store := make(map[string][]*v1protocol.Message)
 
 	t := time.NewTicker(time.Second)
 	defer t.Stop()
@@ -86,7 +86,7 @@ func (c *MessagesViewController) readMessagesLoop() {
 		select {
 		case <-t.C:
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			allLatest, err := c.messenger.RetrieveAll(ctx, status.RetrieveLatest)
+			allLatest, err := c.messenger.RetrieveAll(ctx, protocol.RetrieveLatest)
 			cancel()
 			if err != nil {
 				c.logger.Error("failed to retrieve messages", zap.Error(err))
@@ -105,7 +105,7 @@ func (c *MessagesViewController) readMessagesLoop() {
 				break
 			}
 
-			var latestForActive []*protocol.Message
+			var latestForActive []*v1protocol.Message
 			for _, m := range allLatest {
 				if m.ChatID == c.activeChat.ID {
 					latestForActive = append(latestForActive, m)
@@ -116,7 +116,7 @@ func (c *MessagesViewController) readMessagesLoop() {
 				break
 			}
 
-			var messagesToDraw []*protocol.Message
+			var messagesToDraw []*v1protocol.Message
 
 			repaint := isRepaintNeeded(latestForActive, store[c.activeChat.ID])
 			if repaint {
@@ -137,13 +137,13 @@ func (c *MessagesViewController) readMessagesLoop() {
 	}
 }
 
-func sortMessages(messages []*protocol.Message) {
+func sortMessages(messages []*v1protocol.Message) {
 	sort.SliceStable(messages, func(i, j int) bool {
 		return messages[i].Clock < messages[j].Clock
 	})
 }
 
-func isRepaintNeeded(latest, messages []*protocol.Message) bool {
+func isRepaintNeeded(latest, messages []*v1protocol.Message) bool {
 	lastClock := int64(0)
 	if len(messages) > 0 {
 		lastClock = messages[len(messages)-1].Clock
@@ -157,13 +157,13 @@ func isRepaintNeeded(latest, messages []*protocol.Message) bool {
 }
 
 // ActiveChat returns the active chat, if any
-func (c *MessagesViewController) ActiveChat() *status.Chat {
+func (c *MessagesViewController) ActiveChat() *protocol.Chat {
 	return c.activeChat
 }
 
 // Select informs the chat view controller about a selected contact.
 // The chat view controller setup subscribers and request recent messages.
-func (c *MessagesViewController) Select(chat *status.Chat) {
+func (c *MessagesViewController) Select(chat *protocol.Chat) {
 	c.logger.Info("selected chat", zap.String("chatID", chat.ID))
 	c.changeChat <- chat
 }
@@ -177,7 +177,7 @@ func (c *MessagesViewController) Send(ctx context.Context, data []byte) ([][]byt
 	return c.messenger.Send(ctx, c.activeChat.ID, data)
 }
 
-func (c *MessagesViewController) printMessages(clear bool, messages ...*protocol.Message) {
+func (c *MessagesViewController) printMessages(clear bool, messages ...*v1protocol.Message) {
 	c.logger.Debug("printing messages", zap.Int("count", len(messages)))
 	c.g.Update(func(*gocui.Gui) error {
 		if clear {
@@ -195,7 +195,7 @@ func (c *MessagesViewController) printMessages(clear bool, messages ...*protocol
 	})
 }
 
-func (c *MessagesViewController) writeMessage(message *protocol.Message) error {
+func (c *MessagesViewController) writeMessage(message *v1protocol.Message) error {
 	myPubKey := c.identity.PublicKey
 	pubKey := message.SigPubKey
 

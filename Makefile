@@ -16,9 +16,12 @@ build:
 # XXX: Multiple ldflags a bit brittle, keeping it simple by having separate build target for now.
 # See https://github.com/golang/go/issues/29053
 build-nimbus: GOFLAGS ?= "-mod=vendor"
+build-nimbus: _NIMBUS_DIR := "./vendor/github.com/status-im/status-go/eth-node/bridge/nimbus"
 build-nimbus:
-	scripts/build-nimbus.sh
-	GOFLAGS=$(GOFLAGS) go build -ldflags="-r ./vendor/github.com/status-im/status-protocol-go/bridge/nimbus" -tags "nimbus geth" -o ./bin/status-term-client .
+	chmod u+x $(_NIMBUS_DIR)/build-nimbus.sh
+	$(_NIMBUS_DIR)/build-nimbus.sh
+	chmod u-x $(_NIMBUS_DIR)/build-nimbus.sh
+	GOFLAGS=$(GOFLAGS) go build -ldflags="-r $(_NIMBUS_DIR)" -tags "nimbus geth" -o ./bin/status-term-client .
 .PHONY: build-nimbus
 
 run: ARGS ?=
@@ -45,7 +48,7 @@ lint-v110:
 vendor:
 	go mod tidy
 	go mod vendor
-	modvendor -copy="**/*.c **/*.h" -v
+	modvendor -copy="**/*.c **/*.h **/build-nimbus.sh" -v
 .PHONY: vendor
 
 install-linter:

@@ -9,13 +9,13 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/pkg/errors"
 	"github.com/status-im/status-console-client/internal/gethservice"
+	gethbridge "github.com/status-im/status-go/eth-node/bridge/geth"
+	"github.com/status-im/status-go/eth-node/types"
 	"github.com/status-im/status-go/node"
-	status "github.com/status-im/status-protocol-go"
-	gethbridge "github.com/status-im/status-protocol-go/bridge/geth"
-	whispertypes "github.com/status-im/status-protocol-go/transport/whisper/types"
+	"github.com/status-im/status-go/protocol"
 )
 
-func newGethWhisperWrapper(pk *ecdsa.PrivateKey) (whispertypes.Whisper, error) {
+func newGethNodeWrapper(pk *ecdsa.PrivateKey) (types.Node, error) {
 	nodeConfig, err := generateStatusNodeConfig(*dataDir, *fleet, *listenAddr, *configFile)
 	if err != nil {
 		exitErr(errors.Wrap(err, "failed to generate node config"))
@@ -38,15 +38,10 @@ func newGethWhisperWrapper(pk *ecdsa.PrivateKey) (whispertypes.Whisper, error) {
 		return nil, errors.Wrap(err, "failed to start node")
 	}
 
-	shhService, err := statusNode.WhisperService()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get Whisper service")
-	}
-
-	return gethbridge.NewGethWhisperWrapper(shhService), nil
+	return gethbridge.NewNodeBridge(statusNode.GethNode()), nil
 }
 
-func createMessengerWithURI(uri string) (*status.Messenger, error) {
+func createMessengerWithURI(uri string) (*protocol.Messenger, error) {
 	_, err := rpc.Dial(uri)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to dial")

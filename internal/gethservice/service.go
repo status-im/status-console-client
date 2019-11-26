@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	status "github.com/status-im/status-protocol-go"
+	"github.com/status-im/status-go/protocol"
 )
 
 const (
@@ -32,7 +32,7 @@ type KeysGetter interface {
 type Service struct {
 	node      *node.StatusNode
 	keys      KeysGetter
-	messenger *status.Messenger
+	messenger *protocol.Messenger
 }
 
 // New creates a new Service.
@@ -44,7 +44,7 @@ func New(node *node.StatusNode, keys KeysGetter) *Service {
 }
 
 // SetMessenger sets a Messenger.
-func (s *Service) SetMessenger(m *status.Messenger) {
+func (s *Service) SetMessenger(m *protocol.Messenger) {
 	s.messenger = m
 }
 

@@ -58,11 +58,6 @@ The main package contains the console user interface.
 
 2. This C API is consumed as a standard shared library, `libnimbus_api.so`.
 
-3. [status-nim](https://github.com/status-im/status-nim) wraps this library to
-expose a Go API. Currently, this "API" is more like a hacky spike. The goal is
-for this to library to hide the integration details with Nim and provide a clean
-Go interface for consumers.
- 
 ## Building and running
 
 The changes are isolated and won't impact `status-console-client` unless the
