@@ -8,8 +8,8 @@ import (
 	"crypto/ecdsa"
 
 	"github.com/jroimartin/gocui"
-	nimbusbridge "github.com/status-im/status-protocol-go/bridge/nimbus"
-	whispertypes "github.com/status-im/status-protocol-go/transport/whisper/types"
+	nimbusbridge "github.com/status-im/status-go/eth-node/bridge/nimbus"
+	"github.com/status-im/status-go/eth-node/types"
 )
 
 func init() {
@@ -47,6 +47,6 @@ func schedulePoll(g *gocui.Gui, pollFunc func()) {
 	})
 }
 
-func newNimbusWhisperWrapper() whispertypes.Whisper {
-	return nimbusbridge.NewNimbusWhisperWrapper()
+func newNimbusNodeWrapper() types.Node {
+	return nimbusbridge.NewNodeBridge()
 }

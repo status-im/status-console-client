@@ -1,3 +1,5 @@
+# github.com/BurntSushi/toml v0.3.1
+github.com/BurntSushi/toml
 # github.com/allegro/bigcache v1.2.1
 github.com/allegro/bigcache
 github.com/allegro/bigcache/queue
@@ -7,7 +9,7 @@ github.com/aristanetworks/goarista/monotime
 github.com/beevik/ntp
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
-# github.com/btcsuite/btcd v0.0.0-20191011042131-c3151ef50de9
+# github.com/btcsuite/btcd v0.20.1-beta
 github.com/btcsuite/btcd/btcec
 github.com/btcsuite/btcd/chaincfg
 github.com/btcsuite/btcd/chaincfg/chainhash
@@ -26,10 +28,10 @@ github.com/davecgh/go-spew/spew
 github.com/deckarep/golang-set
 # github.com/edsrzf/mmap-go v1.0.0
 github.com/edsrzf/mmap-go
-# github.com/elastic/gosigar v0.10.4
+# github.com/elastic/gosigar v0.10.5
 github.com/elastic/gosigar
 github.com/elastic/gosigar/sys/windows
-# github.com/ethereum/go-ethereum v1.9.5 => github.com/status-im/go-ethereum v1.9.5-status.4
+# github.com/ethereum/go-ethereum v1.9.5 => github.com/status-im/go-ethereum v1.9.5-status.6
 github.com/ethereum/go-ethereum
 github.com/ethereum/go-ethereum/accounts
 github.com/ethereum/go-ethereum/accounts/abi
@@ -371,13 +373,12 @@ github.com/status-im/migrate/v4/source/go_bindata
 # github.com/status-im/rendezvous v1.3.0
 github.com/status-im/rendezvous
 github.com/status-im/rendezvous/protocol
-# github.com/status-im/status-go v0.34.0-beta.9.0.20191118133003-2dd74da23d9f
+# github.com/status-im/status-go v0.36.0
 github.com/status-im/status-go/account
 github.com/status-im/status-go/account/generator
 github.com/status-im/status-go/contracts
 github.com/status-im/status-go/db
 github.com/status-im/status-go/discovery
-github.com/status-im/status-go/extkeys
 github.com/status-im/status-go/logutils
 github.com/status-im/status-go/mailserver
 github.com/status-im/status-go/mailserver/migrations
@@ -390,6 +391,7 @@ github.com/status-im/status-go/peers/verifier
 github.com/status-im/status-go/rpc
 github.com/status-im/status-go/services/browsers
 github.com/status-im/status-go/services/incentivisation
+github.com/status-im/status-go/services/nodebridge
 github.com/status-im/status-go/services/peer
 github.com/status-im/status-go/services/permissions
 github.com/status-im/status-go/services/personal
@@ -399,35 +401,38 @@ github.com/status-im/status-go/services/shhext/mailservers
 github.com/status-im/status-go/services/status
 github.com/status-im/status-go/services/wallet
 github.com/status-im/status-go/services/wallet/ierc20
-github.com/status-im/status-go/services/whisperbridge
 github.com/status-im/status-go/signal
 github.com/status-im/status-go/sqlite
 github.com/status-im/status-go/static
 github.com/status-im/status-go/timesource
-# github.com/status-im/status-protocol-go v0.5.2
-github.com/status-im/status-protocol-go
-github.com/status-im/status-protocol-go/applicationmetadata
-github.com/status-im/status-protocol-go/bridge/geth
-github.com/status-im/status-protocol-go/bridge/nimbus
-github.com/status-im/status-protocol-go/crypto
-github.com/status-im/status-protocol-go/datasync
-github.com/status-im/status-protocol-go/datasync/peer
-github.com/status-im/status-protocol-go/encryption
-github.com/status-im/status-protocol-go/encryption/migrations
-github.com/status-im/status-protocol-go/encryption/multidevice
-github.com/status-im/status-protocol-go/encryption/publisher
-github.com/status-im/status-protocol-go/encryption/sharedsecret
-github.com/status-im/status-protocol-go/ens
-github.com/status-im/status-protocol-go/identity/alias
-github.com/status-im/status-protocol-go/identity/identicon
-github.com/status-im/status-protocol-go/migrations
-github.com/status-im/status-protocol-go/sqlite
-github.com/status-im/status-protocol-go/transport/whisper
-github.com/status-im/status-protocol-go/transport/whisper/migrations
-github.com/status-im/status-protocol-go/transport/whisper/types
-github.com/status-im/status-protocol-go/types
-github.com/status-im/status-protocol-go/v1
-github.com/status-im/status-protocol-go/zaputil
+# github.com/status-im/status-go/eth-node v0.36.0 => github.com/status-im/status-go/eth-node v0.36.0
+github.com/status-im/status-go/eth-node/bridge/geth
+github.com/status-im/status-go/eth-node/bridge/geth/ens
+github.com/status-im/status-go/eth-node/bridge/nimbus
+github.com/status-im/status-go/eth-node/crypto
+github.com/status-im/status-go/eth-node/crypto/ecies
+github.com/status-im/status-go/eth-node/types
+github.com/status-im/status-go/eth-node/types/ens
+# github.com/status-im/status-go/extkeys v1.0.0
+github.com/status-im/status-go/extkeys
+# github.com/status-im/status-go/protocol v0.36.0
+github.com/status-im/status-go/protocol
+github.com/status-im/status-go/protocol/applicationmetadata
+github.com/status-im/status-go/protocol/datasync
+github.com/status-im/status-go/protocol/datasync/peer
+github.com/status-im/status-go/protocol/encryption
+github.com/status-im/status-go/protocol/encryption/migrations
+github.com/status-im/status-go/protocol/encryption/multidevice
+github.com/status-im/status-go/protocol/encryption/publisher
+github.com/status-im/status-go/protocol/encryption/sharedsecret
+github.com/status-im/status-go/protocol/identity/alias
+github.com/status-im/status-go/protocol/identity/identicon
+github.com/status-im/status-go/protocol/migrations
+github.com/status-im/status-go/protocol/sqlite
+github.com/status-im/status-go/protocol/transport/whisper
+github.com/status-im/status-go/protocol/transport/whisper/migrations
+github.com/status-im/status-go/protocol/v1
+github.com/status-im/status-go/protocol/zaputil
 # github.com/status-im/whisper v1.6.1
 github.com/status-im/whisper/whisperv6
 # github.com/steakknife/bloomfilter v0.0.0-20180922174646-6819c0d2a570
@@ -464,7 +469,7 @@ github.com/vacp2p/mvds/state/migrations
 github.com/vacp2p/mvds/store
 github.com/vacp2p/mvds/store/migrations
 github.com/vacp2p/mvds/transport
-# github.com/wealdtech/go-ens/v3 v3.0.7
+# github.com/wealdtech/go-ens/v3 v3.0.9
 github.com/wealdtech/go-ens/v3
 github.com/wealdtech/go-ens/v3/contracts/auctionregistrar
 github.com/wealdtech/go-ens/v3/contracts/baseregistrar
@@ -499,18 +504,20 @@ go.opencensus.io/stats
 go.opencensus.io/stats/internal
 go.opencensus.io/stats/view
 go.opencensus.io/tag
-# go.uber.org/atomic v1.4.0
+# go.uber.org/atomic v1.5.0
 go.uber.org/atomic
-# go.uber.org/multierr v1.1.0
+# go.uber.org/multierr v1.3.0
 go.uber.org/multierr
-# go.uber.org/zap v1.10.0
+# go.uber.org/tools v0.0.0-20190618225709-2cfd321de3ee
+go.uber.org/tools/update-license
+# go.uber.org/zap v1.13.0
 go.uber.org/zap
 go.uber.org/zap/buffer
 go.uber.org/zap/internal/bufferpool
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
-# golang.org/x/crypto v0.0.0-20191029031824-8986dd9e96cf
+# golang.org/x/crypto v0.0.0-20191119213627-4f8c1d86b1ba
 golang.org/x/crypto/blake2s
 golang.org/x/crypto/curve25519
 golang.org/x/crypto/ed25519
@@ -521,6 +528,9 @@ golang.org/x/crypto/ripemd160
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3
 golang.org/x/crypto/ssh/terminal
+# golang.org/x/lint v0.0.0-20190930215403-16217165b5de
+golang.org/x/lint
+golang.org/x/lint/golint
 # golang.org/x/net v0.0.0-20190930134127-c5a3c61f89f3
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -558,6 +568,22 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
+# golang.org/x/tools v0.0.0-20191109212701-97ad0ed33101
+golang.org/x/tools/go/analysis
+golang.org/x/tools/go/analysis/passes/inspect
+golang.org/x/tools/go/ast/astutil
+golang.org/x/tools/go/ast/inspector
+golang.org/x/tools/go/buildutil
+golang.org/x/tools/go/gcexportdata
+golang.org/x/tools/go/internal/gcimporter
+golang.org/x/tools/go/internal/packagesdriver
+golang.org/x/tools/go/packages
+golang.org/x/tools/go/types/objectpath
+golang.org/x/tools/go/types/typeutil
+golang.org/x/tools/internal/fastwalk
+golang.org/x/tools/internal/gopathwalk
+golang.org/x/tools/internal/semver
+golang.org/x/tools/internal/span
 # gopkg.in/go-playground/validator.v9 v9.29.1
 gopkg.in/go-playground/validator.v9
 # gopkg.in/natefinch/lumberjack.v2 v2.0.0
@@ -568,3 +594,29 @@ gopkg.in/natefinch/npipe.v2
 gopkg.in/olebedev/go-duktape.v3
 # gopkg.in/urfave/cli.v1 v1.20.0
 gopkg.in/urfave/cli.v1
+# honnef.co/go/tools v0.0.1-2019.2.3
+honnef.co/go/tools/arg
+honnef.co/go/tools/cmd/staticcheck
+honnef.co/go/tools/config
+honnef.co/go/tools/deprecated
+honnef.co/go/tools/facts
+honnef.co/go/tools/functions
+honnef.co/go/tools/go/types/typeutil
+honnef.co/go/tools/internal/cache
+honnef.co/go/tools/internal/passes/buildssa
+honnef.co/go/tools/internal/renameio
+honnef.co/go/tools/internal/sharedcheck
+honnef.co/go/tools/lint
+honnef.co/go/tools/lint/lintdsl
+honnef.co/go/tools/lint/lintutil
+honnef.co/go/tools/lint/lintutil/format
+honnef.co/go/tools/loader
+honnef.co/go/tools/printf
+honnef.co/go/tools/simple
+honnef.co/go/tools/ssa
+honnef.co/go/tools/ssautil
+honnef.co/go/tools/staticcheck
+honnef.co/go/tools/staticcheck/vrp
+honnef.co/go/tools/stylecheck
+honnef.co/go/tools/unused
+honnef.co/go/tools/version

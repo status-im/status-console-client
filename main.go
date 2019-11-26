@@ -15,17 +15,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/google/uuid"
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
+	"github.com/status-im/status-go/eth-node/crypto"
+	"github.com/status-im/status-go/eth-node/types"
 	"github.com/status-im/status-go/logutils"
 	"github.com/status-im/status-go/params"
+	"github.com/status-im/status-go/protocol"
+	"github.com/status-im/status-go/protocol/zaputil"
 	"github.com/status-im/status-go/signal"
-	status "github.com/status-im/status-protocol-go"
-	whispertypes "github.com/status-im/status-protocol-go/transport/whisper/types"
-	"github.com/status-im/status-protocol-go/zaputil"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -148,7 +148,7 @@ func main() {
 
 	// initialize protocol
 	var (
-		messenger *status.Messenger
+		messenger *protocol.Messenger
 		pollFunc  func()
 	)
 
@@ -222,7 +222,7 @@ func (k keysGetter) PrivateKey() (*ecdsa.PrivateKey, error) {
 	return k.privateKey, nil
 }
 
-func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logger) (*status.Messenger, func(), error) {
+func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logger) (*protocol.Messenger, func(), error) {
 	// collect mail server request signals
 	signalsForwarder := newSignalForwarder()
 	go signalsForwarder.Start()
@@ -232,37 +232,39 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 		filterMailTypesHandler(signalsForwarder.in),
 	)
 
-	var whisper whispertypes.Whisper
+	var (
+		node types.Node
+		err  error
+	)
 	if *useNimbus {
-		whisper = newNimbusWhisperWrapper()
+		node = newNimbusNodeWrapper()
 	} else {
-		var err error
-		if whisper, err = newGethWhisperWrapper(pk); err != nil {
+		if node, err = newGethNodeWrapper(pk); err != nil {
 			exitErr(err)
 		}
 	}
 
-	options := []status.Option{
-		status.WithCustomLogger(logger),
-		status.WithDatabaseConfig(dbPath, ""),
-		status.WithMessagesPersistenceEnabled(),
+	options := []protocol.Option{
+		protocol.WithCustomLogger(logger),
+		protocol.WithDatabaseConfig(dbPath, ""),
+		protocol.WithMessagesPersistenceEnabled(),
 	}
 
 	if *genericDiscoveryTopic {
-		options = append(options, status.WithGenericDiscoveryTopicSupport())
+		options = append(options, protocol.WithGenericDiscoveryTopicSupport())
 	}
 
 	if *datasync {
-		options = append(options, status.WithDatasync())
+		options = append(options, protocol.WithDatasync())
 	}
 
 	if *sendV1Messages {
-		options = append(options, status.WithSendV1Messages())
+		options = append(options, protocol.WithSendV1Messages())
 	}
 
-	messenger, err := status.NewMessenger(
+	messenger, err := protocol.NewMessenger(
 		pk,
-		whisper,
+		node,
 		*installationID,
 		options...,
 	)
@@ -276,10 +278,15 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 
 	// protocolGethService.SetMessenger(messenger)
 
+	var whisper types.Whisper
+	if whisper, err = node.GetWhisper(nil); err != nil {
+		exitErr(err)
+	}
+
 	return messenger, whisper.Poll, nil
 }
 
-func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger, logger *zap.Logger) error {
+func setupGUI(privateKey *ecdsa.PrivateKey, messenger *protocol.Messenger, logger *zap.Logger) error {
 	var err error
 
 	// global
@@ -326,7 +333,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger, logger 
 	// inputMultiplexer.AddHandler("/request", RequestCmdFactory(chatVC))
 
 	views := []*View{
-		&View{
+		{
 			Name:       ViewChats,
 			Enabled:    true,
 			Cursor:     true,
@@ -338,17 +345,17 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger, logger 
 				return int(math.Floor(float64(maxX) * 0.2)), maxY - 4
 			},
 			Keybindings: []Binding{
-				Binding{
+				{
 					Key:     gocui.KeyArrowDown,
 					Mod:     gocui.ModNone,
 					Handler: CursorDownHandler,
 				},
-				Binding{
+				{
 					Key:     gocui.KeyArrowUp,
 					Mod:     gocui.ModNone,
 					Handler: CursorUpHandler,
 				},
-				Binding{
+				{
 					Key: gocui.KeyEnter,
 					Mod: gocui.ModNone,
 					Handler: GetLineHandler(func(idx int, _ string) error {
@@ -369,7 +376,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger, logger 
 				},
 			},
 		},
-		&View{
+		{
 			Name:       ViewChat,
 			Enabled:    true,
 			Cursor:     true,
@@ -385,31 +392,31 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger, logger 
 				return maxX - 1, maxY - 4
 			},
 			Keybindings: []Binding{
-				Binding{
+				{
 					Key:     gocui.KeyArrowDown,
 					Mod:     gocui.ModNone,
 					Handler: CursorDownHandler,
 				},
-				Binding{
+				{
 					Key:     gocui.KeyArrowUp,
 					Mod:     gocui.ModNone,
 					Handler: CursorUpHandler,
 				},
-				Binding{
+				{
 					Key: gocui.KeyHome,
 					Mod: gocui.ModNone,
 					Handler: func(g *gocui.Gui, v *gocui.View) error {
 						return HomeHandler(g, v)
 					},
 				},
-				Binding{
+				{
 					Key:     gocui.KeyEnd,
 					Mod:     gocui.ModNone,
 					Handler: EndHandler,
 				},
 			},
 		},
-		&View{
+		{
 			Name: ViewInput,
 			Title: fmt.Sprintf(
 				"%s (as %#x)",
@@ -427,19 +434,19 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger, logger 
 				return maxX - 1, maxY - 1
 			},
 			Keybindings: []Binding{
-				Binding{
+				{
 					Key:     gocui.KeyEnter,
 					Mod:     gocui.ModNone,
 					Handler: inputMultiplexer.BindingHandler,
 				},
-				Binding{
+				{
 					Key:     gocui.KeyEnter,
 					Mod:     gocui.ModAlt,
 					Handler: MoveToNewLineHandler,
 				},
 			},
 		},
-		&View{
+		{
 			Name:      ViewNotification,
 			Enabled:   false,
 			Editable:  false,
@@ -452,7 +459,7 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger, logger 
 				return maxX/2 + 50, maxY/2 + 2
 			},
 			Keybindings: []Binding{
-				Binding{
+				{
 					Key: gocui.KeyEnter,
 					Mod: gocui.ModNone,
 					Handler: func(g *gocui.Gui, v *gocui.View) error {
@@ -474,12 +481,12 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *status.Messenger, logger 
 	}
 
 	bindings := []Binding{
-		Binding{
+		{
 			Key:     gocui.KeyCtrlC,
 			Mod:     gocui.ModNone,
 			Handler: QuitHandler,
 		},
-		Binding{
+		{
 			Key:     gocui.KeyTab,
 			Mod:     gocui.ModNone,
 			Handler: NextViewHandler(vm),

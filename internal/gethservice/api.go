@@ -6,8 +6,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	status "github.com/status-im/status-protocol-go"
+	"github.com/status-im/status-go/eth-node/types"
+	"github.com/status-im/status-go/protocol"
 )
 
 var (
@@ -20,12 +20,12 @@ var (
 // MessagesParams is an object with JSON-serializable parameters
 // for Messages method.
 type MessagesParams struct {
-	status.Chat
+	protocol.Chat
 }
 
 // SendParams is an object with JSON-serializable parameters for Send method.
 type SendParams struct {
-	status.Chat
+	protocol.Chat
 }
 
 // PublicAPI provides an JSON-RPC API to interact with
@@ -43,7 +43,7 @@ func NewPublicAPI(s *Service) *PublicAPI {
 // Send sends payload to specified chat.
 // Chat should be added before sending message,
 // otherwise error will be received.
-func (api *PublicAPI) Send(ctx context.Context, chatID string, payload string) ([]hexutil.Bytes, error) {
+func (api *PublicAPI) Send(ctx context.Context, chatID string, payload string) ([]types.HexBytes, error) {
 	if api.service.messenger == nil {
 		return nil, ErrMessengerNotSet
 	}
@@ -51,7 +51,7 @@ func (api *PublicAPI) Send(ctx context.Context, chatID string, payload string) (
 	if err != nil {
 		return nil, err
 	}
-	result := make([]hexutil.Bytes, len(ids))
+	result := make([]types.HexBytes, len(ids))
 	for idx, id := range ids {
 		result[idx] = id
 	}
