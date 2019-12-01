@@ -6,8 +6,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/status-im/status-go/eth-node/types"
 	"github.com/status-im/status-go/protocol"
+	"github.com/status-im/status-go/protocol/protobuf"
 )
 
 var (
@@ -40,22 +40,18 @@ func NewPublicAPI(s *Service) *PublicAPI {
 	}
 }
 
-// Send sends payload to specified chat.
+// SendChatMessage sends a plain text message to specified chat.
 // Chat should be added before sending message,
 // otherwise error will be received.
-func (api *PublicAPI) Send(ctx context.Context, chatID string, payload string) ([]types.HexBytes, error) {
+func (api *PublicAPI) SendChatMessage(ctx context.Context, chatID string, text string) (*protocol.MessengerResponse, error) {
 	if api.service.messenger == nil {
 		return nil, ErrMessengerNotSet
 	}
-	ids, err := api.service.messenger.Send(ctx, chatID, []byte(payload))
-	if err != nil {
-		return nil, err
-	}
-	result := make([]types.HexBytes, len(ids))
-	for idx, id := range ids {
-		result[idx] = id
-	}
-	return result, nil
+	message := &protocol.Message{}
+	message.ChatId = chatID
+	message.Text = text
+	message.ContentType = protobuf.ChatMessage_TEXT_PLAIN
+	return api.service.messenger.SendChatMessage(ctx, message)
 }
 
 // Request sends a request for historic messages matching the provided RequestParams.

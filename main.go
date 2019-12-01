@@ -43,15 +43,13 @@ var (
 	createKeyPair = fs.Bool("create-key-pair", false, "creates and prints a key pair instead of running")
 
 	// flags for in-proc node
-	dataDir               = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
-	installationID        = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
-	noNamespace           = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
-	fleet                 = fs.String("fleet", params.FleetBeta, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
-	configFile            = fs.String("node-config", "", "a JSON file with node config")
-	listenAddr            = fs.String("listen-addr", ":30303", "The address the Ethereum node should be listening to")
-	datasync              = fs.Bool("datasync", false, "enable datasync")
-	sendV1Messages        = fs.Bool("send-v1-messages", false, "enable sending v1 compatible only messages")
-	genericDiscoveryTopic = fs.Bool("generic-discovery-topic", true, "enable generic discovery topic, for compatibility with pre-v1")
+	dataDir        = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
+	installationID = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
+	noNamespace    = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
+	fleet          = fs.String("fleet", params.FleetStaging, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
+	configFile     = fs.String("node-config", "", "a JSON file with node config")
+	listenAddr     = fs.String("listen-addr", ":30303", "The address the Ethereum node should be listening to")
+	datasync       = fs.Bool("datasync", false, "enable datasync")
 
 	// flags for external node
 	providerURI = fs.String("provider", "", "an URI pointing at a provider")
@@ -250,16 +248,8 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 		protocol.WithMessagesPersistenceEnabled(),
 	}
 
-	if *genericDiscoveryTopic {
-		options = append(options, protocol.WithGenericDiscoveryTopicSupport())
-	}
-
 	if *datasync {
 		options = append(options, protocol.WithDatasync())
-	}
-
-	if *sendV1Messages {
-		options = append(options, protocol.WithSendV1Messages())
 	}
 
 	messenger, err := protocol.NewMessenger(
@@ -319,14 +309,18 @@ func setupGUI(privateKey *ecdsa.PrivateKey, messenger *protocol.Messenger, logge
 			_ = notifications.Error("Chat error", fmt.Sprintf("%v", err))
 		},
 	)
-	messagesVC.Start()
+	err = messagesVC.Start()
+	if err != nil {
+		return err
+	}
 
 	inputMultiplexer := NewInputMultiplexer()
 	inputMultiplexer.AddHandler(DefaultMultiplexerPrefix, func(b []byte) error {
 		logger.Info("default multiplexer handler")
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, err := messagesVC.Send(ctx, b)
+		response, err := messagesVC.Send(ctx, string(b))
+		logger.Info("SENT MESSAGE", zap.Any("RESPOSNE", response))
 		return err
 	})
 	inputMultiplexer.AddHandler("/chat", ChatCmdFactory(chatsVC, messagesVC))

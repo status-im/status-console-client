@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -17,16 +18,21 @@ import (
 
 	"github.com/status-im/status-go/eth-node/crypto"
 	"github.com/status-im/status-go/protocol"
-	v1protocol "github.com/status-im/status-go/protocol/v1"
+	"github.com/status-im/status-go/protocol/protobuf"
 )
 
 // MessagesViewController manages chat view.
 type MessagesViewController struct {
 	*ViewController
 
-	identity  *ecdsa.PrivateKey
-	messenger *protocol.Messenger
-	logger    *zap.Logger
+	// TODO: It should be a round buffer instead.
+	// It is a map with chatID as a key and a list of messages.
+	store          map[string][]*protocol.Message
+	mutex          sync.Mutex
+	identity       *ecdsa.PrivateKey
+	myPubkeyString string
+	messenger      *protocol.Messenger
+	logger         *zap.Logger
 
 	activeChat *protocol.Chat
 	onError    func(error)
@@ -56,6 +62,8 @@ func NewMessagesViewController(
 	return &MessagesViewController{
 		ViewController: vc,
 		identity:       id,
+		myPubkeyString: "0x" + hex.EncodeToString(crypto.FromECDSAPub(&id.PublicKey)),
+		store:          make(map[string][]*protocol.Message),
 		messenger:      m,
 		logger:         logger.With(zap.Namespace("MessagesViewController")),
 		onMessages:     onMessages,
@@ -64,20 +72,72 @@ func NewMessagesViewController(
 	}
 }
 
-func (c *MessagesViewController) Start() {
+func (c *MessagesViewController) Start() error {
+
 	if c.cancel == nil {
 		c.cancel = make(chan struct{})
+		chats, err := c.messenger.Chats()
+		if err != nil {
+			return err
+		}
+
+		for _, chat := range chats {
+			// Pull latest 10 messages
+			latestMessages, _, err := c.messenger.MessageByChatID(chat.ID, "", 10)
+			if err != nil {
+				return err
+			}
+
+			c.mutex.Lock()
+			c.store[chat.ID] = append(c.store[chat.ID], latestMessages...)
+			c.mutex.Unlock()
+		}
+
 		go c.readMessagesLoop()
 	}
+	return nil
+}
+
+func (c *MessagesViewController) handleRetrievedMessages(response *protocol.MessengerResponse) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	for _, m := range response.Messages {
+		c.store[m.LocalChatID] = append(c.store[m.LocalChatID], m)
+	}
+
+	c.onMessages()
+
+	if c.activeChat == nil {
+		return
+	}
+
+	var latestForActive []*protocol.Message
+	for _, m := range response.Messages {
+		if m.LocalChatID == c.activeChat.ID {
+			latestForActive = append(latestForActive, m)
+		}
+	}
+
+	if len(latestForActive) == 0 {
+		return
+	}
+
+	var messagesToDraw []*protocol.Message
+
+	repaint := isRepaintNeeded(latestForActive, c.store[c.activeChat.ID])
+	if repaint {
+		messagesToDraw = c.store[c.activeChat.ID]
+	} else {
+		messagesToDraw = latestForActive
+	}
+
+	sortMessages(messagesToDraw)
+	c.printMessages(repaint, messagesToDraw...)
 }
 
 func (c *MessagesViewController) readMessagesLoop() {
 	c.done = make(chan struct{})
 	defer close(c.done)
-
-	// TODO: It should be a round buffer instead.
-	// It is a map with chatID as a key and a list of messages.
-	store := make(map[string][]*v1protocol.Message)
 
 	t := time.NewTicker(time.Second)
 	defer t.Stop()
@@ -85,66 +145,33 @@ func (c *MessagesViewController) readMessagesLoop() {
 	for {
 		select {
 		case <-t.C:
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			allLatest, err := c.messenger.RetrieveAll(ctx, protocol.RetrieveLatest)
-			cancel()
+			response, err := c.messenger.RetrieveAll()
 			if err != nil {
 				c.logger.Error("failed to retrieve messages", zap.Error(err))
 				continue
 			}
 
-			c.logger.Debug("received latest messages", zap.Int("count", len(allLatest)))
+			c.logger.Info("received latest messages", zap.Int("count", len(response.Messages)))
+			c.handleRetrievedMessages(response)
 
-			for _, m := range allLatest {
-				store[m.ChatID] = append(store[m.ChatID], m)
-			}
-
-			c.onMessages()
-
-			if c.activeChat == nil {
-				break
-			}
-
-			var latestForActive []*v1protocol.Message
-			for _, m := range allLatest {
-				if m.ChatID == c.activeChat.ID {
-					latestForActive = append(latestForActive, m)
-				}
-			}
-
-			if len(latestForActive) == 0 {
-				break
-			}
-
-			var messagesToDraw []*v1protocol.Message
-
-			repaint := isRepaintNeeded(latestForActive, store[c.activeChat.ID])
-			if repaint {
-				messagesToDraw = store[c.activeChat.ID]
-			} else {
-				messagesToDraw = latestForActive
-			}
-
-			sortMessages(messagesToDraw)
-			c.printMessages(repaint, messagesToDraw...)
 		case chat := <-c.changeChat:
 			c.activeChat = chat
-			c.logger.Info("changed active chat", zap.Int("count", len(store[chat.ID])))
-			c.printMessages(true, store[chat.ID]...)
+			c.logger.Info("changed active chat", zap.Int("count", len(c.store[chat.ID])))
+			c.printMessages(true, c.store[chat.ID]...)
 		case <-c.cancel:
 			return
 		}
 	}
 }
 
-func sortMessages(messages []*v1protocol.Message) {
+func sortMessages(messages []*protocol.Message) {
 	sort.SliceStable(messages, func(i, j int) bool {
 		return messages[i].Clock < messages[j].Clock
 	})
 }
 
-func isRepaintNeeded(latest, messages []*v1protocol.Message) bool {
-	lastClock := int64(0)
+func isRepaintNeeded(latest, messages []*protocol.Message) bool {
+	lastClock := uint64(0)
 	if len(messages) > 0 {
 		lastClock = messages[len(messages)-1].Clock
 	}
@@ -169,15 +196,31 @@ func (c *MessagesViewController) Select(chat *protocol.Chat) {
 }
 
 // Send sends a payload as a message.
-func (c *MessagesViewController) Send(ctx context.Context, data []byte) ([][]byte, error) {
+func (c *MessagesViewController) Send(ctx context.Context, text string) (*protocol.MessengerResponse, error) {
 	if c.activeChat == nil {
 		return nil, errors.New("no selected chat")
 	}
-	c.logger.Info("sending message", zap.String("chatID", c.activeChat.ID), zap.ByteString("data", data))
-	return c.messenger.Send(ctx, c.activeChat.ID, data)
+	c.logger.Info("sending message", zap.String("chatID", c.activeChat.ID), zap.String("text", text))
+	message := &protocol.Message{}
+	message.ChatId = c.activeChat.ID
+	message.Text = text
+	message.ContentType = protobuf.ChatMessage_TEXT_PLAIN
+	response, err := c.messenger.SendChatMessage(ctx, message)
+	if err != nil {
+		return nil, err
+	}
+	m := response.Messages[0]
+
+	c.mutex.Lock()
+	c.store[m.LocalChatID] = append(c.store[m.LocalChatID], m)
+
+	c.printMessages(false, m)
+	c.mutex.Unlock()
+
+	return response, nil
 }
 
-func (c *MessagesViewController) printMessages(clear bool, messages ...*v1protocol.Message) {
+func (c *MessagesViewController) printMessages(clear bool, messages ...*protocol.Message) {
 	c.logger.Debug("printing messages", zap.Int("count", len(messages)))
 	c.g.Update(func(*gocui.Gui) error {
 		if clear {
@@ -195,21 +238,20 @@ func (c *MessagesViewController) printMessages(clear bool, messages ...*v1protoc
 	})
 }
 
-func (c *MessagesViewController) writeMessage(message *v1protocol.Message) error {
-	myPubKey := c.identity.PublicKey
-	pubKey := message.SigPubKey
+func (c *MessagesViewController) writeMessage(message *protocol.Message) error {
 
 	line := formatMessageLine(
-		pubKey,
+		message.Alias,
+		message.From,
 		message.ID,
 		int64(message.Clock),
-		message.Timestamp.Time(),
+		message.WhisperTimestamp,
 		message.Text,
 	)
 
 	println := fmt.Fprintln
 	// TODO: extract
-	if pubKey.X.Cmp(myPubKey.X) == 0 && pubKey.Y.Cmp(myPubKey.Y) == 0 {
+	if message.From == c.myPubkeyString {
 		println = color.New(color.FgGreen).Fprintln
 	}
 
@@ -220,17 +262,14 @@ func (c *MessagesViewController) writeMessage(message *v1protocol.Message) error
 	return nil
 }
 
-func formatMessageLine(id *ecdsa.PublicKey, hash []byte, clock int64, t time.Time, text string) string {
-	author := "<unknown>"
-	if id != nil {
-		author = "0x" + hex.EncodeToString(crypto.CompressPubkey(id))[:7]
-	}
+func formatMessageLine(alias string, from string, messageID string, clock int64, t uint64, text string) string {
 	return fmt.Sprintf(
-		"%s | %#+x | %d | %s | %s",
-		author,
-		hash[:3],
+		"%s | %s | %#+x | %d | %s | %s",
+		alias,
+		from[:9],
+		messageID[2:3],
 		clock,
-		t.Format(time.RFC822),
+		time.Unix(int64(t), 0).Format(time.RFC822),
 		strings.TrimSpace(text),
 	)
 }
