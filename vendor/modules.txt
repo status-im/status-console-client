@@ -111,19 +111,19 @@ github.com/fatih/color
 # github.com/fjl/memsize v0.0.0-20180929194037-2a09253e352a
 github.com/fjl/memsize
 github.com/fjl/memsize/memsizeui
-# github.com/gballet/go-libpcsclite v0.0.0-20190607065134-2772fd86a8ff
+# github.com/gballet/go-libpcsclite v0.0.0-20191108122812-4678299bea08
 github.com/gballet/go-libpcsclite
-# github.com/go-playground/locales v0.12.1
+# github.com/go-playground/locales v0.13.0
 github.com/go-playground/locales
 github.com/go-playground/locales/currency
-# github.com/go-playground/universal-translator v0.16.0
+# github.com/go-playground/universal-translator v0.17.0
 github.com/go-playground/universal-translator
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
 # github.com/gogo/protobuf v1.3.0
 github.com/gogo/protobuf/io
 github.com/gogo/protobuf/proto
-# github.com/golang-migrate/migrate/v4 v4.6.2
+# github.com/golang-migrate/migrate/v4 v4.7.0
 github.com/golang-migrate/migrate/v4
 github.com/golang-migrate/migrate/v4/database
 github.com/golang-migrate/migrate/v4/internal/url
@@ -182,11 +182,11 @@ github.com/jbenet/goprocess/ratelimit
 github.com/jinzhu/copier
 # github.com/jroimartin/gocui v0.4.0
 github.com/jroimartin/gocui
-# github.com/karalabe/usb v0.0.0-20190919080040-51dc0efba356
+# github.com/karalabe/usb v0.0.0-20191104083709-911d15fe12a9
 github.com/karalabe/usb
 # github.com/koron/go-ssdp v0.0.0-20180514024734-4a0ed625a78b
 github.com/koron/go-ssdp
-# github.com/leodido/go-urn v1.1.0
+# github.com/leodido/go-urn v1.2.0
 github.com/leodido/go-urn
 # github.com/lib/pq v1.2.0
 github.com/lib/pq
@@ -362,7 +362,7 @@ github.com/spaolacci/murmur3
 github.com/status-im/doubleratchet
 # github.com/status-im/go-multiaddr-ethv4 v1.2.0
 github.com/status-im/go-multiaddr-ethv4
-# github.com/status-im/keycard-go v0.0.0-20190424133014-d95853db0f48
+# github.com/status-im/keycard-go v0.0.0-20191119114148-6dd40a46baa0
 github.com/status-im/keycard-go/derivationpath
 # github.com/status-im/migrate/v4 v4.6.2-status.2
 github.com/status-im/migrate/v4
@@ -373,7 +373,7 @@ github.com/status-im/migrate/v4/source/go_bindata
 # github.com/status-im/rendezvous v1.3.0
 github.com/status-im/rendezvous
 github.com/status-im/rendezvous/protocol
-# github.com/status-im/status-go v0.36.0
+# github.com/status-im/status-go v0.36.1
 github.com/status-im/status-go/account
 github.com/status-im/status-go/account/generator
 github.com/status-im/status-go/contracts
@@ -415,9 +415,8 @@ github.com/status-im/status-go/eth-node/types
 github.com/status-im/status-go/eth-node/types/ens
 # github.com/status-im/status-go/extkeys v1.0.0
 github.com/status-im/status-go/extkeys
-# github.com/status-im/status-go/protocol v0.36.0
+# github.com/status-im/status-go/protocol v0.5.3-0.20191205162534-fd49b0140eba
 github.com/status-im/status-go/protocol
-github.com/status-im/status-go/protocol/applicationmetadata
 github.com/status-im/status-go/protocol/datasync
 github.com/status-im/status-go/protocol/datasync/peer
 github.com/status-im/status-go/protocol/encryption
@@ -428,12 +427,13 @@ github.com/status-im/status-go/protocol/encryption/sharedsecret
 github.com/status-im/status-go/protocol/identity/alias
 github.com/status-im/status-go/protocol/identity/identicon
 github.com/status-im/status-go/protocol/migrations
+github.com/status-im/status-go/protocol/protobuf
 github.com/status-im/status-go/protocol/sqlite
 github.com/status-im/status-go/protocol/transport/whisper
 github.com/status-im/status-go/protocol/transport/whisper/migrations
 github.com/status-im/status-go/protocol/v1
 github.com/status-im/status-go/protocol/zaputil
-# github.com/status-im/whisper v1.6.1
+# github.com/status-im/whisper v1.6.2
 github.com/status-im/whisper/whisperv6
 # github.com/steakknife/bloomfilter v0.0.0-20180922174646-6819c0d2a570
 github.com/steakknife/bloomfilter

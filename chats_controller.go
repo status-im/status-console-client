@@ -8,6 +8,7 @@ import (
 	"github.com/jroimartin/gocui"
 	"github.com/status-im/status-go/eth-node/crypto"
 	"github.com/status-im/status-go/protocol"
+	"github.com/status-im/status-go/protocol/identity/alias"
 )
 
 // chatToString returns a string representation.
@@ -16,7 +17,12 @@ func chatToString(c *protocol.Chat) string {
 	case protocol.ChatTypePublic:
 		return fmt.Sprintf("#%s", c.Name)
 	case protocol.ChatTypeOneToOne:
-		return fmt.Sprintf("@%s (%#x)", c.Name, crypto.FromECDSAPub(c.PublicKey)[:8])
+		alias, err := alias.GenerateFromPublicKeyString(c.ID)
+		if err != nil {
+			return fmt.Sprintf("@%s", c.ID)
+		}
+
+		return fmt.Sprintf("@%s %#x", alias, crypto.FromECDSAPub(c.PublicKey)[:8])
 	default:
 		return c.Name
 	}

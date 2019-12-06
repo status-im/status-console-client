@@ -27,9 +27,9 @@ require (
 	github.com/nsf/termbox-go v0.0.0-20190624072549-eeb6cd0a1762 // indirect
 	github.com/peterbourgon/ff v1.2.0
 	github.com/pkg/errors v0.8.1
-	github.com/status-im/status-go v0.36.0
+	github.com/status-im/status-go v0.36.1
 	github.com/status-im/status-go/eth-node v0.36.0
-	github.com/status-im/status-go/protocol v0.36.0
+	github.com/status-im/status-go/protocol v0.5.3-0.20191205162534-fd49b0140eba
 	github.com/stretchr/objx v0.2.0 // indirect
 	go.uber.org/zap v1.13.0
 	google.golang.org/genproto v0.0.0-20190701230453-710ae3a149df // indirect
