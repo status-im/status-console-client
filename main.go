@@ -89,7 +89,7 @@ func main() {
 	}
 
 	if *useNimbus {
-		if err := startNimbus(privateKey, *listenAddr, *fleet == params.FleetStaging); err != nil {
+		if err := startNimbus(nil, *listenAddr, *fleet == params.FleetStaging); err != nil {
 			exitErr(err)
 		}
 	}
