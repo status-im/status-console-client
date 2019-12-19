@@ -88,12 +88,6 @@ func main() {
 		fmt.Printf("Starting with a new private key: %#x\n", crypto.FromECDSA(privateKey))
 	}
 
-	if *useNimbus {
-		if err := startNimbus(nil, *listenAddr, *fleet == params.FleetStaging); err != nil {
-			exitErr(err)
-		}
-	}
-
 	// Prefix data directory with a public key.
 	// This is required because it's not possible
 	// or advised to share data between different
@@ -147,7 +141,7 @@ func main() {
 	// initialize protocol
 	var (
 		messenger *protocol.Messenger
-		pollFunc  func()
+		stopFunc  func()
 	)
 
 	if *providerURI != "" {
@@ -157,7 +151,7 @@ func main() {
 		}
 	} else {
 		messengerDBPath := filepath.Join(*dataDir, "messenger.sql")
-		messenger, pollFunc, err = createMessengerInProc(privateKey, messengerDBPath, logger)
+		messenger, stopFunc, err = createMessengerInProc(privateKey, messengerDBPath, logger)
 		if err != nil {
 			exitErr(err)
 		}
@@ -193,11 +187,9 @@ func main() {
 		exitErr(err)
 	}
 
-	cancelPolling := make(chan struct{}, 1)
-	startPolling(g, pollFunc, 50*time.Millisecond, cancelPolling)
-	defer close(cancelPolling)
+	defer stopFunc()
 	if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
-		close(cancelPolling)
+		stopFunc()
 		exitErr(err)
 	}
 	g.Close()
@@ -231,15 +223,21 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 	)
 
 	var (
-		node types.Node
-		err  error
+		stopFunc func()
+		node     types.Node
+		err      error
 	)
 	if *useNimbus {
-		node = newNimbusNodeWrapper()
+		node, stopFunc = newNimbusNodeWrapper()
+
+		if err := startNimbus(node, nil, *listenAddr, *fleet == params.FleetStaging); err != nil {
+			exitErr(err)
+		}
 	} else {
 		if node, err = newGethNodeWrapper(pk); err != nil {
 			exitErr(err)
 		}
+		stopFunc = func() {}
 	}
 
 	options := []protocol.Option{
@@ -268,12 +266,7 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 
 	// protocolGethService.SetMessenger(messenger)
 
-	var whisper types.Whisper
-	if whisper, err = node.GetWhisper(nil); err != nil {
-		exitErr(err)
-	}
-
-	return messenger, whisper.Poll, nil
+	return messenger, stopFunc, nil
 }
 
 func setupGUI(privateKey *ecdsa.PrivateKey, messenger *protocol.Messenger, logger *zap.Logger) error {

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/status-im/status-go/eth-node/types"
-	whisper "github.com/status-im/whisper/whisperv6"
+	"github.com/status-im/status-go/whisper/v6"
 )
 
 type gethWhisperWrapper struct {
@@ -30,10 +30,6 @@ func GetGethWhisperFrom(m types.Whisper) *whisper.Whisper {
 
 func (w *gethWhisperWrapper) PublicWhisperAPI() types.PublicWhisperAPI {
 	return NewGethPublicWhisperAPIWrapper(whisper.NewPublicWhisperAPI(w.whisper))
-}
-
-func (w *gethWhisperWrapper) Poll() {
-	// noop
 }
 
 // MinPow returns the PoW value required by this node.
@@ -85,15 +81,9 @@ func (w *gethWhisperWrapper) AddKeyPair(key *ecdsa.PrivateKey) (string, error) {
 	return w.whisper.AddKeyPair(key)
 }
 
-// DeleteKeyPair deletes the specified key if it exists.
-func (w *gethWhisperWrapper) DeleteKeyPair(key string) bool {
-	return w.whisper.DeleteKeyPair(key)
-}
-
-// SelectKeyPair adds cryptographic identity, and makes sure
-// that it is the only private key known to the node.
-func (w *gethWhisperWrapper) SelectKeyPair(key *ecdsa.PrivateKey) error {
-	return w.whisper.SelectKeyPair(key)
+// DeleteKeyPair deletes the key with the specified ID if it exists.
+func (w *gethWhisperWrapper) DeleteKeyPair(keyID string) bool {
+	return w.whisper.DeleteKeyPair(keyID)
 }
 
 func (w *gethWhisperWrapper) AddSymKeyDirect(key []byte) (string, error) {

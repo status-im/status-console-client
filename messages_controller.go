@@ -76,10 +76,7 @@ func (c *MessagesViewController) Start() error {
 
 	if c.cancel == nil {
 		c.cancel = make(chan struct{})
-		chats, err := c.messenger.Chats()
-		if err != nil {
-			return err
-		}
+		chats := c.messenger.Chats()
 
 		for _, chat := range chats {
 			// Pull latest 10 messages

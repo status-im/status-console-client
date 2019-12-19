@@ -34,7 +34,7 @@ import (
 	"github.com/status-im/status-go/services/status"
 	"github.com/status-im/status-go/static"
 	"github.com/status-im/status-go/timesource"
-	whisper "github.com/status-im/whisper/whisperv6"
+	"github.com/status-im/status-go/whisper/v6"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -499,12 +499,15 @@ func whisperRateLimiter(whisperConfig *params.WhisperConfig, clusterConfig *para
 		peerIDs = append(peerIDs, item.ID())
 	}
 	return whisper.NewPeerRateLimiter(
-		&whisper.MetricsRateLimiterHandler{},
 		&whisper.PeerRateLimiterConfig{
 			LimitPerSecIP:      whisperConfig.RateLimitIP,
 			LimitPerSecPeerID:  whisperConfig.RateLimitPeerID,
 			WhitelistedIPs:     ips,
 			WhitelistedPeerIDs: peerIDs,
+		},
+		&whisper.MetricsRateLimiterHandler{},
+		&whisper.DropPeerRateLimiterHandler{
+			Tolerance: whisperConfig.RateLimitTolerance,
 		},
 	)
 }

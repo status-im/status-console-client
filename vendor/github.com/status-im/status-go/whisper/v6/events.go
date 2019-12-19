@@ -1,4 +1,4 @@
-package whisperv6
+package whisper
 
 import (
 	"github.com/ethereum/go-ethereum/common"
@@ -38,7 +38,6 @@ const (
 // EnvelopeEvent used for envelopes events.
 type EnvelopeEvent struct {
 	Event EventType
-	Topic TopicType
 	Hash  common.Hash
 	Batch common.Hash
 	Peer  enode.ID
