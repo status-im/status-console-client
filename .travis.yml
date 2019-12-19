@@ -25,3 +25,4 @@ matrix:
     - make lint
     # fails without -a
     - go test -a ./... # make test
+    - make build-nimbus
