@@ -1,6 +1,6 @@
 // +build gofuzz
 
-package whisperv6
+package whisper
 
 func Fuzz(data []byte) int {
 	if len(data) < 2 {

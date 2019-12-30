@@ -1,4 +1,4 @@
-package whisperv6
+package whisper
 
 import (
 	"bytes"

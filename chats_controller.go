@@ -22,7 +22,11 @@ func chatToString(c *protocol.Chat) string {
 			return fmt.Sprintf("@%s", c.ID)
 		}
 
-		return fmt.Sprintf("@%s %#x", alias, crypto.FromECDSAPub(c.PublicKey)[:8])
+		pk, err := c.PublicKey()
+		if err != nil {
+			return fmt.Sprintf("@%s", c.ID)
+		}
+		return fmt.Sprintf("@%s %#x", alias, crypto.FromECDSAPub(pk)[:8])
 	default:
 		return c.Name
 	}
@@ -64,7 +68,7 @@ func (c *ChatsViewController) ChatByIdx(idx int) (*protocol.Chat, bool) {
 
 // Add adds a new chat to the list.
 func (c *ChatsViewController) Add(chat protocol.Chat) error {
-	if err := c.messenger.SaveChat(chat); err != nil {
+	if err := c.messenger.SaveChat(&chat); err != nil {
 		return err
 	}
 	return c.LoadAndRefresh()
@@ -80,10 +84,7 @@ func (c *ChatsViewController) Remove(chat protocol.Chat) error {
 
 // load loads chats from the storage.
 func (c *ChatsViewController) load() error {
-	chats, err := c.messenger.Chats()
-	if err != nil {
-		return err
-	}
+	chats := c.messenger.Chats()
 	c.logger.Info("loaded chats", zap.Int("count", len(chats)))
 	c.chats = chats
 	return nil

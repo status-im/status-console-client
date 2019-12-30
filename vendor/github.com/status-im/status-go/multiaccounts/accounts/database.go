@@ -7,8 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/status-im/status-go/eth-node/types"
 	"github.com/status-im/status-go/sqlite"
 )
 
@@ -25,13 +24,13 @@ var (
 )
 
 type Account struct {
-	Address   common.Address `json:"address"`
+	Address   types.Address  `json:"address"`
 	Wallet    bool           `json:"wallet"`
 	Chat      bool           `json:"chat"`
-	Type      string         `json:"type"`
-	Storage   string         `json:"storage"`
-	Path      string         `json:"path"`
-	PublicKey hexutil.Bytes  `json:"publicKey"`
+	Type      string         `json:"type,omitempty"`
+	Storage   string         `json:"storage,omitempty"`
+	Path      string         `json:"path,omitempty"`
+	PublicKey types.HexBytes `json:"public-key,omitempty"`
 	Name      string         `json:"name"`
 	Color     string         `json:"color"`
 }
@@ -91,7 +90,7 @@ func (db *Database) GetConfigBlobs(types []string) (map[string]json.RawMessage, 
 }
 
 func (db *Database) GetAccounts() ([]Account, error) {
-	rows, err := db.db.Query("SELECT address, wallet, chat, type, storage, pubkey, path, name, color FROM accounts")
+	rows, err := db.db.Query("SELECT address, wallet, chat, type, storage, pubkey, path, name, color FROM accounts ORDER BY created_at")
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +105,7 @@ func (db *Database) GetAccounts() ([]Account, error) {
 			return nil, err
 		}
 		if lth := len(pubkey); lth > 0 {
-			acc.PublicKey = make(hexutil.Bytes, lth)
+			acc.PublicKey = make(types.HexBytes, lth)
 			copy(acc.PublicKey, pubkey)
 		}
 		accounts = append(accounts, acc)
@@ -133,11 +132,11 @@ func (db *Database) SaveAccounts(accounts []Account) (err error) {
 	}()
 	// NOTE(dshulyak) replace all record values using address (primary key)
 	// can't use `insert or replace` because of the additional constraints (wallet and chat)
-	insert, err = tx.Prepare("INSERT OR IGNORE INTO accounts (address) VALUES (?)")
+	insert, err = tx.Prepare("INSERT OR IGNORE INTO accounts (address, created_at, updated_at) VALUES (?, datetime('now'), datetime('now'))")
 	if err != nil {
 		return err
 	}
-	update, err = tx.Prepare("UPDATE accounts SET wallet = ?, chat = ?, type = ?, storage = ?, pubkey = ?, path = ?, name = ?, color = ? WHERE address = ?")
+	update, err = tx.Prepare("UPDATE accounts SET wallet = ?, chat = ?, type = ?, storage = ?, pubkey = ?, path = ?, name = ?, color = ?, updated_at = datetime('now') WHERE address = ?")
 	if err != nil {
 		return err
 	}
@@ -161,23 +160,28 @@ func (db *Database) SaveAccounts(accounts []Account) (err error) {
 	return
 }
 
-func (db *Database) GetWalletAddress() (rst common.Address, err error) {
+func (db *Database) DeleteAccount(address types.Address) error {
+	_, err := db.db.Exec("DELETE FROM accounts WHERE address = ?", address)
+	return err
+}
+
+func (db *Database) GetWalletAddress() (rst types.Address, err error) {
 	err = db.db.QueryRow("SELECT address FROM accounts WHERE wallet = 1").Scan(&rst)
 	return
 }
 
-func (db *Database) GetChatAddress() (rst common.Address, err error) {
+func (db *Database) GetChatAddress() (rst types.Address, err error) {
 	err = db.db.QueryRow("SELECT address FROM accounts WHERE chat = 1").Scan(&rst)
 	return
 }
 
-func (db *Database) GetAddresses() (rst []common.Address, err error) {
-	rows, err := db.db.Query("SELECT address FROM accounts")
+func (db *Database) GetAddresses() (rst []types.Address, err error) {
+	rows, err := db.db.Query("SELECT address FROM accounts ORDER BY created_at")
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
-		addr := common.Address{}
+		addr := types.Address{}
 		err = rows.Scan(&addr)
 		if err != nil {
 			return nil, err
@@ -188,7 +192,7 @@ func (db *Database) GetAddresses() (rst []common.Address, err error) {
 }
 
 // AddressExists returns true if given address is stored in database.
-func (db *Database) AddressExists(address common.Address) (exists bool, err error) {
+func (db *Database) AddressExists(address types.Address) (exists bool, err error) {
 	err = db.db.QueryRow("SELECT EXISTS (SELECT 1 FROM accounts WHERE address = ?)", address).Scan(&exists)
 	return exists, err
 }

@@ -14,6 +14,11 @@ type RoutineQueue struct {
 	events chan event
 }
 
+type callReturn struct {
+	value interface{}
+	err   error
+}
+
 // NewRoutineQueue returns a new RoutineQueue object.
 func NewRoutineQueue() *RoutineQueue {
 	q := &RoutineQueue{
@@ -26,11 +31,15 @@ func NewRoutineQueue() *RoutineQueue {
 
 // event represents an event triggered by the user.
 type event struct {
-	f    func(chan<- interface{})
-	done chan interface{}
+	f    func(chan<- callReturn)
+	done chan callReturn
 }
 
 func (q *RoutineQueue) HandleEvent() {
+	if syscall.Gettid() != q.tid {
+		panic("HandleEvent called from wrong thread")
+	}
+
 	select {
 	case ev := <-q.events:
 		ev.f(ev.done)
@@ -43,8 +52,8 @@ func (q *RoutineQueue) HandleEvent() {
 // goroutine in order to execute a Nimbus function. It is important to note that the
 // passed function won't be executed immediately, instead it will be added to
 // the user events queue.
-func (q *RoutineQueue) Send(f func(chan<- interface{})) interface{} {
-	ev := event{f: f, done: make(chan interface{}, 1)}
+func (q *RoutineQueue) Send(f func(chan<- callReturn)) callReturn {
+	ev := event{f: f, done: make(chan callReturn, 1)}
 	defer close(ev.done)
 	if syscall.Gettid() == q.tid {
 		f(ev.done)

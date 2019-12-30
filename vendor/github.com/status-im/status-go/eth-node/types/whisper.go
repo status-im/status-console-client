@@ -26,9 +26,6 @@ type SubscriptionOptions struct {
 type Whisper interface {
 	PublicWhisperAPI() PublicWhisperAPI
 
-	// Poll must be run periodically on the main thread by the host application
-	Poll()
-
 	// MinPow returns the PoW value required by this node.
 	MinPow() float64
 	// BloomFilter returns the aggregated bloom filter for all the topics of interest.
@@ -51,11 +48,8 @@ type Whisper interface {
 
 	// AddKeyPair imports a asymmetric private key and returns a deterministic identifier.
 	AddKeyPair(key *ecdsa.PrivateKey) (string, error)
-	// DeleteKeyPair deletes the specified key if it exists.
-	DeleteKeyPair(key string) bool
-	// SelectKeyPair adds cryptographic identity, and makes sure
-	// that it is the only private key known to the node.
-	SelectKeyPair(key *ecdsa.PrivateKey) error
+	// DeleteKeyPair deletes the key with the specified ID if it exists.
+	DeleteKeyPair(keyID string) bool
 	AddSymKeyDirect(key []byte) (string, error)
 	AddSymKeyFromPassword(password string) (string, error)
 	DeleteSymKey(id string) bool
