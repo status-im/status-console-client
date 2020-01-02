@@ -1,3 +1,25 @@
 run:
   modules-download-mode: vendor
   deadline: 5m
+
+linters-settings:
+  errcheck:
+    check-type-assertions: false
+    check-blank: false
+  govet:
+    check-shadowing: false
+  golint:
+    min-confidence: 0.8
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/ethereum/go-ethereum,github.com/status-im/status-go,github.com/status-im/status-console-client
+  gocyclo:
+    min-complexity: 16
+  maligned:
+    suggest-new: true
+  dupl:
+    threshold: 50
+  goconst:
+    min-len: 3
+    min-occurrences: 2

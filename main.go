@@ -19,6 +19,9 @@ import (
 	"github.com/jroimartin/gocui"
 	"github.com/peterbourgon/ff"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
 	"github.com/status-im/status-go/eth-node/crypto"
 	"github.com/status-im/status-go/eth-node/types"
 	"github.com/status-im/status-go/logutils"
@@ -26,8 +29,6 @@ import (
 	"github.com/status-im/status-go/protocol"
 	"github.com/status-im/status-go/protocol/zaputil"
 	"github.com/status-im/status-go/signal"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 var g *gocui.Gui

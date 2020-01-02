@@ -6,6 +6,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jroimartin/gocui"
+
 	"github.com/status-im/status-go/eth-node/crypto"
 	"github.com/status-im/status-go/protocol"
 	"github.com/status-im/status-go/protocol/identity/alias"

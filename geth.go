@@ -5,14 +5,16 @@ package main
 import (
 	"crypto/ecdsa"
 
+	"github.com/pkg/errors"
+
 	gethnode "github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/pkg/errors"
-	"github.com/status-im/status-console-client/internal/gethservice"
 	gethbridge "github.com/status-im/status-go/eth-node/bridge/geth"
 	"github.com/status-im/status-go/eth-node/types"
 	"github.com/status-im/status-go/node"
 	"github.com/status-im/status-go/protocol"
+
+	"github.com/status-im/status-console-client/internal/gethservice"
 )
 
 func newGethNodeWrapper(pk *ecdsa.PrivateKey) (types.Node, error) {
