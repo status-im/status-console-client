@@ -33,7 +33,7 @@ require (
 	github.com/peterbourgon/ff v1.2.0
 	github.com/pkg/errors v0.8.1
 	github.com/status-im/keycard-go v0.0.0-20191119114148-6dd40a46baa0 // indirect
-	github.com/status-im/status-go v0.38.4-0.20191219160300-4bee86b7e8da
+	github.com/status-im/status-go v0.38.4
 	github.com/status-im/status-go/eth-node v1.0.1
 	github.com/status-im/status-go/protocol v1.0.2
 	github.com/status-im/status-go/whisper/v6 v6.0.2-0.20191219160300-4bee86b7e8da // indirect

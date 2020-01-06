@@ -373,7 +373,7 @@ github.com/status-im/migrate/v4/source/go_bindata
 # github.com/status-im/rendezvous v1.3.0
 github.com/status-im/rendezvous
 github.com/status-im/rendezvous/protocol
-# github.com/status-im/status-go v0.38.4-0.20191219160300-4bee86b7e8da
+# github.com/status-im/status-go v0.38.4
 github.com/status-im/status-go/account
 github.com/status-im/status-go/account/generator
 github.com/status-im/status-go/contracts

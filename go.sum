@@ -602,8 +602,8 @@ github.com/status-im/migrate/v4 v4.6.2-status.2 h1:SdC+sMDl/aI7vUlwD2qj2p7KsK4T6
 github.com/status-im/migrate/v4 v4.6.2-status.2/go.mod h1:c/kc90n47GZu/58nnz1OMLTf7uE4Da4gZP5qmU+A/v8=
 github.com/status-im/rendezvous v1.3.0 h1:7RK/MXXW+tlm0asKm1u7Qp7Yni6AO29a7j8+E4Lbjg4=
 github.com/status-im/rendezvous v1.3.0/go.mod h1:+hzjuP+j/XzLPeF6E50b88pWOTLdTcwjvNYt+Gh1W1s=
-github.com/status-im/status-go v0.38.4-0.20191219160300-4bee86b7e8da h1:CVdkVVOGm6LY0+wq36YGmZ8xDiRit9qVvv9Zv4s5ol8=
-github.com/status-im/status-go v0.38.4-0.20191219160300-4bee86b7e8da/go.mod h1:UKxySGdqFuVPvCyPSYD0+zKeV2OzDijZqICvR+tZ3uM=
+github.com/status-im/status-go v0.38.4 h1:cFk50c1WBprC4/g32MQHkeSXppQpToP3yf+08CSVfHU=
+github.com/status-im/status-go v0.38.4/go.mod h1:UKxySGdqFuVPvCyPSYD0+zKeV2OzDijZqICvR+tZ3uM=
 github.com/status-im/status-go/eth-node v1.0.0/go.mod h1:mfvJ7UQeB40WFLmageNPMBibFsxXIeN584MbGOyg/YM=
 github.com/status-im/status-go/eth-node v1.0.1 h1:jtYRSoBvMJqX7TGWWkSwKq661YNFLLZz3FemX84+zOs=
 github.com/status-im/status-go/eth-node v1.0.1/go.mod h1:mfvJ7UQeB40WFLmageNPMBibFsxXIeN584MbGOyg/YM=

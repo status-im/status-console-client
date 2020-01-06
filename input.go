@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/jroimartin/gocui"
+
 	"github.com/status-im/status-go/eth-node/crypto"
 	"github.com/status-im/status-go/eth-node/types"
 	"github.com/status-im/status-go/protocol"
