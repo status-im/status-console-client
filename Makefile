@@ -8,7 +8,7 @@ BUILD_FLAGS ?= $(shell echo "-ldflags '\
 DOCKER_IMAGE_NAME ?= statusteam/status-client
 DOCKER_CUSTOM_TAG ?= $(shell git rev-parse --short HEAD)
 
-gofmt:
+lint-fix:
 	find . -name '*.go' -and -not -name 'bindata*' -and -not -name 'migrations.go' -and -not -wholename '*/vendor/*' -exec goimports -local 'github.com/ethereum/go-ethereum,github.com/status-im/status-go,github.com/status-im/status-console-client' -w {} \;
 
 build: GOFLAGS ?= "-mod=vendor"
