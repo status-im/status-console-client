@@ -3,7 +3,6 @@ package protocol
 import (
 	"crypto/ecdsa"
 	"encoding/hex"
-	"strings"
 
 	"github.com/status-im/status-go/eth-node/crypto"
 	"github.com/status-im/status-go/eth-node/types"
@@ -33,13 +32,18 @@ type Contact struct {
 	// ID of the contact. It's a hex-encoded public key (prefixed with 0x).
 	ID string `json:"id"`
 	// Ethereum address of the contact
-	Address string `json:"address"`
+	Address string `json:"address,omitempty"`
 	// ENS name of contact
 	Name string `json:"name,omitempty"`
 	// EnsVerified whether we verified the name of the contact
 	ENSVerified bool `json:"ensVerified"`
 	// EnsVerifiedAt the time we last verified the name
-	ENSVerifiedAt int64 `json:"ensVerifiedAt"`
+	ENSVerifiedAt uint64 `json:"ensVerifiedAt"`
+	// LastENSClockValue is the last clock value of when we
+	// received an ENS name for the user
+	LastENSClockValue uint64 `json:"lastENSClockValue"`
+	// ENSVerificationRetries is how many times we retried the ENS
+	ENSVerificationRetries uint64 `json:"ensVerificationRetries"`
 	// Generated username name of the contact
 	Alias string `json:"alias,omitempty"`
 	// Identicon generated from public key
@@ -48,13 +52,13 @@ type Contact struct {
 	Photo string `json:"photoPath,omitempty"`
 	// LastUpdated is the last time we received an update from the contact
 	// updates should be discarded if last updated is less than the one stored
-	LastUpdated int64 `json:"lastUpdated"`
+	LastUpdated uint64 `json:"lastUpdated"`
 	// SystemTags contains information about whether we blocked/added/have been
 	// added.
 	SystemTags []string `json:"systemTags"`
 
 	DeviceInfo    []ContactDeviceInfo `json:"deviceInfo"`
-	TributeToTalk string              `json:"tributeToTalk"`
+	TributeToTalk string              `json:"tributeToTalk,omitempty"`
 }
 
 func (c Contact) PublicKey() (*ecdsa.PublicKey, error) {
@@ -77,6 +81,14 @@ func (c Contact) IsBlocked() bool {
 	return existsInStringSlice(c.SystemTags, contactBlocked)
 }
 
+func (c *Contact) ResetENSVerification(clock uint64, name string) {
+	c.ENSVerifiedAt = 0
+	c.ENSVerified = false
+	c.ENSVerificationRetries = 0
+	c.LastENSClockValue = clock
+	c.Name = name
+}
+
 // existsInStringSlice checks if a string is in a set.
 func existsInStringSlice(set []string, find string) bool {
 	for _, s := range set {
@@ -88,8 +100,6 @@ func existsInStringSlice(set []string, find string) bool {
 }
 
 func buildContact(publicKey *ecdsa.PublicKey) (*Contact, error) {
-	address := strings.ToLower(crypto.PubkeyToAddress(*publicKey).Hex())
-
 	id := "0x" + hex.EncodeToString(crypto.FromECDSAPub(publicKey))
 
 	identicon, err := identicon.GenerateBase64(id)
@@ -99,10 +109,14 @@ func buildContact(publicKey *ecdsa.PublicKey) (*Contact, error) {
 
 	contact := &Contact{
 		ID:        id,
-		Address:   address[2:],
 		Alias:     alias.GenerateFromPublicKey(publicKey),
 		Identicon: identicon,
 	}
 
 	return contact, nil
+}
+
+func contactIDFromPublicKey(key *ecdsa.PublicKey) string {
+	return types.EncodeHex(crypto.FromECDSAPub(key))
+
 }

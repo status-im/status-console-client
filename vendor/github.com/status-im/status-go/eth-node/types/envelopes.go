@@ -3,8 +3,15 @@ package types
 // Envelope represents a clear-text data packet to transmit through the Whisper
 // network. Its contents may or may not be encrypted and signed.
 type Envelope interface {
-	Hash() Hash // Cached hash of the envelope to avoid rehashing every time.
+	Wrapped
+
+	Hash() Hash // cached hash of the envelope to avoid rehashing every time
 	Bloom() []byte
+	PoW() float64
+	Expiry() uint32
+	TTL() uint32
+	Topic() TopicType
+	Size() int
 }
 
 // EventType used to define known envelope events.
@@ -20,7 +27,7 @@ const (
 	// EventEnvelopeReceived must be sent to the feed even if envelope was previously in the cache.
 	// And event, ideally, should contain information about peer that sent envelope to us.
 	EventEnvelopeReceived EventType = "envelope.received"
-	// EventBatchAcknowledged is sent when batch of envelopes was acknowleged by a peer.
+	// EventBatchAcknowledged is sent when batch of envelopes was acknowledged by a peer.
 	EventBatchAcknowledged EventType = "batch.acknowleged"
 	// EventEnvelopeAvailable fires when envelop is available for filters
 	EventEnvelopeAvailable EventType = "envelope.available"

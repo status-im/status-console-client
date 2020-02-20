@@ -3,7 +3,7 @@ github.com/BurntSushi/toml
 # github.com/allegro/bigcache v1.2.1
 github.com/allegro/bigcache
 github.com/allegro/bigcache/queue
-# github.com/aristanetworks/goarista v0.0.0-20190704150520-f44d68189fd7
+# github.com/aristanetworks/goarista v0.0.0-20191106175434-873d404c7f40
 github.com/aristanetworks/goarista/monotime
 # github.com/beevik/ntp v0.2.0
 github.com/beevik/ntp
@@ -120,10 +120,10 @@ github.com/go-playground/locales/currency
 github.com/go-playground/universal-translator
 # github.com/go-stack/stack v1.8.0
 github.com/go-stack/stack
-# github.com/gogo/protobuf v1.3.0
+# github.com/gogo/protobuf v1.3.1
 github.com/gogo/protobuf/io
 github.com/gogo/protobuf/proto
-# github.com/golang-migrate/migrate/v4 v4.7.0
+# github.com/golang-migrate/migrate/v4 v4.8.0
 github.com/golang-migrate/migrate/v4
 github.com/golang-migrate/migrate/v4/database
 github.com/golang-migrate/migrate/v4/internal/url
@@ -135,10 +135,6 @@ github.com/golang/protobuf/proto
 github.com/golang/protobuf/protoc-gen-go/descriptor
 # github.com/golang/snappy v0.0.1
 github.com/golang/snappy
-# github.com/gomarkdown/markdown v0.0.0-20191209105822-e3ba6c6109ba => github.com/status-im/markdown v0.0.0-20191113114344-af599402d015
-github.com/gomarkdown/markdown
-github.com/gomarkdown/markdown/ast
-github.com/gomarkdown/markdown/parser
 # github.com/google/uuid v1.1.1
 github.com/google/uuid
 # github.com/gorilla/websocket v1.4.1
@@ -169,7 +165,7 @@ github.com/ipfs/go-log/tracer/wire
 github.com/ipfs/go-log/writer
 # github.com/jackpal/gateway v1.0.5
 github.com/jackpal/gateway
-# github.com/jackpal/go-nat-pmp v1.0.1
+# github.com/jackpal/go-nat-pmp v1.0.2
 github.com/jackpal/go-nat-pmp
 # github.com/jbenet/go-temp-err-catcher v0.0.0-20150120210811-aac704a3f4f2
 github.com/jbenet/go-temp-err-catcher
@@ -177,14 +173,13 @@ github.com/jbenet/go-temp-err-catcher
 github.com/jbenet/goprocess
 github.com/jbenet/goprocess/context
 github.com/jbenet/goprocess/periodic
-github.com/jbenet/goprocess/ratelimit
-# github.com/jinzhu/copier v0.0.0-20190625015134-976e0346caa8
+# github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
 github.com/jinzhu/copier
 # github.com/jroimartin/gocui v0.4.0
 github.com/jroimartin/gocui
 # github.com/karalabe/usb v0.0.0-20191104083709-911d15fe12a9
 github.com/karalabe/usb
-# github.com/koron/go-ssdp v0.0.0-20180514024734-4a0ed625a78b
+# github.com/koron/go-ssdp v0.0.0-20191105050749-2e1c40ed0b5d
 github.com/koron/go-ssdp
 # github.com/leodido/go-urn v1.2.0
 github.com/leodido/go-urn
@@ -202,7 +197,7 @@ github.com/libp2p/go-conn-security-multistream
 github.com/libp2p/go-eventbus
 # github.com/libp2p/go-flow-metrics v0.0.1
 github.com/libp2p/go-flow-metrics
-# github.com/libp2p/go-libp2p v0.4.0
+# github.com/libp2p/go-libp2p v0.4.2
 github.com/libp2p/go-libp2p
 github.com/libp2p/go-libp2p/config
 github.com/libp2p/go-libp2p/p2p/host/basic
@@ -211,13 +206,13 @@ github.com/libp2p/go-libp2p/p2p/host/routed
 github.com/libp2p/go-libp2p/p2p/protocol/identify
 github.com/libp2p/go-libp2p/p2p/protocol/identify/pb
 github.com/libp2p/go-libp2p/p2p/protocol/ping
-# github.com/libp2p/go-libp2p-autonat v0.1.0
+# github.com/libp2p/go-libp2p-autonat v0.1.1
 github.com/libp2p/go-libp2p-autonat
 github.com/libp2p/go-libp2p-autonat/pb
-# github.com/libp2p/go-libp2p-circuit v0.1.3
+# github.com/libp2p/go-libp2p-circuit v0.1.4
 github.com/libp2p/go-libp2p-circuit
 github.com/libp2p/go-libp2p-circuit/pb
-# github.com/libp2p/go-libp2p-core v0.2.3
+# github.com/libp2p/go-libp2p-core v0.2.4
 github.com/libp2p/go-libp2p-core/connmgr
 github.com/libp2p/go-libp2p-core/crypto
 github.com/libp2p/go-libp2p-core/crypto/pb
@@ -243,13 +238,13 @@ github.com/libp2p/go-libp2p-discovery
 github.com/libp2p/go-libp2p-loggables
 # github.com/libp2p/go-libp2p-mplex v0.2.1
 github.com/libp2p/go-libp2p-mplex
-# github.com/libp2p/go-libp2p-nat v0.0.4
+# github.com/libp2p/go-libp2p-nat v0.0.5
 github.com/libp2p/go-libp2p-nat
-# github.com/libp2p/go-libp2p-peerstore v0.1.3
+# github.com/libp2p/go-libp2p-peerstore v0.1.4
 github.com/libp2p/go-libp2p-peerstore
 github.com/libp2p/go-libp2p-peerstore/addr
 github.com/libp2p/go-libp2p-peerstore/pstoremem
-# github.com/libp2p/go-libp2p-secio v0.2.0
+# github.com/libp2p/go-libp2p-secio v0.2.1
 github.com/libp2p/go-libp2p-secio
 github.com/libp2p/go-libp2p-secio/pb
 # github.com/libp2p/go-libp2p-swarm v0.2.2
@@ -264,9 +259,9 @@ github.com/libp2p/go-maddr-filter
 github.com/libp2p/go-mplex
 # github.com/libp2p/go-msgio v0.0.4
 github.com/libp2p/go-msgio
-# github.com/libp2p/go-nat v0.0.3
+# github.com/libp2p/go-nat v0.0.4
 github.com/libp2p/go-nat
-# github.com/libp2p/go-openssl v0.0.2
+# github.com/libp2p/go-openssl v0.0.3
 github.com/libp2p/go-openssl
 github.com/libp2p/go-openssl/utils
 # github.com/libp2p/go-reuseport v0.0.1
@@ -281,7 +276,7 @@ github.com/libp2p/go-tcp-transport
 github.com/libp2p/go-ws-transport
 # github.com/libp2p/go-yamux v1.2.3
 github.com/libp2p/go-yamux
-# github.com/lucasb-eyer/go-colorful v1.0.2
+# github.com/lucasb-eyer/go-colorful v1.0.3
 github.com/lucasb-eyer/go-colorful
 # github.com/mattn/go-colorable v0.1.2
 github.com/mattn/go-colorable
@@ -303,11 +298,11 @@ github.com/mr-tron/base58/base58
 github.com/multiformats/go-base32
 # github.com/multiformats/go-multiaddr v0.1.1
 github.com/multiformats/go-multiaddr
-# github.com/multiformats/go-multiaddr-dns v0.1.0
+# github.com/multiformats/go-multiaddr-dns v0.2.0
 github.com/multiformats/go-multiaddr-dns
 # github.com/multiformats/go-multiaddr-fmt v0.1.0
 github.com/multiformats/go-multiaddr-fmt
-# github.com/multiformats/go-multiaddr-net v0.1.0
+# github.com/multiformats/go-multiaddr-net v0.1.1
 github.com/multiformats/go-multiaddr-net
 # github.com/multiformats/go-multibase v0.0.1
 github.com/multiformats/go-multibase
@@ -348,7 +343,7 @@ github.com/prometheus/procfs/internal/util
 github.com/prometheus/tsdb/fileutil
 # github.com/rjeczalik/notify v0.9.2
 github.com/rjeczalik/notify
-# github.com/rs/cors v1.6.0
+# github.com/rs/cors v1.7.0
 github.com/rs/cors
 # github.com/russolsen/transit v0.0.0-20180705123435-0794b4c4505a
 github.com/russolsen/transit
@@ -362,8 +357,12 @@ github.com/spaolacci/murmur3
 github.com/status-im/doubleratchet
 # github.com/status-im/go-multiaddr-ethv4 v1.2.0
 github.com/status-im/go-multiaddr-ethv4
-# github.com/status-im/keycard-go v0.0.0-20191119114148-6dd40a46baa0
+# github.com/status-im/keycard-go v0.0.0-20200107115650-f38e9a19958e
 github.com/status-im/keycard-go/derivationpath
+# github.com/status-im/markdown v0.0.0-20200210164614-b9fe92168122
+github.com/status-im/markdown
+github.com/status-im/markdown/ast
+github.com/status-im/markdown/parser
 # github.com/status-im/migrate/v4 v4.6.2-status.2
 github.com/status-im/migrate/v4
 github.com/status-im/migrate/v4/database/postgres
@@ -373,12 +372,21 @@ github.com/status-im/migrate/v4/source/go_bindata
 # github.com/status-im/rendezvous v1.3.0
 github.com/status-im/rendezvous
 github.com/status-im/rendezvous/protocol
-# github.com/status-im/status-go v0.38.4
+# github.com/status-im/status-go v0.45.1
 github.com/status-im/status-go/account
 github.com/status-im/status-go/account/generator
 github.com/status-im/status-go/contracts
 github.com/status-im/status-go/db
 github.com/status-im/status-go/discovery
+github.com/status-im/status-go/eth-node/bridge/geth
+github.com/status-im/status-go/eth-node/bridge/geth/ens
+github.com/status-im/status-go/eth-node/bridge/nimbus
+github.com/status-im/status-go/eth-node/core/types
+github.com/status-im/status-go/eth-node/crypto
+github.com/status-im/status-go/eth-node/crypto/ecies
+github.com/status-im/status-go/eth-node/keystore
+github.com/status-im/status-go/eth-node/types
+github.com/status-im/status-go/eth-node/types/ens
 github.com/status-im/status-go/logutils
 github.com/status-im/status-go/mailserver
 github.com/status-im/status-go/mailserver/migrations
@@ -388,34 +396,6 @@ github.com/status-im/status-go/node
 github.com/status-im/status-go/params
 github.com/status-im/status-go/peers
 github.com/status-im/status-go/peers/verifier
-github.com/status-im/status-go/rpc
-github.com/status-im/status-go/services/browsers
-github.com/status-im/status-go/services/incentivisation
-github.com/status-im/status-go/services/nodebridge
-github.com/status-im/status-go/services/peer
-github.com/status-im/status-go/services/permissions
-github.com/status-im/status-go/services/personal
-github.com/status-im/status-go/services/shhext
-github.com/status-im/status-go/services/shhext/dedup
-github.com/status-im/status-go/services/shhext/mailservers
-github.com/status-im/status-go/services/status
-github.com/status-im/status-go/services/wallet
-github.com/status-im/status-go/services/wallet/ierc20
-github.com/status-im/status-go/signal
-github.com/status-im/status-go/sqlite
-github.com/status-im/status-go/static
-github.com/status-im/status-go/timesource
-# github.com/status-im/status-go/eth-node v1.0.1
-github.com/status-im/status-go/eth-node/bridge/geth
-github.com/status-im/status-go/eth-node/bridge/geth/ens
-github.com/status-im/status-go/eth-node/bridge/nimbus
-github.com/status-im/status-go/eth-node/crypto
-github.com/status-im/status-go/eth-node/crypto/ecies
-github.com/status-im/status-go/eth-node/types
-github.com/status-im/status-go/eth-node/types/ens
-# github.com/status-im/status-go/extkeys v1.0.0
-github.com/status-im/status-go/extkeys
-# github.com/status-im/status-go/protocol v1.0.2
 github.com/status-im/status-go/protocol
 github.com/status-im/status-go/protocol/datasync
 github.com/status-im/status-go/protocol/datasync/peer
@@ -429,11 +409,37 @@ github.com/status-im/status-go/protocol/identity/identicon
 github.com/status-im/status-go/protocol/migrations
 github.com/status-im/status-go/protocol/protobuf
 github.com/status-im/status-go/protocol/sqlite
+github.com/status-im/status-go/protocol/transport
+github.com/status-im/status-go/protocol/transport/waku
+github.com/status-im/status-go/protocol/transport/waku/migrations
 github.com/status-im/status-go/protocol/transport/whisper
 github.com/status-im/status-go/protocol/transport/whisper/migrations
 github.com/status-im/status-go/protocol/v1
 github.com/status-im/status-go/protocol/zaputil
-# github.com/status-im/status-go/whisper/v6 v6.0.2-0.20191219160300-4bee86b7e8da
+github.com/status-im/status-go/rpc
+github.com/status-im/status-go/services/browsers
+github.com/status-im/status-go/services/ext
+github.com/status-im/status-go/services/ext/mailservers
+github.com/status-im/status-go/services/incentivisation
+github.com/status-im/status-go/services/nimbus
+github.com/status-im/status-go/services/nodebridge
+github.com/status-im/status-go/services/peer
+github.com/status-im/status-go/services/permissions
+github.com/status-im/status-go/services/personal
+github.com/status-im/status-go/services/shhext
+github.com/status-im/status-go/services/status
+github.com/status-im/status-go/services/wakuext
+github.com/status-im/status-go/services/wallet
+github.com/status-im/status-go/services/wallet/ierc20
+github.com/status-im/status-go/signal
+github.com/status-im/status-go/sqlite
+github.com/status-im/status-go/static
+github.com/status-im/status-go/timesource
+# github.com/status-im/status-go/extkeys v1.1.0
+github.com/status-im/status-go/extkeys
+# github.com/status-im/status-go/waku v1.2.0
+github.com/status-im/status-go/waku
+# github.com/status-im/status-go/whisper/v6 v6.1.0
 github.com/status-im/status-go/whisper/v6
 # github.com/steakknife/bloomfilter v0.0.0-20180922174646-6819c0d2a570
 github.com/steakknife/bloomfilter
@@ -469,7 +475,7 @@ github.com/vacp2p/mvds/state/migrations
 github.com/vacp2p/mvds/store
 github.com/vacp2p/mvds/store/migrations
 github.com/vacp2p/mvds/transport
-# github.com/wealdtech/go-ens/v3 v3.0.9
+# github.com/wealdtech/go-ens/v3 v3.3.0
 github.com/wealdtech/go-ens/v3
 github.com/wealdtech/go-ens/v3/contracts/auctionregistrar
 github.com/wealdtech/go-ens/v3/contracts/baseregistrar
@@ -487,8 +493,6 @@ github.com/wealdtech/go-ens/v3/util
 github.com/wealdtech/go-multicodec
 # github.com/whyrusleeping/go-logging v0.0.0-20170515211332-0457bb6b88fc
 github.com/whyrusleeping/go-logging
-# github.com/whyrusleeping/go-notifier v0.0.0-20170827234753-097c5d47330f
-github.com/whyrusleeping/go-notifier
 # github.com/whyrusleeping/mafmt v1.2.8
 github.com/whyrusleeping/mafmt
 # github.com/whyrusleeping/multiaddr-filter v0.0.0-20160516205228-e903e4adabd7
@@ -517,7 +521,7 @@ go.uber.org/zap/internal/bufferpool
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
-# golang.org/x/crypto v0.0.0-20191119213627-4f8c1d86b1ba
+# golang.org/x/crypto v0.0.0-20191122220453-ac88ee75c92c
 golang.org/x/crypto/blake2s
 golang.org/x/crypto/curve25519
 golang.org/x/crypto/ed25519
@@ -531,7 +535,7 @@ golang.org/x/crypto/ssh/terminal
 # golang.org/x/lint v0.0.0-20190930215403-16217165b5de
 golang.org/x/lint
 golang.org/x/lint/golint
-# golang.org/x/net v0.0.0-20190930134127-c5a3c61f89f3
+# golang.org/x/net v0.0.0-20190912160710-24e19bdeb0f2
 golang.org/x/net/bpf
 golang.org/x/net/context
 golang.org/x/net/html
@@ -568,7 +572,7 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/tools v0.0.0-20191213032237-7093a17b0467
+# golang.org/x/tools v0.0.0-20200211045251-2de505fc5306
 golang.org/x/tools/go/analysis
 golang.org/x/tools/go/analysis/passes/inspect
 golang.org/x/tools/go/ast/astutil
@@ -580,10 +584,8 @@ golang.org/x/tools/go/internal/packagesdriver
 golang.org/x/tools/go/packages
 golang.org/x/tools/go/types/objectpath
 golang.org/x/tools/go/types/typeutil
-golang.org/x/tools/internal/fastwalk
-golang.org/x/tools/internal/gopathwalk
-golang.org/x/tools/internal/semver
-# gopkg.in/go-playground/validator.v9 v9.29.1
+golang.org/x/tools/internal/packagesinternal
+# gopkg.in/go-playground/validator.v9 v9.31.0
 gopkg.in/go-playground/validator.v9
 # gopkg.in/natefinch/lumberjack.v2 v2.0.0
 gopkg.in/natefinch/lumberjack.v2

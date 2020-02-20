@@ -5,22 +5,6 @@ import (
 	"time"
 )
 
-const (
-	// PubKeyLength represents the length (in bytes) of an uncompressed public key
-	PubKeyLength = 512 / 8
-	// AesKeyLength represents the length (in bytes) of an private key
-	AesKeyLength = 256 / 8
-)
-
-// SubscriptionOptions represents the parameters passed to Whisper.Subscribe
-// to customize the subscription behavior
-type SubscriptionOptions struct {
-	PrivateKeyID string
-	SymKeyID     string
-	PoW          float64
-	Topics       [][]byte
-}
-
 // Whisper represents a dark communication interface through the Ethereum
 // network, using its very own P2P communication layer.
 type Whisper interface {
@@ -38,9 +22,6 @@ type Whisper interface {
 	// GetCurrentTime returns current time.
 	GetCurrentTime() time.Time
 
-	// SelectedKeyPairID returns the id of currently selected key pair.
-	// It helps distinguish between different users w/o exposing the user identity itself.
-	SelectedKeyPairID() string
 	// GetPrivateKey retrieves the private key of the specified identity.
 	GetPrivateKey(id string) (*ecdsa.PrivateKey, error)
 
@@ -50,6 +31,8 @@ type Whisper interface {
 	AddKeyPair(key *ecdsa.PrivateKey) (string, error)
 	// DeleteKeyPair deletes the key with the specified ID if it exists.
 	DeleteKeyPair(keyID string) bool
+	// DeleteKeyPairs removes all cryptographic identities known to the node
+	DeleteKeyPairs() error
 	AddSymKeyDirect(key []byte) (string, error)
 	AddSymKeyFromPassword(password string) (string, error)
 	DeleteSymKey(id string) bool

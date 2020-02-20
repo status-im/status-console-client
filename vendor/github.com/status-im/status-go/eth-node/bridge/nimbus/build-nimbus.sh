@@ -13,7 +13,7 @@ target_dir="${GIT_ROOT}/vendor/github.com/status-im/status-go/eth-node/bridge/ni
 
 if [ -z "$nimbus_dir" ]; then
   # The git ref of Nimbus to fetch and build. This should represent a commit SHA or a tag, for reproducible builds
-  nimbus_ref='master' # TODO: Use a tag once
+  nimbus_ref='feature/android-api' # TODO: Use a tag once
 
   nimbus_src='https://github.com/status-im/nimbus/'
   nimbus_dir="${GIT_ROOT}/vendor/github.com/status-im/nimbus"
@@ -32,13 +32,9 @@ if [ -z "$nimbus_dir" ]; then
 fi
 
 # Build Nimbus wrappers and copy them into the Nimbus bridge in status-eth-node
-build_dir=$(cd $nimbus_dir && nix-build --pure --no-out-link -A wrappers)
-# Ideally we'd use the static version of the Nimbus library (.a),
-# however that causes link errors due to duplicate symbols:
-# ${target_dir}/libnimbus.a(secp256k1.c.o): In function `secp256k1_context_create':
-# (.text+0xca80): multiple definition of `secp256k1_context_create'
-# /tmp/go-link-476687730/000014.o:${GIT_ROOT}/vendor/github.com/ethereum/go-ethereum/crypto/secp256k1/./libsecp256k1/src/secp256k1.c:56: first defined here
+build_dir=$(nix-build --pure --no-out-link -A wrappers-native $nimbus_dir/nix/default.nix)
 rm -f ${target_dir}/libnimbus.*
 mkdir -p ${target_dir}
 cp -f ${build_dir}/include/* ${build_dir}/lib/libnimbus.so \
       ${target_dir}/
+chmod +w ${target_dir}/libnimbus.{so,h}

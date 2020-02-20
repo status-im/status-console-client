@@ -2,12 +2,14 @@ package logutils
 
 import (
 	"fmt"
-	"github.com/ethereum/go-ethereum/log"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"math"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/status-im/status-go/protocol/zaputil"
 )
@@ -30,7 +32,7 @@ func (c gethLoggerCore) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapc
 	}
 	return ce
 }
-func (c gethLoggerCore) Write(ent zapcore.Entry, fields []zapcore.Field) error { // nolint: gocyclo
+func (c gethLoggerCore) Write(ent zapcore.Entry, fields []zapcore.Field) error {
 	fields = append(c.fields[:], fields...)
 
 	var args []interface{}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/jroimartin/gocui"
 
@@ -11,6 +12,12 @@ import (
 	"github.com/status-im/status-go/eth-node/types"
 	"github.com/status-im/status-go/protocol"
 )
+
+type testTimeSource struct{}
+
+func (t *testTimeSource) GetCurrentTime() uint64 {
+	return uint64(time.Now().Unix())
+}
 
 const DefaultMultiplexerPrefix = "default"
 
@@ -68,7 +75,7 @@ func bytesToArgs(b []byte) []string {
 func chatAddCmdHandler(args []string) (chat protocol.Chat, err error) {
 	if len(args) == 1 {
 		name := args[0]
-		chat = protocol.CreatePublicChat(name)
+		chat = protocol.CreatePublicChat(name, &testTimeSource{})
 	} else if len(args) == 2 {
 		publicKeyBytes, err := types.DecodeHex(args[0])
 		if err != nil {
@@ -78,7 +85,7 @@ func chatAddCmdHandler(args []string) (chat protocol.Chat, err error) {
 		if err != nil {
 			return chat, err
 		}
-		chat = protocol.CreateOneToOneChat(args[1], publicKey)
+		chat = protocol.CreateOneToOneChat(args[1], publicKey, &testTimeSource{})
 	} else {
 		err = errors.New("/chat: incorrect arguments to add subcommand")
 	}

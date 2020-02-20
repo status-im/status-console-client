@@ -1,11 +1,11 @@
 package wallet
 
 import (
-	"errors"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+
 	"github.com/status-im/status-go/signal"
 )
 
@@ -24,7 +24,7 @@ type SignalsTransmitter struct {
 // Start runs loop in background.
 func (tmr *SignalsTransmitter) Start() error {
 	if tmr.quit != nil {
-		return errors.New("already running")
+		return errAlreadyRunning
 	}
 	tmr.quit = make(chan struct{})
 	events := make(chan Event, 10)

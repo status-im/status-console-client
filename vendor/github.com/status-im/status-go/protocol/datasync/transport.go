@@ -4,39 +4,41 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"errors"
+
 	"github.com/golang/protobuf/proto"
-	datasyncpeer "github.com/status-im/status-go/protocol/datasync/peer"
 	"github.com/vacp2p/mvds/protobuf"
 	"github.com/vacp2p/mvds/state"
 	"github.com/vacp2p/mvds/transport"
+
+	datasyncpeer "github.com/status-im/status-go/protocol/datasync/peer"
 )
 
 var errNotInitialized = errors.New("Datasync transport not initialized")
 
-type DataSyncNodeTransport struct {
+type NodeTransport struct {
 	packets  chan transport.Packet
 	dispatch func(context.Context, *ecdsa.PublicKey, []byte, *protobuf.Payload) error
 }
 
-func NewDataSyncNodeTransport() *DataSyncNodeTransport {
-	return &DataSyncNodeTransport{
+func NewNodeTransport() *NodeTransport {
+	return &NodeTransport{
 		packets: make(chan transport.Packet),
 	}
 }
 
-func (t *DataSyncNodeTransport) Init(dispatch func(context.Context, *ecdsa.PublicKey, []byte, *protobuf.Payload) error) {
+func (t *NodeTransport) Init(dispatch func(context.Context, *ecdsa.PublicKey, []byte, *protobuf.Payload) error) {
 	t.dispatch = dispatch
 }
 
-func (t *DataSyncNodeTransport) AddPacket(p transport.Packet) {
+func (t *NodeTransport) AddPacket(p transport.Packet) {
 	t.packets <- p
 }
 
-func (t *DataSyncNodeTransport) Watch() transport.Packet {
+func (t *NodeTransport) Watch() transport.Packet {
 	return <-t.packets
 }
 
-func (t *DataSyncNodeTransport) Send(_ state.PeerID, peer state.PeerID, payload protobuf.Payload) error {
+func (t *NodeTransport) Send(_ state.PeerID, peer state.PeerID, payload protobuf.Payload) error {
 	if t.dispatch == nil {
 		return errNotInitialized
 	}
@@ -46,7 +48,7 @@ func (t *DataSyncNodeTransport) Send(_ state.PeerID, peer state.PeerID, payload 
 		return err
 	}
 
-	publicKey, err := datasyncpeer.PeerIDToPublicKey(peer)
+	publicKey, err := datasyncpeer.IDToPublicKey(peer)
 	if err != nil {
 		return err
 	}

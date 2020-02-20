@@ -2,9 +2,9 @@ package protocol
 
 import (
 	"crypto/ecdsa"
-	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"math/rand"
 
 	"github.com/status-im/status-go/eth-node/crypto"
@@ -73,6 +73,26 @@ func (c *Chat) PublicKey() (*ecdsa.PublicKey, error) {
 	// Safety check, make sure is well formed
 	return crypto.UnmarshalPubkey(pkey)
 
+}
+
+func (c *Chat) Public() bool {
+	return c.ChatType == ChatTypePublic
+}
+
+func (c *Chat) OneToOne() bool {
+	return c.ChatType == ChatTypeOneToOne
+}
+
+func (c *Chat) Validate() error {
+	if c.ID == "" {
+		return errors.New("chatID can't be blank")
+	}
+
+	if c.OneToOne() {
+		_, err := c.PublicKey()
+		return err
+	}
+	return nil
 }
 
 func (c *Chat) MarshalJSON() ([]byte, error) {
@@ -156,6 +176,33 @@ func (c *Chat) updateChatFromProtocolGroup(g *v1protocol.Group) {
 	c.MembershipUpdates = g.Events()
 }
 
+// NextClockAndTimestamp returns the next clock value
+// and the current timestamp
+func (c *Chat) NextClockAndTimestamp(timesource TimeSource) (uint64, uint64) {
+	clock := c.LastClockValue
+	timestamp := timesource.GetCurrentTime()
+	if clock == 0 || clock < timestamp {
+		clock = timestamp
+	} else {
+		clock = clock + 1
+	}
+	return clock, timestamp
+}
+
+func (c *Chat) UpdateFromMessage(message *Message, timesource TimeSource) error {
+	c.Timestamp = int64(timesource.GetCurrentTime())
+	if c.LastClockValue <= message.Clock {
+		jsonMessage, err := json.Marshal(message)
+		if err != nil {
+			return err
+		}
+
+		c.LastClockValue = message.Clock
+		c.LastMessage = jsonMessage
+	}
+	return nil
+}
+
 // ChatMembershipUpdate represent an event on membership of the chat
 type ChatMembershipUpdate struct {
 	// Unique identifier for the event
@@ -174,11 +221,6 @@ type ChatMembershipUpdate struct {
 	Member string `json:"member,omitempty"`
 	// Target of the event for multi-target events
 	Members []string `json:"members,omitempty"`
-}
-
-func (u *ChatMembershipUpdate) setID() {
-	sum := sha1.Sum([]byte(u.Signature))
-	u.ID = hex.EncodeToString(sum[:])
 }
 
 // ChatMember represents a member who participates in a group chat
@@ -203,41 +245,41 @@ func oneToOneChatID(publicKey *ecdsa.PublicKey) string {
 	return types.EncodeHex(crypto.FromECDSAPub(publicKey))
 }
 
-func CreateOneToOneChat(name string, publicKey *ecdsa.PublicKey) Chat {
+func OneToOneFromPublicKey(pk *ecdsa.PublicKey, timesource TimeSource) *Chat {
+	chatID := types.EncodeHex(crypto.FromECDSAPub(pk))
+	newChat := CreateOneToOneChat(chatID[:8], pk, timesource)
+
+	return &newChat
+}
+
+func CreateOneToOneChat(name string, publicKey *ecdsa.PublicKey, timesource TimeSource) Chat {
 	return Chat{
-		ID:       oneToOneChatID(publicKey),
-		Name:     name,
-		Active:   true,
-		ChatType: ChatTypeOneToOne,
+		ID:        oneToOneChatID(publicKey),
+		Name:      name,
+		Timestamp: int64(timesource.GetCurrentTime()),
+		Active:    true,
+		ChatType:  ChatTypeOneToOne,
 	}
 }
 
-func CreatePublicChat(name string) Chat {
+func CreatePublicChat(name string, timesource TimeSource) Chat {
 	return Chat{
-		ID:       name,
-		Name:     name,
-		Active:   true,
-		Color:    chatColors[rand.Intn(len(chatColors))],
-		ChatType: ChatTypePublic,
+		ID:        name,
+		Name:      name,
+		Active:    true,
+		Timestamp: int64(timesource.GetCurrentTime()),
+		Color:     chatColors[rand.Intn(len(chatColors))],
+		ChatType:  ChatTypePublic,
 	}
 }
 
-func createGroupChat() Chat {
+func CreateGroupChat(timesource TimeSource) Chat {
 	return Chat{
 		Active:    true,
 		Color:     chatColors[rand.Intn(len(chatColors))],
-		Timestamp: int64(timestampInMs()),
+		Timestamp: int64(timesource.GetCurrentTime()),
 		ChatType:  ChatTypePrivateGroupChat,
 	}
-}
-
-func findChatByID(chatID string, chats []*Chat) *Chat {
-	for _, c := range chats {
-		if c.ID == chatID {
-			return c
-		}
-	}
-	return nil
 }
 
 func stringSliceToPublicKeys(slice []string, prefixed bool) ([]*ecdsa.PublicKey, error) {

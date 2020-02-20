@@ -8,18 +8,18 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
+	datasyncnode "github.com/vacp2p/mvds/node"
+	datasyncproto "github.com/vacp2p/mvds/protobuf"
+	"go.uber.org/zap"
+
 	"github.com/status-im/status-go/eth-node/crypto"
 	"github.com/status-im/status-go/eth-node/types"
 	"github.com/status-im/status-go/protocol/datasync"
 	datasyncpeer "github.com/status-im/status-go/protocol/datasync/peer"
 	"github.com/status-im/status-go/protocol/encryption"
-	"github.com/status-im/status-go/protocol/encryption/multidevice"
 	"github.com/status-im/status-go/protocol/protobuf"
-	transport "github.com/status-im/status-go/protocol/transport/whisper"
+	"github.com/status-im/status-go/protocol/transport"
 	v1protocol "github.com/status-im/status-go/protocol/v1"
-	datasyncnode "github.com/vacp2p/mvds/node"
-	datasyncproto "github.com/vacp2p/mvds/protobuf"
-	"go.uber.org/zap"
 )
 
 // Whisper message properties.
@@ -33,7 +33,7 @@ type messageProcessor struct {
 	identity  *ecdsa.PrivateKey
 	datasync  *datasync.DataSync
 	protocol  *encryption.Protocol
-	transport *transport.WhisperServiceTransport
+	transport transport.Transport
 	logger    *zap.Logger
 
 	featureFlags featureFlags
@@ -43,11 +43,11 @@ func newMessageProcessor(
 	identity *ecdsa.PrivateKey,
 	database *sql.DB,
 	enc *encryption.Protocol,
-	transport *transport.WhisperServiceTransport,
+	transport transport.Transport,
 	logger *zap.Logger,
 	features featureFlags,
 ) (*messageProcessor, error) {
-	dataSyncTransport := datasync.NewDataSyncNodeTransport()
+	dataSyncTransport := datasync.NewNodeTransport()
 	dataSyncNode, err := datasyncnode.NewPersistentNode(
 		database,
 		dataSyncTransport,
@@ -170,13 +170,40 @@ func (p *messageProcessor) sendPrivate(
 	return messageID, nil
 }
 
-func (p *messageProcessor) SendMembershipUpdate(
+// sendPairInstallation sends data to the recipients, using DH
+func (p *messageProcessor) SendPairInstallation(
 	ctx context.Context,
-	recipients []*ecdsa.PublicKey,
+	recipient *ecdsa.PublicKey,
+	data []byte,
+	messageType protobuf.ApplicationMetadataMessage_Type,
+) ([]byte, error) {
+	p.logger.Debug("sending private message", zap.Binary("recipient", crypto.FromECDSAPub(recipient)))
+
+	wrappedMessage, err := p.wrapMessageV1(data, messageType)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to wrap message")
+	}
+
+	messageSpec, err := p.protocol.BuildDHMessage(p.identity, recipient, wrappedMessage)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to encrypt message")
+	}
+
+	hash, newMessage, err := p.sendMessageSpec(ctx, recipient, messageSpec)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to send a message spec")
+	}
+
+	messageID := v1protocol.MessageID(&p.identity.PublicKey, wrappedMessage)
+	p.transport.Track([][]byte{messageID}, hash, newMessage)
+
+	return messageID, nil
+}
+
+func (p *messageProcessor) EncodeMembershipUpdate(
 	group *v1protocol.Group,
 	chatMessage *protobuf.ChatMessage,
 ) ([]byte, error) {
-	p.logger.Debug("sending a membership update", zap.Int("membersCount", len(recipients)))
 
 	message := v1protocol.MembershipUpdateMessage{
 		ChatID:  group.ChatID(),
@@ -188,7 +215,7 @@ func (p *messageProcessor) SendMembershipUpdate(
 		return nil, errors.Wrap(err, "failed to encode membership update message")
 	}
 
-	return p.SendGroupRaw(ctx, recipients, encodedMessage, protobuf.ApplicationMetadataMessage_MEMBERSHIP_UPDATE_MESSAGE)
+	return encodedMessage, nil
 }
 
 // SendPublicRaw takes encoded data, encrypts it and sends through the wire.
@@ -222,15 +249,6 @@ func (p *messageProcessor) SendPublicRaw(
 	p.transport.Track([][]byte{messageID}, hash, newMessage)
 
 	return messageID, nil
-}
-
-func (p *messageProcessor) processPairMessage(m v1protocol.PairMessage) error {
-	metadata := &multidevice.InstallationMetadata{
-		Name:       m.Name,
-		FCMToken:   m.FCMToken,
-		DeviceType: m.DeviceType,
-	}
-	return p.protocol.SetInstallationMetadata(&p.identity.PublicKey, m.InstallationID, metadata)
 }
 
 // handleMessages expects a whisper message as input, and it will go through
