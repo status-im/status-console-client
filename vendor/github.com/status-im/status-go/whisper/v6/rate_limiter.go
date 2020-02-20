@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/tsenart/tb"
+
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/enode"
-	"github.com/tsenart/tb"
 )
 
 type runLoop func(p *Peer, rw p2p.MsgReadWriter) error
@@ -20,8 +21,14 @@ type RateLimiterHandler interface {
 
 type MetricsRateLimiterHandler struct{}
 
-func (MetricsRateLimiterHandler) ExceedPeerLimit() error { rateLimiterPeerExceeded.Inc(1); return nil }
-func (MetricsRateLimiterHandler) ExceedIPLimit() error   { rateLimiterIPExceeded.Inc(1); return nil }
+func (MetricsRateLimiterHandler) ExceedPeerLimit() error {
+	rateLimitsExceeded.WithLabelValues("peer_id").Inc()
+	return nil
+}
+func (MetricsRateLimiterHandler) ExceedIPLimit() error {
+	rateLimitsExceeded.WithLabelValues("ip").Inc()
+	return nil
+}
 
 var ErrRateLimitExceeded = errors.New("rate limit has been exceeded")
 
@@ -109,7 +116,7 @@ func (r *PeerRateLimiter) decorate(p *Peer, rw p2p.MsgReadWriter, runLoop runLoo
 				return
 			}
 
-			rateLimiterProcessed.Inc(1)
+			rateLimitsProcessed.Inc()
 
 			var ip string
 			if p != nil && p.peer != nil {

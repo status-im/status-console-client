@@ -8,27 +8,29 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/status-im/status-go/eth-node/crypto"
-	enstypes "github.com/status-im/status-go/eth-node/types/ens"
 	ens "github.com/wealdtech/go-ens/v3"
 	"go.uber.org/zap"
+
+	"github.com/ethereum/go-ethereum/ethclient"
+
+	"github.com/status-im/status-go/eth-node/crypto"
+	enstypes "github.com/status-im/status-go/eth-node/types/ens"
 )
 
 const (
 	contractQueryTimeout = 5000 * time.Millisecond
 )
 
-type ENSVerifier struct {
+type Verifier struct {
 	logger *zap.Logger
 }
 
-// NewVerifier returns a ENSVerifier attached to the specified logger
-func NewVerifier(logger *zap.Logger) *ENSVerifier {
-	return &ENSVerifier{logger: logger}
+// NewVerifier returns a Verifier attached to the specified logger
+func NewVerifier(logger *zap.Logger) *Verifier {
+	return &Verifier{logger: logger}
 }
 
-func (m *ENSVerifier) verifyENSName(ensInfo enstypes.ENSDetails, ethclient *ethclient.Client) enstypes.ENSResponse {
+func (m *Verifier) verifyENSName(ensInfo enstypes.ENSDetails, ethclient *ethclient.Client) enstypes.ENSResponse {
 	publicKeyStr := ensInfo.PublicKeyString
 	ensName := ensInfo.Name
 	m.logger.Info("Resolving ENS name", zap.String("name", ensName), zap.String("publicKey", publicKeyStr))
@@ -73,7 +75,7 @@ func (m *ENSVerifier) verifyENSName(ensInfo enstypes.ENSDetails, ethclient *ethc
 }
 
 // CheckBatch verifies that a registered ENS name matches the expected public key
-func (m *ENSVerifier) CheckBatch(ensDetails []enstypes.ENSDetails, rpcEndpoint, contractAddress string) (map[string]enstypes.ENSResponse, error) {
+func (m *Verifier) CheckBatch(ensDetails []enstypes.ENSDetails, rpcEndpoint, contractAddress string) (map[string]enstypes.ENSResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), contractQueryTimeout)
 	defer cancel()
 

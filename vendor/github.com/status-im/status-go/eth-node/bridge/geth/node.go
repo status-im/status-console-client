@@ -1,13 +1,19 @@
 package gethbridge
 
 import (
+	"errors"
+
+	"go.uber.org/zap"
+
+	"github.com/status-im/status-go/waku"
+
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+
 	gethens "github.com/status-im/status-go/eth-node/bridge/geth/ens"
 	"github.com/status-im/status-go/eth-node/types"
 	enstypes "github.com/status-im/status-go/eth-node/types/ens"
 	"github.com/status-im/status-go/whisper/v6"
-	"go.uber.org/zap"
 )
 
 type gethNodeWrapper struct {
@@ -16,6 +22,10 @@ type gethNodeWrapper struct {
 
 func NewNodeBridge(stack *node.Node) types.Node {
 	return &gethNodeWrapper{stack: stack}
+}
+
+func (w *gethNodeWrapper) Poll() {
+	// noop
 }
 
 func (w *gethNodeWrapper) NewENSVerifier(logger *zap.Logger) enstypes.ENSVerifier {
@@ -39,10 +49,33 @@ func (w *gethNodeWrapper) GetWhisper(ctx interface{}) (types.Whisper, error) {
 		}
 	}
 	if nativeWhisper == nil {
-		panic("Whisper service is not available")
+		return nil, errors.New("whisper service is not available")
 	}
 
 	return NewGethWhisperWrapper(nativeWhisper), nil
+}
+
+func (w *gethNodeWrapper) GetWaku(ctx interface{}) (types.Waku, error) {
+	var nativeWaku *waku.Waku
+	if ctx == nil || ctx == w {
+		err := w.stack.Service(&nativeWaku)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		switch serviceProvider := ctx.(type) {
+		case *node.ServiceContext:
+			err := serviceProvider.Service(&nativeWaku)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	if nativeWaku == nil {
+		return nil, errors.New("waku service is not available")
+	}
+
+	return NewGethWakuWrapper(nativeWaku), nil
 }
 
 func (w *gethNodeWrapper) AddPeer(url string) error {

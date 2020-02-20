@@ -3,8 +3,9 @@ package types
 import (
 	"fmt"
 
-	enstypes "github.com/status-im/status-go/eth-node/types/ens"
 	"go.uber.org/zap"
+
+	enstypes "github.com/status-im/status-go/eth-node/types/ens"
 )
 
 // EnodeID is a unique identifier for each node.
@@ -18,6 +19,7 @@ func (n EnodeID) String() string {
 type Node interface {
 	NewENSVerifier(logger *zap.Logger) enstypes.ENSVerifier
 	GetWhisper(ctx interface{}) (Whisper, error)
+	GetWaku(ctx interface{}) (Waku, error)
 	AddPeer(url string) error
 	RemovePeer(url string) error
 }

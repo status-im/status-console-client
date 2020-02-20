@@ -35,7 +35,7 @@ var g *gocui.Gui
 
 var (
 	fs       = flag.NewFlagSet("status-term-client", flag.ExitOnError)
-	logLevel = fs.String("log-level", "INFO", "log level")
+	logLevel = fs.String("log-level", "DEBUG", "log level")
 
 	keyHex = fs.String("keyhex", "", "pass a private key in hex")
 	noUI   = fs.Bool("no-ui", false, "disable UI")
@@ -47,7 +47,7 @@ var (
 	dataDir        = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
 	installationID = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
 	noNamespace    = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
-	fleet          = fs.String("fleet", params.FleetStaging, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetBeta, params.FleetStaging}))
+	fleet          = fs.String("fleet", params.FleetProd, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetProd, params.FleetProd}))
 	configFile     = fs.String("node-config", "", "a JSON file with node config")
 	listenAddr     = fs.String("listen-addr", ":30303", "The address the Ethereum node should be listening to")
 	datasync       = fs.Bool("datasync", false, "enable datasync")
@@ -124,7 +124,7 @@ func main() {
 		exitErr(err)
 	}
 	cfg := zap.NewProductionConfig()
-	cfg.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
+	cfg.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
 	cfg.OutputPaths = []string{clientLogFile.Name()}
 	cfg.Encoding = "json-hex"
 	logger, err := cfg.Build()
@@ -188,6 +188,10 @@ func main() {
 		exitErr(err)
 	}
 
+	if err := messenger.Start(); err != nil {
+		exitErr(err)
+	}
+
 	defer stopFunc()
 	if err := g.MainLoop(); err != nil && err != gocui.ErrQuit {
 		stopFunc()
@@ -242,13 +246,10 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 	}
 
 	options := []protocol.Option{
-		protocol.WithCustomLogger(logger),
 		protocol.WithDatabaseConfig(dbPath, ""),
+		protocol.WithCustomLogger(logger),
 		protocol.WithMessagesPersistenceEnabled(),
-	}
-
-	if *datasync {
-		options = append(options, protocol.WithDatasync())
+		protocol.WithDatasync(),
 	}
 
 	messenger, err := protocol.NewMessenger(
@@ -262,6 +263,10 @@ func createMessengerInProc(pk *ecdsa.PrivateKey, dbPath string, logger *zap.Logg
 	}
 
 	if err := messenger.Init(); err != nil {
+		return nil, nil, err
+	}
+
+	if err := messenger.Start(); err != nil {
 		return nil, nil, err
 	}
 

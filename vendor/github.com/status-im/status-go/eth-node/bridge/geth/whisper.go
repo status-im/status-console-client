@@ -59,17 +59,11 @@ func (w *gethWhisperWrapper) SubscribeEnvelopeEvents(eventsProxy chan<- types.En
 	events := make(chan whisper.EnvelopeEvent, 100) // must be buffered to prevent blocking whisper
 	go func() {
 		for e := range events {
-			eventsProxy <- *NewGethEnvelopeEventWrapper(&e)
+			eventsProxy <- *NewWhisperEnvelopeEventWrapper(&e)
 		}
 	}()
 
 	return NewGethSubscriptionWrapper(w.whisper.SubscribeEnvelopeEvents(events))
-}
-
-// SelectedKeyPairID returns the id of currently selected key pair.
-// It helps distinguish between different users w/o exposing the user identity itself.
-func (w *gethWhisperWrapper) SelectedKeyPairID() string {
-	return w.whisper.SelectedKeyPairID()
 }
 
 func (w *gethWhisperWrapper) GetPrivateKey(id string) (*ecdsa.PrivateKey, error) {
@@ -84,6 +78,11 @@ func (w *gethWhisperWrapper) AddKeyPair(key *ecdsa.PrivateKey) (string, error) {
 // DeleteKeyPair deletes the key with the specified ID if it exists.
 func (w *gethWhisperWrapper) DeleteKeyPair(keyID string) bool {
 	return w.whisper.DeleteKeyPair(keyID)
+}
+
+// DeleteKeyPairs removes all cryptographic identities known to the node
+func (w *gethWhisperWrapper) DeleteKeyPairs() error {
+	return w.whisper.DeleteKeyPairs()
 }
 
 func (w *gethWhisperWrapper) AddSymKeyDirect(key []byte) (string, error) {
@@ -127,17 +126,17 @@ func (w *gethWhisperWrapper) Subscribe(opts *types.SubscriptionOptions) (string,
 		return "", err
 	}
 
-	id, err := w.whisper.Subscribe(GetGethFilterFrom(f))
+	id, err := w.whisper.Subscribe(GetWhisperFilterFrom(f))
 	if err != nil {
 		return "", err
 	}
 
-	f.(*gethFilterWrapper).id = id
+	f.(*whisperFilterWrapper).id = id
 	return id, nil
 }
 
 func (w *gethWhisperWrapper) GetFilter(id string) types.Filter {
-	return NewGethFilterWrapper(w.whisper.GetFilter(id), id)
+	return NewWhisperFilterWrapper(w.whisper.GetFilter(id), id)
 }
 
 func (w *gethWhisperWrapper) Unsubscribe(id string) error {
@@ -145,7 +144,7 @@ func (w *gethWhisperWrapper) Unsubscribe(id string) error {
 }
 
 func (w *gethWhisperWrapper) createFilterWrapper(id string, keyAsym *ecdsa.PrivateKey, keySym []byte, pow float64, topics [][]byte) (types.Filter, error) {
-	return NewGethFilterWrapper(&whisper.Filter{
+	return NewWhisperFilterWrapper(&whisper.Filter{
 		KeyAsym:  keyAsym,
 		KeySym:   keySym,
 		PoW:      pow,
@@ -172,10 +171,37 @@ func (w *gethWhisperWrapper) SendMessagesRequest(peerID []byte, r types.Messages
 // which are not supposed to be forwarded any further.
 // The whisper protocol is agnostic of the format and contents of envelope.
 func (w *gethWhisperWrapper) RequestHistoricMessagesWithTimeout(peerID []byte, envelope types.Envelope, timeout time.Duration) error {
-	return w.whisper.RequestHistoricMessagesWithTimeout(peerID, GetGethEnvelopeFrom(envelope), timeout)
+	return w.whisper.RequestHistoricMessagesWithTimeout(peerID, envelope.Unwrap().(*whisper.Envelope), timeout)
 }
 
 // SyncMessages can be sent between two Mail Servers and syncs envelopes between them.
 func (w *gethWhisperWrapper) SyncMessages(peerID []byte, req types.SyncMailRequest) error {
 	return w.whisper.SyncMessages(peerID, *GetGethSyncMailRequestFrom(&req))
+}
+
+type whisperFilterWrapper struct {
+	filter *whisper.Filter
+	id     string
+}
+
+// NewWhisperFilterWrapper returns an object that wraps Geth's Filter in a types interface
+func NewWhisperFilterWrapper(f *whisper.Filter, id string) types.Filter {
+	if f.Messages == nil {
+		panic("Messages should not be nil")
+	}
+
+	return &whisperFilterWrapper{
+		filter: f,
+		id:     id,
+	}
+}
+
+// GetWhisperFilterFrom retrieves the underlying whisper Filter struct from a wrapped Filter interface
+func GetWhisperFilterFrom(f types.Filter) *whisper.Filter {
+	return f.(*whisperFilterWrapper).filter
+}
+
+// ID returns the filter ID
+func (w *whisperFilterWrapper) ID() string {
+	return w.id
 }

@@ -24,10 +24,11 @@ import (
 	"time"
 	"unsafe"
 
+	"go.uber.org/zap"
+
 	"github.com/status-im/status-go/eth-node/crypto"
 	"github.com/status-im/status-go/eth-node/types"
 	enstypes "github.com/status-im/status-go/eth-node/types/ens"
-	"go.uber.org/zap"
 )
 
 type nimbusNodeWrapper struct {
@@ -101,6 +102,10 @@ func (n *nimbusNodeWrapper) GetWhisper(ctx interface{}) (types.Whisper, error) {
 		n.w = NewNimbusWhisperWrapper(n.routineQueue)
 	}
 	return n.w, nil
+}
+
+func (w *nimbusNodeWrapper) GetWaku(ctx interface{}) (types.Waku, error) {
+	panic("not implemented")
 }
 
 func (n *nimbusNodeWrapper) AddPeer(url string) error {

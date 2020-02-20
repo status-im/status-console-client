@@ -11,6 +11,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+
 	"github.com/status-im/status-go/eth-node/crypto"
 	"github.com/status-im/status-go/eth-node/types"
 	"github.com/status-im/status-go/protocol/protobuf"
@@ -109,7 +110,7 @@ type MembershipUpdateEvent struct {
 }
 
 func (u *MembershipUpdateEvent) Equal(update MembershipUpdateEvent) bool {
-	return bytes.Compare(u.Signature, update.Signature) == 0
+	return bytes.Equal(u.Signature, update.Signature)
 }
 
 func (u *MembershipUpdateEvent) Sign(key *ecdsa.PrivateKey) error {
@@ -341,10 +342,6 @@ func (g Group) LastClockValue() uint64 {
 	return g.events[len(g.events)-1].ClockValue
 }
 
-func (g Group) NextClockValue() uint64 {
-	return g.LastClockValue() + 1
-}
-
 func (g Group) creator() (string, error) {
 	if len(g.events) == 0 {
 		return "", errors.New("no events in the group")
@@ -440,20 +437,6 @@ func stringSliceSubset(subset []string, set []string) bool {
 		}
 	}
 	return false
-}
-
-func stringSliceEquals(slice1, slice2 []string) bool {
-	set := map[string]struct{}{}
-	for _, s := range slice1 {
-		set[s] = struct{}{}
-	}
-	for _, s := range slice2 {
-		_, ok := set[s]
-		if !ok {
-			return false
-		}
-	}
-	return true
 }
 
 func publicKeyToString(publicKey *ecdsa.PublicKey) string {

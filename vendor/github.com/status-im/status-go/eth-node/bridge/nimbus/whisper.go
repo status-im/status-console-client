@@ -5,12 +5,11 @@ package nimbusbridge
 // https://golang.org/cmd/cgo/
 
 /*
-#cgo LDFLAGS: -Wl,-rpath,'$ORIGIN' -L${SRCDIR} -lnimbus -lpcre -lm
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <libnimbus.h>
-void onMessageHandler_cgo(received_message * msg, void* udata); // Forward declaration.
+void onMessageHandler_cgo(received_message* msg, void* udata); // Forward declaration.
 */
 import "C"
 
@@ -24,6 +23,7 @@ import (
 	"unsafe"
 
 	gopointer "github.com/mattn/go-pointer"
+
 	"github.com/status-im/status-go/eth-node/crypto"
 	"github.com/status-im/status-go/eth-node/types"
 )
@@ -89,12 +89,6 @@ func (w *nimbusWhisperWrapper) SetTimeSource(timesource func() time.Time) {
 func (w *nimbusWhisperWrapper) SubscribeEnvelopeEvents(eventsProxy chan<- types.EnvelopeEvent) types.Subscription {
 	// TODO: when mailserver support is implemented
 	panic("not implemented")
-}
-
-// SelectedKeyPairID returns the id of currently selected key pair.
-// It helps distinguish between different users w/o exposing the user identity itself.
-func (w *nimbusWhisperWrapper) SelectedKeyPairID() string {
-	return ""
 }
 
 func (w *nimbusWhisperWrapper) GetPrivateKey(id string) (*ecdsa.PrivateKey, error) {
@@ -168,6 +162,16 @@ func (w *nimbusWhisperWrapper) DeleteKeyPair(keyID string) bool {
 	}
 
 	return retVal.value.(bool)
+}
+
+// DeleteKeyPairs removes all cryptographic identities known to the node
+func (w *nimbusWhisperWrapper) DeleteKeyPairs() error {
+	retVal := w.routineQueue.Send(func(c chan<- callReturn) {
+		C.nimbus_delete_keypairs()
+		c <- callReturn{}
+	})
+
+	return retVal.err
 }
 
 func (w *nimbusWhisperWrapper) AddSymKeyDirect(key []byte) (string, error) {

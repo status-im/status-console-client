@@ -4,11 +4,10 @@ import (
 	"encoding/hex"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+
 	statusproto "github.com/status-im/status-go/protocol"
-	"github.com/status-im/status-go/services/shhext/dedup"
 
 	"github.com/status-im/status-go/eth-node/types"
-	statustransp "github.com/status-im/status-go/protocol/transport/whisper"
 )
 
 const (
@@ -18,9 +17,6 @@ const (
 	// EventEnvelopeExpired is triggered when envelop was dropped by a whisper without being sent
 	// to any peer
 	EventEnvelopeExpired = "envelope.expired"
-
-	// EventEnvelopeDiscarded is triggerd when envelope was discarded by a peer for some reason.
-	EventEnvelopeDiscarded = "envelope.discarded"
 
 	// EventMailServerRequestCompleted is triggered when whisper receives a message ack from the mailserver
 	EventMailServerRequestCompleted = "mailserver.request.completed"
@@ -139,12 +135,6 @@ func SendMailServerRequestExpired(hash types.Hash) {
 type EnodeDiscoveredSignal struct {
 	Enode string `json:"enode"`
 	Topic string `json:"topic"`
-}
-
-type Messages struct {
-	Error    error                       `json:"error"`
-	Messages []*dedup.DeduplicateMessage `json:"messages"`
-	Chat     statustransp.Filter         `json:"chat"` // not a mistake, it's called chat in status-react
 }
 
 // SendEnodeDiscovered tiggered when an enode is discovered.

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/beevik/ntp"
+
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -186,6 +187,10 @@ func (s *NTPTimeSource) runPeriodically(fn func() error) error {
 	}()
 
 	return nil
+}
+
+func (s *NTPTimeSource) StartService() error {
+	return s.runPeriodically(s.updateOffset)
 }
 
 // Start runs a goroutine that updates local offset every updatePeriod.
