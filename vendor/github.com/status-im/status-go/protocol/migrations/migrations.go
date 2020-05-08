@@ -4,7 +4,11 @@
 // 000001_init.up.db.sql (2.719kB)
 // 000002_add_last_ens_clock_value.down.sql (0)
 // 000002_add_last_ens_clock_value.up.sql (77B)
-// doc.go (377B)
+// 1586358095_add_replace.down.sql (0)
+// 1586358095_add_replace.up.sql (224B)
+// 1588665364_add_image_data.down.sql (0)
+// 1588665364_add_image_data.up.sql (186B)
+// doc.go (850B)
 
 package migrations
 
@@ -128,7 +132,7 @@ func _000002_add_last_ens_clock_valueDownSql() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "000002_add_last_ens_clock_value.down.sql", size: 0, mode: os.FileMode(0644), modTime: time.Unix(1580459788, 0)}
+	info := bindataFileInfo{name: "000002_add_last_ens_clock_value.down.sql", size: 0, mode: os.FileMode(0644), modTime: time.Unix(1584434371, 0)}
 	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8, 0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55}}
 	return a, nil
 }
@@ -148,12 +152,92 @@ func _000002_add_last_ens_clock_valueUpSql() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "000002_add_last_ens_clock_value.up.sql", size: 77, mode: os.FileMode(0644), modTime: time.Unix(1580459768, 0)}
+	info := bindataFileInfo{name: "000002_add_last_ens_clock_value.up.sql", size: 77, mode: os.FileMode(0644), modTime: time.Unix(1584434371, 0)}
 	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0x4d, 0x3, 0x8f, 0xd5, 0x85, 0x83, 0x47, 0xbe, 0xf9, 0x82, 0x7e, 0x81, 0xa4, 0xbd, 0xaa, 0xd5, 0x98, 0x18, 0x5, 0x2d, 0x82, 0x42, 0x3b, 0x3, 0x50, 0xc3, 0x1e, 0x84, 0x35, 0xf, 0xb6, 0x2b}}
 	return a, nil
 }
 
-var _docGo = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x84\x8f\xbb\x6e\xc3\x30\x0c\x45\x77\x7f\xc5\x45\x96\x2c\xb5\xb4\x74\xea\xd6\xb1\x7b\x7f\x80\x91\x68\x89\x88\x1e\xae\x48\xe7\xf1\xf7\x85\xd3\x02\xcd\xd6\xf5\x00\xe7\xf0\xd2\x7b\x7c\x66\x51\x2c\x52\x18\xa2\x68\x1c\x58\x95\xc6\x1d\x27\x0e\xb4\x29\xe3\x90\xc4\xf2\x76\x72\xa1\x57\xaf\x46\xb6\xe9\x2c\xd5\x57\x49\x83\x8c\xfd\xe5\xf5\x30\x79\x8f\x40\xed\x68\xc8\xd4\x62\xe1\x47\x4b\xa1\x46\xc3\xa4\x25\x5c\xc5\x32\x08\xeb\xe0\x45\x6e\x0e\xef\x86\xc2\xa4\x06\xcb\x64\x47\x85\x65\x46\x20\xe5\x3d\xb3\xf4\x81\xd4\xe7\x93\xb4\x48\x46\x6e\x47\x1f\xcb\x13\xd9\x17\x06\x2a\x85\x23\x96\xd1\xeb\xc3\x55\xaa\x8c\x28\x83\x83\xf5\x71\x7f\x01\xa9\xb2\xa1\x51\x65\xdd\xfd\x4c\x17\x46\xeb\xbf\xe7\x41\x2d\xfe\xff\x11\xae\x7d\x9c\x15\xa4\xe0\xdb\xca\xc1\x38\xba\x69\x5a\x29\x9c\x29\x31\xf4\xab\x88\xf1\x34\x79\x9f\xfa\x5b\xe2\xc6\xbb\xf5\xbc\x71\x5e\xcf\x09\x3f\x35\xe9\x4d\x31\x77\x38\xe7\xff\x80\x4b\x1d\x6e\xfa\x0e\x00\x00\xff\xff\x9d\x60\x3d\x88\x79\x01\x00\x00")
+var __1586358095_add_replaceDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x01\x00\x00\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00")
+
+func _1586358095_add_replaceDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__1586358095_add_replaceDownSql,
+		"1586358095_add_replace.down.sql",
+	)
+}
+
+func _1586358095_add_replaceDownSql() (*asset, error) {
+	bytes, err := _1586358095_add_replaceDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "1586358095_add_replace.down.sql", size: 0, mode: os.FileMode(0644), modTime: time.Unix(1587456151, 0)}
+	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8, 0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55}}
+	return a, nil
+}
+
+var __1586358095_add_replaceUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x8c\xce\x31\x0a\xc2\x40\x10\x46\xe1\x3e\xa7\xf8\xc9\x09\xec\x53\x4d\xdc\x09\x08\xe3\x2c\xe8\x2c\xd8\x85\x10\x06\x11\xd6\x28\xd9\xe4\xfe\x56\x56\x5a\x6c\xfd\xe0\xe3\x91\x18\x5f\x60\xd4\x0b\x63\x2f\xbe\x8e\x4f\x2f\x65\xba\x7b\x01\x85\x80\x63\x94\x74\x56\xac\xfe\xce\xd3\xec\xdf\x06\xe3\x9b\x41\xa3\x41\x93\x08\x02\x0f\x94\xc4\xd0\xb6\x5d\x53\xc7\x6d\x19\x7d\x8c\xc2\xa4\xbf\xca\x40\x72\xe5\x4a\x28\x3f\x16\x1f\xe7\xd7\xbe\x6c\x38\xe9\x9f\xa3\x43\xd7\x7c\x02\x00\x00\xff\xff\xca\x94\x3f\xe0\xe0\x00\x00\x00")
+
+func _1586358095_add_replaceUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__1586358095_add_replaceUpSql,
+		"1586358095_add_replace.up.sql",
+	)
+}
+
+func _1586358095_add_replaceUpSql() (*asset, error) {
+	bytes, err := _1586358095_add_replaceUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "1586358095_add_replace.up.sql", size: 224, mode: os.FileMode(0644), modTime: time.Unix(1587456151, 0)}
+	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0xd2, 0xb3, 0xa9, 0xc7, 0x7f, 0x9d, 0x8f, 0x43, 0x8c, 0x9e, 0x58, 0x8d, 0x44, 0xbc, 0xfa, 0x6b, 0x5f, 0x3f, 0x5a, 0xbe, 0xe8, 0xb1, 0x16, 0xf, 0x91, 0x2a, 0xa0, 0x71, 0xbb, 0x8d, 0x6b, 0xcb}}
+	return a, nil
+}
+
+var __1588665364_add_image_dataDownSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x01\x00\x00\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00")
+
+func _1588665364_add_image_dataDownSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__1588665364_add_image_dataDownSql,
+		"1588665364_add_image_data.down.sql",
+	)
+}
+
+func _1588665364_add_image_dataDownSql() (*asset, error) {
+	bytes, err := _1588665364_add_image_dataDownSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "1588665364_add_image_data.down.sql", size: 0, mode: os.FileMode(0644), modTime: time.Unix(1588665526, 0)}
+	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8, 0x99, 0x6f, 0xb9, 0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55}}
+	return a, nil
+}
+
+var __1588665364_add_image_dataUpSql = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x94\xcb\x41\x0a\xc2\x40\x0c\x05\xd0\x7d\x4f\xf1\xe9\x19\xc4\x4d\x57\x33\x4e\x04\x21\x66\x40\x32\xe0\xae\x44\x0c\x45\xb0\x58\x8c\x2e\x7a\xfb\x9e\xa1\x07\x78\x89\x95\x6e\xd0\x94\x99\xf0\x0f\xff\x8e\xb3\x47\xd8\xe4\x81\x54\x0a\x4e\x95\xdb\x55\xf0\x9a\x6d\xf2\x71\xb1\xf5\xfd\xb1\x27\x32\xd7\x3c\x74\x3b\xe0\x6f\x5d\x1c\x17\xd1\x5d\xe8\x61\xe1\xc7\x03\x94\xee\x0a\xa9\x0a\x69\xcc\x28\x74\x4e\x8d\x15\x7d\x3f\x74\x5b\x00\x00\x00\xff\xff\xf8\x4b\xbd\xbe\xba\x00\x00\x00")
+
+func _1588665364_add_image_dataUpSqlBytes() ([]byte, error) {
+	return bindataRead(
+		__1588665364_add_image_dataUpSql,
+		"1588665364_add_image_data.up.sql",
+	)
+}
+
+func _1588665364_add_image_dataUpSql() (*asset, error) {
+	bytes, err := _1588665364_add_image_dataUpSqlBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	info := bindataFileInfo{name: "1588665364_add_image_data.up.sql", size: 186, mode: os.FileMode(0644), modTime: time.Unix(1588667389, 0)}
+	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0xd6, 0xc6, 0x35, 0xb4, 0x4c, 0x39, 0x96, 0x29, 0x30, 0xda, 0xf4, 0x8f, 0xcb, 0xf1, 0x9f, 0x84, 0xdc, 0x88, 0xd4, 0xd5, 0xbc, 0xb6, 0x5b, 0x46, 0x78, 0x67, 0x76, 0x1a, 0x5, 0x36, 0xdc, 0xe5}}
+	return a, nil
+}
+
+var _docGo = []byte("\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff\x84\x52\x3f\x8f\xdb\x3e\x0c\xdd\xf3\x29\x1e\x6e\xb9\xe5\x22\x07\xf8\xfd\xa6\xdb\x3a\x74\xe8\xd2\x2e\xd9\x0b\x46\xa6\x6d\x22\x32\xe5\x8a\xf4\x39\xf9\xf6\x85\x74\x17\x9c\x51\x14\xe8\x4a\x89\x8f\xef\x5f\xd7\xe1\x3c\x89\x61\x90\xc4\x10\x83\x72\x64\x33\x2a\x77\x5c\x38\xd2\x6a\x8c\xa7\x51\x7c\x5a\x2f\x21\xe6\xb9\x33\x27\x5f\xed\x28\x73\x37\xcb\x58\xc8\xb9\x7b\xfb\xff\xe9\xd0\x75\x88\xa4\xcf\x8e\x89\xb4\x4f\xdc\xb0\x0c\xe6\x54\x5c\x74\xc4\x26\x3e\x81\xb0\x14\x1e\xe4\x16\xf0\xc5\x91\x98\xcc\xe1\x13\xf9\xb3\xc1\x27\x46\x24\xe3\x0a\x33\xe4\x82\x31\x1f\x2f\xa2\x3d\x39\x85\x3a\xfa\x36\xec\x26\x95\x61\xa4\x94\xb8\xc7\x50\xf2\xdc\x76\x8d\x66\x46\x2f\x85\xa3\xe7\x72\x7f\x01\x99\xb1\x43\x69\x66\xab\xfb\x13\xbd\x31\x34\x7f\x9c\x07\x69\xff\x6f\x45\xd8\x72\xb9\x1a\xc8\xc0\xb7\x85\xa3\x73\x1f\x0e\x15\xeb\xfb\x8f\xf3\xd7\x57\x9c\x27\xae\xf0\x55\x5a\x1e\x1a\x85\x66\x9e\x32\xf7\x06\xcf\x18\x72\x4a\x79\x6b\x0f\xab\xca\x0d\x2e\x33\x9b\xd3\xbc\x20\x66\x7d\x63\x75\xc9\x5a\xd1\x56\x4d\x72\xe5\xf6\xcf\xb7\x0c\x51\x71\xa1\xf4\xee\x5e\x93\x7e\x7e\x37\xe8\x11\x44\x5c\x4b\x61\xf5\x74\x6f\x2b\xac\xb1\xdc\x97\x8a\x85\x77\xe6\x92\xd5\x9a\xbc\xa5\x64\xcf\x31\xa7\xdd\xbc\xa2\xd9\x44\x85\x3f\x1d\x73\xba\x24\x7e\xc1\x36\x49\x9c\x30\x33\xa9\xb5\x40\xda\x87\x44\xce\xe6\x9f\xfb\x10\x85\x73\x99\xad\x0a\xae\xfc\xaa\xbb\x15\xb3\x16\xe7\x91\xc3\x8e\x50\x33\x7f\xa1\xf8\x51\x85\xc7\x95\xd5\xd8\x40\x7f\x98\xf2\x08\x79\x63\x50\xdf\xe3\x74\x3a\x9d\xfe\xfb\x19\x42\x68\x5d\xe0\x1b\xcd\x4b\xa5\xe9\xb5\xa3\x9b\xa4\x84\x0b\x43\x46\xcd\x85\xfb\xca\x8a\x6f\x62\xad\x64\x31\x09\xab\xd7\xcc\x2a\x5e\x4e\x3d\x97\xaa\x47\xf7\x7a\xfe\x66\x59\x38\x1c\x16\x8a\x57\x1a\x19\xf6\x2b\x89\x73\x0d\x7a\xcc\xaf\x23\x2b\xd7\x3a\xec\xcb\x77\x5c\xae\xe3\xde\xec\x63\x46\x08\xdd\xe7\x20\x8c\x19\xe1\xf0\x3b\x00\x00\xff\xff\x12\xcd\x7f\xc4\x52\x03\x00\x00")
 
 func docGoBytes() ([]byte, error) {
 	return bindataRead(
@@ -168,8 +252,8 @@ func docGo() (*asset, error) {
 		return nil, err
 	}
 
-	info := bindataFileInfo{name: "doc.go", size: 377, mode: os.FileMode(0644), modTime: time.Unix(1574354941, 0)}
-	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0xef, 0xaf, 0xdf, 0xcf, 0x65, 0xae, 0x19, 0xfc, 0x9d, 0x29, 0xc1, 0x91, 0xaf, 0xb5, 0xd5, 0xb1, 0x56, 0xf3, 0xee, 0xa8, 0xba, 0x13, 0x65, 0xdb, 0xab, 0xcf, 0x4e, 0xac, 0x92, 0xe9, 0x60, 0xf1}}
+	info := bindataFileInfo{name: "doc.go", size: 850, mode: os.FileMode(0644), modTime: time.Unix(1587456151, 0)}
+	a := &asset{bytes: bytes, info: info, digest: [32]uint8{0xa0, 0xcc, 0x41, 0xe1, 0x61, 0x12, 0x97, 0xe, 0x36, 0x8c, 0xa7, 0x9e, 0xe0, 0x6e, 0x59, 0x9e, 0xee, 0xd5, 0x4a, 0xcf, 0x1e, 0x60, 0xd6, 0xc3, 0x3a, 0xc9, 0x6c, 0xf2, 0x86, 0x5a, 0xb4, 0x1e}}
 	return a, nil
 }
 
@@ -272,6 +356,14 @@ var _bindata = map[string]func() (*asset, error){
 
 	"000002_add_last_ens_clock_value.up.sql": _000002_add_last_ens_clock_valueUpSql,
 
+	"1586358095_add_replace.down.sql": _1586358095_add_replaceDownSql,
+
+	"1586358095_add_replace.up.sql": _1586358095_add_replaceUpSql,
+
+	"1588665364_add_image_data.down.sql": _1588665364_add_image_dataDownSql,
+
+	"1588665364_add_image_data.up.sql": _1588665364_add_image_dataUpSql,
+
 	"doc.go": docGo,
 }
 
@@ -320,6 +412,10 @@ var _bintree = &bintree{nil, map[string]*bintree{
 	"000001_init.up.db.sql":                    &bintree{_000001_initUpDbSql, map[string]*bintree{}},
 	"000002_add_last_ens_clock_value.down.sql": &bintree{_000002_add_last_ens_clock_valueDownSql, map[string]*bintree{}},
 	"000002_add_last_ens_clock_value.up.sql":   &bintree{_000002_add_last_ens_clock_valueUpSql, map[string]*bintree{}},
+	"1586358095_add_replace.down.sql":          &bintree{_1586358095_add_replaceDownSql, map[string]*bintree{}},
+	"1586358095_add_replace.up.sql":            &bintree{_1586358095_add_replaceUpSql, map[string]*bintree{}},
+	"1588665364_add_image_data.down.sql":       &bintree{_1588665364_add_image_dataDownSql, map[string]*bintree{}},
+	"1588665364_add_image_data.up.sql":         &bintree{_1588665364_add_image_dataUpSql, map[string]*bintree{}},
 	"doc.go":                                   &bintree{docGo, map[string]*bintree{}},
 }}
 

@@ -6,6 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -20,6 +23,8 @@ import (
 	"github.com/status-im/status-go/protocol"
 	"github.com/status-im/status-go/protocol/protobuf"
 )
+
+var sentEnvelopes int
 
 // MessagesViewController manages chat view.
 type MessagesViewController struct {
@@ -202,6 +207,26 @@ func (c *MessagesViewController) Send(ctx context.Context, text string) (*protoc
 	message.ChatId = c.activeChat.ID
 	message.Text = text
 	message.ContentType = protobuf.ChatMessage_TEXT_PLAIN
+	message.ContentType = protobuf.ChatMessage_IMAGE
+
+	file, err := os.Open("/tmp/3.png")
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	payload, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	message.ContentType = protobuf.ChatMessage_IMAGE
+	image := protobuf.ImageMessage{
+		Payload: payload,
+		Type:    protobuf.ImageMessage_GIF,
+	}
+	message.Payload = &protobuf.ChatMessage_Image{Image: &image}
+
 	response, err := c.messenger.SendChatMessage(ctx, message)
 	if err != nil {
 		return nil, err
@@ -215,6 +240,43 @@ func (c *MessagesViewController) Send(ctx context.Context, text string) (*protoc
 	c.mutex.Unlock()
 
 	return response, nil
+}
+
+func randomChatID() string {
+	chats := []string{
+		"testabc",
+		"test1",
+		"test2",
+		"test3",
+		"test4",
+	}
+	index := rand.Intn(20)
+	if len(chats) > index {
+		return fmt.Sprintf("%d", time.Now().Unix())
+		//	return chats[index]
+	}
+	return fmt.Sprintf("%d", time.Now().Unix())
+}
+
+// Send random message
+func (c *MessagesViewController) SendRandom(ctx context.Context) (*protocol.MessengerResponse, error) {
+	if sentEnvelopes == 500 {
+		return nil, nil
+	}
+	fmt.Printf("SENT: %d\n", sentEnvelopes)
+	sentEnvelopes += 1
+	chatID := "public500different"
+
+	chat := protocol.CreatePublicChat(chatID, &testTimeSource{})
+	text := fmt.Sprintf("message: %d", sentEnvelopes)
+	if err := c.messenger.SaveChat(&chat); err != nil {
+		return nil, err
+	}
+	message := &protocol.Message{}
+	message.ChatId = chatID
+	message.Text = text
+	message.ContentType = protobuf.ChatMessage_TEXT_PLAIN
+	return c.messenger.SendChatMessage(ctx, message)
 }
 
 func (c *MessagesViewController) printMessages(clear bool, messages ...*protocol.Message) {

@@ -14,6 +14,12 @@ import (
 	v1protocol "github.com/status-im/status-go/protocol/v1"
 )
 
+const (
+	transactionRequestDeclinedMessage           = "Transaction request declined"
+	requestAddressForTransactionAcceptedMessage = "Request address for transaction accepted"
+	requestAddressForTransactionDeclinedMessage = "Request address for transaction declined"
+)
+
 type MessageHandler struct {
 	identity    *ecdsa.PrivateKey
 	persistence *sqlitePersistence
@@ -73,13 +79,14 @@ func (m *MessageHandler) HandleMembershipUpdate(messageState *ReceivedMessageSta
 			return errors.Wrap(err, "invalid membership update")
 		}
 		merged := v1protocol.MergeMembershipUpdateEvents(existingGroup.Events(), updateGroup.Events())
-		group, err = v1protocol.NewGroup(chat.ID, merged)
+		group, err = v1protocol.NewGroupWithEvents(chat.ID, merged)
 		if err != nil {
 			return errors.Wrap(err, "failed to create a group with new membership updates")
 		}
 	}
 
-	chat.updateChatFromProtocolGroup(group)
+	chat.updateChatFromGroupMembershipChanges(contactIDFromPublicKey(&m.identity.PublicKey), group)
+
 	systemMessages := buildSystemMessages(message.Events, translations)
 
 	for _, message := range systemMessages {
@@ -434,8 +441,9 @@ func (m *MessageHandler) HandleAcceptRequestAddressForTransaction(messageState *
 
 	initialMessage.Clock = command.Clock
 	initialMessage.Timestamp = messageState.CurrentMessageState.WhisperTimestamp
-	initialMessage.Text = "Request address for transaction accepted"
+	initialMessage.Text = requestAddressForTransactionAcceptedMessage
 	initialMessage.CommandParameters.Address = command.Address
+	initialMessage.Seen = false
 	initialMessage.CommandParameters.CommandState = CommandStateRequestAddressForTransactionAccepted
 
 	// Hide previous message
@@ -503,7 +511,8 @@ func (m *MessageHandler) HandleDeclineRequestAddressForTransaction(messageState 
 
 	oldMessage.Clock = command.Clock
 	oldMessage.Timestamp = messageState.CurrentMessageState.WhisperTimestamp
-	oldMessage.Text = "Request address for transaction declined"
+	oldMessage.Text = requestAddressForTransactionDeclinedMessage
+	oldMessage.Seen = false
 	oldMessage.CommandParameters.CommandState = CommandStateRequestAddressForTransactionDeclined
 
 	// Hide previous message
@@ -543,7 +552,8 @@ func (m *MessageHandler) HandleDeclineRequestTransaction(messageState *ReceivedM
 
 	oldMessage.Clock = command.Clock
 	oldMessage.Timestamp = messageState.CurrentMessageState.WhisperTimestamp
-	oldMessage.Text = "Transaction request declined"
+	oldMessage.Text = transactionRequestDeclinedMessage
+	oldMessage.Seen = false
 	oldMessage.CommandParameters.CommandState = CommandStateRequestTransactionDeclined
 
 	// Hide previous message

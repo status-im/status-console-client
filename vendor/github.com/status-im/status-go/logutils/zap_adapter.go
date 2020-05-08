@@ -126,7 +126,6 @@ var registerOnce sync.Once
 func NewZapLoggerWithAdapter(logger log.Logger) (*zap.Logger, error) {
 	registerOnce.Do(func() {
 		if err := zaputil.RegisterJSONHexEncoder(); err != nil {
-			panic(err)
 		}
 	})
 

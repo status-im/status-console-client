@@ -6,7 +6,7 @@ func DefaultMessage() types.NewMessage {
 	msg := types.NewMessage{}
 
 	msg.TTL = 10
-	msg.PowTarget = 0.002
+	msg.PowTarget = 0.001
 	msg.PowTime = 1
 
 	return msg

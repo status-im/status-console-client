@@ -23,8 +23,8 @@ require (
 	github.com/mattn/go-colorable v0.1.2 // indirect
 	github.com/nsf/termbox-go v0.0.0-20190624072549-eeb6cd0a1762 // indirect
 	github.com/peterbourgon/ff v1.2.0
-	github.com/pkg/errors v0.8.1
-	github.com/status-im/status-go v0.45.1
+	github.com/pkg/errors v0.9.1
+	github.com/status-im/status-go v0.52.5-0.20200505093600-7974c05fef2e
 	go.uber.org/zap v1.13.0
 	google.golang.org/genproto v0.0.0-20190701230453-710ae3a149df // indirect
 )

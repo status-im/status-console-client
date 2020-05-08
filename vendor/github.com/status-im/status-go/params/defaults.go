@@ -28,7 +28,7 @@ const (
 	WhisperTTL = 120
 
 	// WakuMinimumPoW amount of work for Whisper message to be added to sending queue
-	WakuMinimumPoW = 0.001
+	WakuMinimumPoW = 0.000001
 
 	// WakuTTL is time to live for messages, in seconds
 	WakuTTL = 120

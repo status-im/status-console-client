@@ -33,6 +33,9 @@ func (db sqlitePersistence) tableUserMessagesLegacyAllFields() string {
 		parsed_text,
 		sticker_pack,
 		sticker_hash,
+		image_payload,
+		image_type,
+		image_base64,
 		command_id,
 		command_value,
 		command_from,
@@ -41,6 +44,9 @@ func (db sqlitePersistence) tableUserMessagesLegacyAllFields() string {
 		command_transaction_hash,
 		command_state,
 		command_signature,
+		replace_message,
+		rtl,
+		line_count,
 		response_to`
 }
 
@@ -61,6 +67,7 @@ func (db sqlitePersistence) tableUserMessagesLegacyAllFieldsJoin() string {
 		m1.parsed_text,
 		m1.sticker_pack,
 		m1.sticker_hash,
+		m1.image_base64,
 		m1.command_id,
 		m1.command_value,
 		m1.command_from,
@@ -69,6 +76,9 @@ func (db sqlitePersistence) tableUserMessagesLegacyAllFieldsJoin() string {
 		m1.command_transaction_hash,
 		m1.command_state,
 		m1.command_signature,
+		m1.replace_message,
+		m1.rtl,
+		m1.line_count,
 		m1.response_to,
 		m2.source,
 		m2.text,
@@ -110,6 +120,7 @@ func (db sqlitePersistence) tableUserMessagesLegacyScanAllFields(row scanner, me
 		&message.ParsedText,
 		&sticker.Pack,
 		&sticker.Hash,
+		&message.Base64Image,
 		&command.ID,
 		&command.Value,
 		&command.From,
@@ -118,6 +129,9 @@ func (db sqlitePersistence) tableUserMessagesLegacyScanAllFields(row scanner, me
 		&command.TransactionHash,
 		&command.CommandState,
 		&command.Signature,
+		&message.Replace,
+		&message.RTL,
+		&message.LineCount,
 		&message.ResponseTo,
 		&quotedFrom,
 		&quotedText,
@@ -153,6 +167,12 @@ func (db sqlitePersistence) tableUserMessagesLegacyAllValues(message *Message) (
 	if sticker == nil {
 		sticker = &protobuf.StickerMessage{}
 	}
+
+	image := message.GetImage()
+	if image == nil {
+		image = &protobuf.ImageMessage{}
+	}
+
 	command := message.CommandParameters
 	if command == nil {
 		command = &CommandParameters{}
@@ -174,6 +194,9 @@ func (db sqlitePersistence) tableUserMessagesLegacyAllValues(message *Message) (
 		message.ParsedText,
 		sticker.Pack,
 		sticker.Hash,
+		image.Payload,
+		image.Type,
+		message.Base64Image,
 		command.ID,
 		command.Value,
 		command.From,
@@ -182,6 +205,9 @@ func (db sqlitePersistence) tableUserMessagesLegacyAllValues(message *Message) (
 		command.TransactionHash,
 		command.CommandState,
 		command.Signature,
+		message.Replace,
+		message.RTL,
+		message.LineCount,
 		message.ResponseTo,
 	}, nil
 }
@@ -313,6 +339,52 @@ func (db sqlitePersistence) MessagesExist(ids []string) (map[string]bool, error)
 	return result, nil
 }
 
+func (db sqlitePersistence) MessagesByIDs(ids []string) ([]*Message, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	idsArgs := make([]interface{}, 0, len(ids))
+	for _, id := range ids {
+		idsArgs = append(idsArgs, id)
+	}
+
+	allFields := db.tableUserMessagesLegacyAllFieldsJoin()
+	inVector := strings.Repeat("?, ", len(ids)-1) + "?"
+
+	// nolint: gosec
+	rows, err := db.db.Query(fmt.Sprintf(`
+			SELECT
+				%s
+			FROM
+				user_messages m1
+			LEFT JOIN
+				user_messages m2
+			ON
+			m1.response_to = m2.id
+
+			LEFT JOIN
+			      contacts c
+			ON
+
+			m1.source = c.id
+			WHERE m1.hide != 1 AND m1.id IN (%s)`, allFields, inVector), idsArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []*Message
+	for rows.Next() {
+		var message Message
+		if err := db.tableUserMessagesLegacyScanAllFields(rows, &message); err != nil {
+			return nil, err
+		}
+		result = append(result, &message)
+	}
+
+	return result, nil
+}
+
 // MessageByChatID returns all messages for a given chatID in descending order.
 // Ordering is accomplished using two concatenated values: ClockValue and ID.
 // These two values are also used to compose a cursor which is returned to the result.
@@ -434,10 +506,32 @@ func (db sqlitePersistence) DeleteMessagesByChatID(id string) error {
 	return err
 }
 
-func (db sqlitePersistence) MarkMessagesSeen(chatID string, ids []string) error {
+func (db sqlitePersistence) MarkAllRead(chatID string) error {
 	tx, err := db.db.BeginTx(context.Background(), &sql.TxOptions{})
 	if err != nil {
 		return err
+	}
+	defer func() {
+		if err == nil {
+			err = tx.Commit()
+			return
+		}
+		// don't shadow original error
+		_ = tx.Rollback()
+	}()
+
+	_, err = tx.Exec(`UPDATE user_messages SET seen = 1 WHERE local_chat_id = ?`, chatID)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`UPDATE chats SET unviewed_message_count = 0 WHERE id = ?`, chatID)
+	return err
+}
+
+func (db sqlitePersistence) MarkMessagesSeen(chatID string, ids []string) (uint64, error) {
+	tx, err := db.db.BeginTx(context.Background(), &sql.TxOptions{})
+	if err != nil {
+		return 0, err
 	}
 	defer func() {
 		if err == nil {
@@ -457,7 +551,13 @@ func (db sqlitePersistence) MarkMessagesSeen(chatID string, ids []string) error 
 	q := "UPDATE user_messages SET seen = 1 WHERE id IN (" + inVector + ")" // nolint: gosec
 	_, err = tx.Exec(q, idsArgs...)
 	if err != nil {
-		return err
+		return 0, err
+	}
+
+	var count uint64
+	row := tx.QueryRow("SELECT changes();")
+	if err := row.Scan(&count); err != nil {
+		return 0, err
 	}
 
 	// Update denormalized count
@@ -468,7 +568,7 @@ func (db sqlitePersistence) MarkMessagesSeen(chatID string, ids []string) error 
 		   FROM user_messages
 		   WHERE local_chat_id = ? AND seen = 0)
 		WHERE id = ?`, chatID, chatID)
-	return err
+	return count, err
 }
 
 func (db sqlitePersistence) UpdateMessageOutgoingStatus(id string, newOutgoingStatus string) error {

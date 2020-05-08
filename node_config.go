@@ -38,6 +38,8 @@ func generateStatusNodeConfig(dataDir, fleet, listenAddr string, configFile stri
 	}
 
 	config.IPCEnabled = true
+	config.WakuConfig.Enabled = true
+	config.WhisperConfig.Enabled = false
 
 	return config, nil
 }

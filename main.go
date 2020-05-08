@@ -47,7 +47,7 @@ var (
 	dataDir        = fs.String("data-dir", filepath.Join(os.TempDir(), "status-term-client"), "data directory for Ethereum node")
 	installationID = fs.String("installation-id", uuid.New().String(), "the installationID to be used")
 	noNamespace    = fs.Bool("no-namespace", false, "disable data dir namespacing with public key")
-	fleet          = fs.String("fleet", params.FleetProd, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetProd, params.FleetProd}))
+	fleet          = fs.String("fleet", params.FleetProd, fmt.Sprintf("Status nodes cluster to connect to: %s", []string{params.FleetTest, params.FleetProd}))
 	configFile     = fs.String("node-config", "", "a JSON file with node config")
 	listenAddr     = fs.String("listen-addr", ":30303", "The address the Ethereum node should be listening to")
 	datasync       = fs.Bool("datasync", false, "enable datasync")
@@ -126,7 +126,7 @@ func main() {
 	cfg := zap.NewProductionConfig()
 	cfg.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
 	cfg.OutputPaths = []string{clientLogFile.Name()}
-	cfg.Encoding = "json-hex"
+	//cfg.Encoding = "json-hex"
 	logger, err := cfg.Build()
 	if err != nil {
 		exitErr(fmt.Errorf("failed to create logger: %v", err))

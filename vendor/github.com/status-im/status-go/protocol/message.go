@@ -2,7 +2,10 @@ package protocol
 
 import (
 	"crypto/ecdsa"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -87,9 +90,14 @@ type Message struct {
 	CommandParameters *CommandParameters `json:"commandParameters"`
 
 	// Computed fields
-	RTL        bool   `json:"rtl"`
+	// RTL is whether this is a right-to-left message (arabic/hebrew script etc)
+	RTL bool `json:"rtl"`
+	// ParsedText is the parsed markdown for displaying
 	ParsedText []byte `json:"parsedText"`
-	LineCount  int    `json:"lineCount"`
+	// LineCount is the count of newlines in the message
+	LineCount int `json:"lineCount"`
+	// Base64Image is the converted base64 image
+	Base64Image string `json:"image,omitempty"`
 
 	// Replace indicates that this is a replacement of a message
 	// that has been updated
@@ -135,6 +143,7 @@ func (m *Message) MarshalJSON() ([]byte, error) {
 		Replace           string                           `json:"replace"`
 		ResponseTo        string                           `json:"responseTo"`
 		EnsName           string                           `json:"ensName"`
+		Image             string                           `json:"image,omitempty"`
 		Sticker           *StickerAlias                    `json:"sticker"`
 		CommandParameters *CommandParameters               `json:"commandParameters"`
 		Timestamp         uint64                           `json:"timestamp"`
@@ -159,6 +168,7 @@ func (m *Message) MarshalJSON() ([]byte, error) {
 		Clock:             m.Clock,
 		ResponseTo:        m.ResponseTo,
 		EnsName:           m.EnsName,
+		Image:             m.Base64Image,
 		Timestamp:         m.Timestamp,
 		ContentType:       m.ContentType,
 		MessageType:       m.MessageType,
@@ -208,6 +218,46 @@ func isRTL(s string) bool {
 		first == '\u200f'
 }
 
+func (m *Message) parseImage() error {
+	fmt.Println("Parsing image")
+	if m.ContentType != protobuf.ChatMessage_IMAGE {
+		return nil
+	}
+	image := m.GetImage()
+	if image == nil {
+		return errors.New("image empty")
+	}
+
+	payload := image.Payload
+
+	e64 := base64.StdEncoding
+
+	maxEncLen := e64.EncodedLen(len(payload))
+	encBuf := make([]byte, maxEncLen)
+
+	e64.Encode(encBuf, payload)
+	var mime string
+
+	switch image.Type {
+	case protobuf.ImageMessage_PNG:
+		mime = "png"
+	case protobuf.ImageMessage_JPEG:
+		mime = "jpeg"
+	case protobuf.ImageMessage_WEBP:
+		mime = "webp"
+	case protobuf.ImageMessage_GIF:
+		mime = "gif"
+	default:
+		return errors.New("image format not supported")
+	}
+
+	m.Base64Image = fmt.Sprintf("data:image/%s;base64,%s", mime, encBuf)
+
+	fmt.Printf("%s\n", m.Base64Image)
+
+	return nil
+}
+
 // PrepareContent return the parsed content of the message, the line-count and whether
 // is a right-to-left message
 func (m *Message) PrepareContent() error {
@@ -219,5 +269,5 @@ func (m *Message) PrepareContent() error {
 	m.ParsedText = jsonParsedText
 	m.LineCount = strings.Count(m.Text, "\n")
 	m.RTL = isRTL(m.Text)
-	return nil
+	return m.parseImage()
 }
